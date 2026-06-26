@@ -1,7 +1,9 @@
 import { EventBus, type CoreEvent, type CoreEventType } from "./events.js";
 import { EvidenceRecorder } from "./evidence.js";
 import { createId, type StableId } from "./ids.js";
+import { exportStaticReport, type StaticReportResult } from "./report.js";
 import type { ToolRegistry } from "./registry.js";
+import { redactJsonValue } from "./redaction.js";
 import {
   buildFailureCard,
   classifyFailure,
@@ -13,8 +15,11 @@ import type {
   EvidenceArtifact,
   EvidenceLink,
   FailureCard,
+  FailureType,
   JsonValue,
+  PolicyDecision,
   PreflightFinding,
+  RegisteredTool,
   ToolCall,
   ToolResult
 } from "./types.js";
@@ -24,6 +29,18 @@ export interface CoreSessionOptions {
   readonly runId: StableId;
   readonly clock?: () => Date;
   readonly outputLimitBytes?: number;
+  readonly retry?: {
+    readonly maxRetries?: number;
+  };
+  readonly circuitBreaker?: {
+    readonly failureThreshold?: number;
+    readonly openMs?: number;
+  };
+}
+
+interface CircuitState {
+  readonly openedAtMs: number;
+  readonly failureCount: number;
 }
 
 export class CoreSession {
@@ -32,6 +49,11 @@ export class CoreSession {
   readonly #clock: () => Date;
   readonly #runId: StableId;
   readonly #outputLimitBytes: number;
+  readonly #maxRetries: number;
+  readonly #circuitFailureThreshold: number;
+  readonly #circuitOpenMs: number;
+  readonly #circuit = new Map<string, CircuitState>();
+  readonly #failures = new Map<string, number>();
   #sequence = 0;
 
   constructor(options: CoreSessionOptions) {
@@ -42,6 +64,9 @@ export class CoreSession {
     });
     this.#clock = options.clock ?? (() => new Date());
     this.#outputLimitBytes = options.outputLimitBytes ?? 64 * 1024;
+    this.#maxRetries = options.retry?.maxRetries ?? 1;
+    this.#circuitFailureThreshold = options.circuitBreaker?.failureThreshold ?? 2;
+    this.#circuitOpenMs = options.circuitBreaker?.openMs ?? 500;
   }
 
   get runId(): StableId {
@@ -134,6 +159,76 @@ export class CoreSession {
       data: { status: "healthy", reason: "registered_tool_and_arguments_valid" }
     });
 
+    let attemptCall = call;
+    let attemptIndex = 0;
+    let startedAlready = true;
+    while (true) {
+      const result = await this.#executeAttempt(tool, attemptCall, options, startedAlready);
+      startedAlready = false;
+      if (!("failureType" in result)) {
+        await this.#emit("run.completed", attemptCall, "Run completed");
+        return result;
+      }
+
+      const targetKey = this.#targetKey(attemptCall);
+      const shouldRetry = this.#shouldRetry(tool, attemptCall, result, attemptIndex);
+      if (!shouldRetry.retry) {
+        const finalFailure = shouldRetry.reason
+          ? {
+              ...result,
+              safeSummary: `${result.safeSummary} ${shouldRetry.reason}`
+            }
+          : result;
+        await this.#emit("run.completed", attemptCall, "Run completed");
+        return finalFailure;
+      }
+
+      attemptIndex += 1;
+      const nextCall = {
+        ...call,
+        attemptId: createId("attempt"),
+        policyDecisionId: createId("policy")
+      };
+      await this.#emit("tool.retry.scheduled", nextCall, `Retry scheduled for ${call.toolName}`, {
+        data: {
+          policyDecisionId: nextCall.policyDecisionId,
+          decision: "retry",
+          reason: shouldRetry.reason ?? "Retry scheduled by bounded retry policy.",
+          retryable: true,
+          targetKey,
+          nextAttemptId: nextCall.attemptId
+        }
+      });
+      attemptCall = nextCall;
+    }
+  }
+
+  async #executeAttempt(
+    tool: RegisteredTool,
+    call: ToolCall,
+    options: { readonly signal?: AbortSignal } = {},
+    startedAlready = false
+  ): Promise<ToolResult | FailureCard> {
+    if (!startedAlready) {
+      await this.#emit("tool.call.started", call, `Tool call started: ${call.toolName}`);
+    }
+    const targetKey = this.#targetKey(call);
+    const circuitDecision = await this.#evaluateCircuit(call);
+    if (circuitDecision.decision === "fail-fast") {
+      await this.#emitPolicyDecision(call, circuitDecision);
+      return await this.#recordFailure(call, "circuit_open", ["Circuit breaker is open for this downstream target."]);
+    }
+
+    const policy = this.#evaluatePolicy(tool, call);
+    await this.#emitPolicyDecision(call, policy);
+    if (policy.decision === "block") {
+      return await this.#recordFailure(
+        call,
+        tool.destructiveRisk === "high" ? "destructive_action_blocked" : "policy_blocked",
+        [policy.reason]
+      );
+    }
+
     const controller = new AbortController();
     let abortReason: "timeout" | "cancellation" | undefined;
     const timeout =
@@ -179,7 +274,7 @@ export class CoreSession {
         const failure = await this.#recordFailure(call, suspicious, ["Unsafe downstream output stored as raw evidence."], [
           artifact
         ]);
-        await this.#emit("run.completed", call, "Run completed");
+        await this.#recordTargetFailure(call, failure.failureType);
         return failure;
       }
 
@@ -200,7 +295,7 @@ export class CoreSession {
         artifactIds: [artifact.artifactId]
       };
       await this.#emit("tool.call.completed", call, `Tool call completed: ${call.toolName}`, { data: result });
-      await this.#emit("run.completed", call, "Run completed");
+      await this.#recordTargetSuccess(call, targetKey);
       return result;
     } catch (error) {
       if (timeout) {
@@ -214,9 +309,35 @@ export class CoreSession {
         classifyFailure(controller.signal.aborted ? { error, failureType } : { error }),
         getRawFailureDetails(error)
       );
-      await this.#emit("run.completed", call, "Run completed");
+      await this.#recordTargetFailure(call, failure.failureType);
       return failure;
     }
+  }
+
+  async exportReport(): Promise<StaticReportResult> {
+    const result = await exportStaticReport({ runDir: this.#recorder.runDir });
+    const last = this.#recorder.events.at(-1);
+    const context = last
+      ? {
+          runId: last.runId,
+          traceId: last.traceId,
+          ...(last.parentId ? { parentId: last.parentId } : {}),
+          ...(last.harnessId ? { harnessId: last.harnessId } : {}),
+          ...(last.adapterId ? { adapterId: last.adapterId } : {}),
+          ...(last.downstreamServerId ? { downstreamServerId: last.downstreamServerId } : {}),
+          ...(last.toolCallId ? { toolCallId: last.toolCallId } : {}),
+          ...(last.attemptId ? { attemptId: last.attemptId } : {}),
+          ...(last.policyDecisionId ? { policyDecisionId: last.policyDecisionId } : {})
+        }
+      : { runId: this.#runId, traceId: createId("trace") };
+    await this.#emitContext("report.exported", context, "Static report exported", {
+      data: {
+        reportId: result.reportId,
+        reportHtml: result.reportPath,
+        manifestJson: result.manifestPath
+      }
+    });
+    return result;
   }
 
   async mediateSuccessfulCall(call: ToolCall, output: JsonValue): Promise<ToolResult> {
@@ -287,6 +408,117 @@ export class CoreSession {
     return failure;
   }
 
+  #evaluatePolicy(tool: RegisteredTool, call: ToolCall): PolicyDecision {
+    if (tool.destructiveRisk === "high" && call.arguments.fixtureOnly !== true) {
+      return {
+        policyDecisionId: call.policyDecisionId,
+        decision: "block",
+        reason: "Destructive actions are blocked unless explicitly fixture-only.",
+        retryable: false
+      };
+    }
+    return {
+      policyDecisionId: call.policyDecisionId,
+      decision: "allow",
+      reason: "Registered tool and arguments satisfy safety policy.",
+      retryable: true
+    };
+  }
+
+  async #evaluateCircuit(call: ToolCall): Promise<PolicyDecision> {
+    const targetKey = this.#targetKey(call);
+    const state = this.#circuit.get(targetKey);
+    if (!state) {
+      return {
+        policyDecisionId: call.policyDecisionId,
+        decision: "allow",
+        reason: "Circuit is closed for this downstream target.",
+        retryable: true
+      };
+    }
+    const elapsed = this.#clock().getTime() - state.openedAtMs;
+    if (elapsed >= this.#circuitOpenMs) {
+      return {
+        policyDecisionId: call.policyDecisionId,
+        decision: "allow",
+        reason: "Circuit is half-open for a recovery probe.",
+        retryable: true
+      };
+    }
+    return {
+      policyDecisionId: call.policyDecisionId,
+      decision: "fail-fast",
+      reason: "Circuit breaker is open for this downstream target.",
+      retryable: false
+    };
+  }
+
+  async #emitPolicyDecision(call: ToolCall, decision: PolicyDecision): Promise<void> {
+    await this.#emit("policy.decision", call, `Policy decision: ${decision.decision}`, { data: decision });
+  }
+
+  #shouldRetry(
+    tool: RegisteredTool,
+    call: ToolCall,
+    failure: FailureCard,
+    attemptIndex: number
+  ): { readonly retry: boolean; readonly reason?: string } {
+    if (!failure.retryable || failure.doNotRetrySameCall) {
+      return { retry: false };
+    }
+    if (attemptIndex >= this.#maxRetries) {
+      return { retry: false, reason: "Retry policy reached the configured bounded retry limit." };
+    }
+    if (call.idempotency !== "idempotent" || tool.destructiveRisk === "medium" || tool.destructiveRisk === "high") {
+      return {
+        retry: false,
+        reason: "Automatic retry was not retried because the call is non-idempotent, unsafe, or destructive."
+      };
+    }
+    return { retry: true, reason: "Retryable failure on idempotent safe call within policy bounds." };
+  }
+
+  async #recordTargetFailure(call: ToolCall, failureType: FailureType): Promise<void> {
+    if (!["timeout", "process_crash", "unknown"].includes(failureType)) {
+      return;
+    }
+    const targetKey = this.#targetKey(call);
+    const count = (this.#failures.get(targetKey) ?? 0) + 1;
+    this.#failures.set(targetKey, count);
+    if (count >= this.#circuitFailureThreshold && !this.#circuit.has(targetKey)) {
+      this.#circuit.set(targetKey, { failureCount: count, openedAtMs: this.#clock().getTime() });
+      await this.#emit("circuit.opened", call, `Circuit opened for ${targetKey}`, {
+        data: {
+          policyDecisionId: call.policyDecisionId,
+          decision: "open-circuit",
+          reason: `Opened after ${count} qualifying failures for ${targetKey}.`,
+          retryable: false,
+          targetKey
+        }
+      });
+    }
+  }
+
+  async #recordTargetSuccess(call: ToolCall, targetKey: string): Promise<void> {
+    this.#failures.set(targetKey, 0);
+    if (this.#circuit.has(targetKey)) {
+      this.#circuit.delete(targetKey);
+      await this.#emit("circuit.closed", call, `Circuit closed for ${targetKey}`, {
+        data: {
+          policyDecisionId: call.policyDecisionId,
+          decision: "close-circuit",
+          reason: `Recovery probe succeeded for ${targetKey}.`,
+          retryable: true,
+          targetKey
+        }
+      });
+    }
+  }
+
+  #targetKey(call: ToolCall): string {
+    return `${call.downstreamServerId}:${call.toolName}`;
+  }
+
   async #emitArtifactCreated(call: ToolCall, artifact: EvidenceArtifact): Promise<void> {
     await this.#emit("evidence.artifact.created", call, `Evidence artifact created: ${artifact.artifactId}`, {
       data: artifact,
@@ -316,7 +548,9 @@ export class CoreSession {
       attemptId: call.attemptId,
       policyDecisionId: call.policyDecisionId,
       ...(options.artifactId ? { artifactId: options.artifactId } : {}),
-      ...(options.data ? { data: options.data } : {})
+      ...(options.data
+        ? { data: redactJsonValue(options.data as JsonValue) as NonNullable<CoreEvent["data"]> }
+        : {})
     };
 
     await this.#recorder.appendEvent(event);
@@ -356,7 +590,9 @@ export class CoreSession {
       ...(context.attemptId ? { attemptId: context.attemptId } : {}),
       ...(context.policyDecisionId ? { policyDecisionId: context.policyDecisionId } : {}),
       ...(options.artifactId ? { artifactId: options.artifactId } : {}),
-      ...(options.data ? { data: options.data } : {})
+      ...(options.data
+        ? { data: redactJsonValue(options.data as JsonValue) as NonNullable<CoreEvent["data"]> }
+        : {})
     };
 
     await this.#recorder.appendEvent(event);

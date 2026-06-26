@@ -102,6 +102,17 @@ const RECOVERY: Record<FailureType, FailureClassification> = {
     safeRecoveryOptions: ["Use a fixture-only sandbox action.", "Choose a non-destructive operation."],
     humanFix: "Route demos to fixture-only tools or explicitly redesign the policy."
   },
+  circuit_open: {
+    failureType: "circuit_open",
+    likelyRootCause: "The circuit breaker is open for this downstream target after repeated qualifying failures.",
+    retryable: true,
+    doNotRetrySameCall: true,
+    safeRecoveryOptions: [
+      "Wait for the circuit recovery window before probing again.",
+      "Use an unrelated healthy target while this target recovers."
+    ],
+    humanFix: "Inspect recent failure artifacts, repair the affected downstream target, then allow a recovery probe."
+  },
   policy_blocked: {
     failureType: "policy_blocked",
     likelyRootCause: "ToolGuard policy blocked the call before downstream execution.",
@@ -146,7 +157,12 @@ export function detectSuspiciousOutput(value: JsonValue): FailureClassification 
     return RECOVERY.prompt_injection_output;
   }
 
-  if (/Bearer\s+[A-Za-z0-9._~+/-]{12,}/.test(serialized) || /-----BEGIN [A-Z ]+PRIVATE KEY-----/.test(serialized)) {
+  if (
+    /Bearer\s+[A-Za-z0-9._~+/-]{12,}/.test(serialized) ||
+    /\bsk-[A-Za-z0-9_-]{20,}\b/.test(serialized) ||
+    /\b(api[_-]?key|token|secret|password)\s*[:=]/i.test(serialized) ||
+    /-----BEGIN [A-Z ]+PRIVATE KEY-----/.test(serialized)
+  ) {
     return RECOVERY.secret_leak_risk;
   }
 
@@ -157,6 +173,7 @@ export function buildFailureCard(input: {
   readonly call: ToolCall;
   readonly classification: FailureClassification;
   readonly evidenceLinks: FailureCard["evidenceLinks"];
+  readonly safeSummarySuffix?: string;
 }): FailureCard {
   return {
     toolName: input.call.toolName,
@@ -167,7 +184,9 @@ export function buildFailureCard(input: {
     safeRecoveryOptions: input.classification.safeRecoveryOptions,
     humanFix: input.classification.humanFix,
     evidenceLinks: input.evidenceLinks,
-    safeSummary: `Tool ${input.call.toolName} failed with ${input.classification.failureType}. Raw details are stored separately in evidence artifacts.`,
+    safeSummary: `Tool ${input.call.toolName} failed with ${input.classification.failureType}. Raw details are stored separately in evidence artifacts.${
+      input.safeSummarySuffix ? ` ${input.safeSummarySuffix}` : ""
+    }`,
     rawDetailsSeparated: true
   };
 }

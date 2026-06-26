@@ -95,6 +95,7 @@ export type FailureType =
   | "prompt_injection_output"
   | "secret_leak_risk"
   | "destructive_action_blocked"
+  | "circuit_open"
   | "policy_blocked"
   | "unknown";
 
@@ -131,7 +132,7 @@ export interface EvidenceLink {
 
 export interface PolicyDecision {
   readonly policyDecisionId: StableId;
-  readonly decision: "allow" | "block" | "retry" | "open-circuit" | "close-circuit";
+  readonly decision: "allow" | "block" | "retry" | "open-circuit" | "close-circuit" | "fail-fast";
   readonly reason: string;
   readonly retryable: boolean;
 }
@@ -152,7 +153,14 @@ export interface ReportManifest {
   readonly runId: StableId;
   readonly generatedAt: string;
   readonly eventFile: string;
+  readonly reportFile: string;
+  readonly artifactHashFile: string;
+  readonly redactionSummaryFile: string;
   readonly artifacts: readonly EvidenceArtifact[];
+  readonly redactionSummary: {
+    readonly redactionCount: number;
+    readonly reasons: readonly string[];
+  };
 }
 
 export type JsonPrimitive = string | number | boolean | null;

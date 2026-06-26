@@ -3,6 +3,8 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { CoreSession } from "./session.js";
 import { ToolRegistry } from "./registry.js";
+import { registerChaosFixtures } from "./chaos-fixtures.js";
+import { validateReportManifest } from "./report.js";
 import { createId, type StableId } from "./ids.js";
 import type { CoreEvent } from "./events.js";
 import type { ToolCall } from "./types.js";
@@ -30,6 +32,7 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
   const registry = new ToolRegistry();
 
   const downstreamServerId = createId("server");
+  registerChaosFixtures(registry, { sandboxRoot: evidenceRoot });
   registry.register({
     toolName: "fixture.echo",
     title: "Echo fixture",
@@ -77,8 +80,35 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
         sendJson(response, 200, {
           runId,
           eventsPath: session.recorder.eventsPath,
+          evidenceDir: session.recorder.runDir,
           eventCount: session.recorder.events.length,
           events: session.recorder.events
+        });
+        return;
+      }
+
+      if (url.pathname === "/api/evidence" || url.pathname === `/api/runs/${runId}/evidence`) {
+        sendJson(response, 200, {
+          runId,
+          evidenceDir: session.recorder.runDir,
+          eventsPath: session.recorder.eventsPath,
+          eventCount: session.recorder.events.length,
+          artifactEvents: session.recorder.events.filter((event) => event.type === "evidence.artifact.created")
+        });
+        return;
+      }
+
+      if (url.pathname === "/api/reports/export") {
+        const report = await session.exportReport();
+        const validation = await validateReportManifest({ runDir: session.recorder.runDir });
+        sendJson(response, 200, {
+          runId,
+          reportHtml: report.reportPath,
+          manifestJson: report.manifestPath,
+          artifactHashList: report.artifactHashPath,
+          redactionSummary: report.redactionSummaryPath,
+          manifestValid: validation.valid,
+          validationErrors: validation.errors
         });
         return;
       }

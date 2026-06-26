@@ -7,6 +7,9 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r build",
+    "demo": "pnpm demo:toolplane",
+    "demo:raw-failure": "pnpm --filter @toolplane/core demo:raw-failure",
+    "demo:toolplane": "pnpm --filter @toolplane/core demo:toolplane",
     "dev:core": "pnpm --filter @toolplane/core dev",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",

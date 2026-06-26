@@ -17,6 +17,8 @@
   ],
   "scripts": {
     "build": "tsc --build tsconfig.json",
+    "demo:raw-failure": "pnpm build && node dist/demo.js raw-failure",
+    "demo:toolplane": "pnpm build && node dist/demo.js toolplane",
     "dev": "pnpm build && node dist/server.js",
     "lint": "pnpm typecheck",
     "test": "vitest run",

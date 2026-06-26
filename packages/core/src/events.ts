@@ -7,6 +7,7 @@ export type CoreEventType =
   | "adapter.connected"
   | "server.preflight.started"
   | "server.preflight.completed"
+  | "policy.decision"
   | "tool.call.started"
   | "tool.call.completed"
   | "tool.call.failed"

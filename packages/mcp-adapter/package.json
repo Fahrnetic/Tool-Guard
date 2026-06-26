@@ -1,0 +1,33 @@
+{
+  "name": "@toolplane/mcp-adapter",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ToolGuard MCP proxy/router adapter for upstream MCP clients and downstream MCP tools.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --build tsconfig.json",
+    "lint": "pnpm typecheck",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit --project tsconfig.json && tsc --noEmit --project tsconfig.test.json"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@toolplane/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15"
+  }
+}

@@ -81,6 +81,20 @@ export class CoreSession {
     return this.#recorder;
   }
 
+  async emitAdapterConnected(
+    context: {
+      readonly runId: StableId;
+      readonly traceId: StableId;
+      readonly parentId?: StableId;
+      readonly harnessId?: StableId;
+      readonly adapterId?: StableId;
+      readonly downstreamServerId?: StableId;
+    },
+    summary = "Adapter connected"
+  ): Promise<CoreEvent> {
+    return await this.#emitContext("adapter.connected", context, summary);
+  }
+
   async preflight(
     registry: ToolRegistry,
     context: {

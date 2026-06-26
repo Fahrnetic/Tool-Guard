@@ -18,14 +18,45 @@ export interface AdapterDescriptor {
   readonly version?: string;
 }
 
+export type JsonSchemaType = "object" | "array" | "string" | "number" | "boolean" | "null";
+
+export interface JsonSchema {
+  readonly type?: JsonSchemaType;
+  readonly required?: readonly string[];
+  readonly properties?: Readonly<Record<string, JsonSchema>>;
+  readonly additionalProperties?: boolean;
+}
+
 export interface ToolDefinition {
   readonly toolName: string;
   readonly title: string;
   readonly description: string;
   readonly protocol: ToolProtocol;
   readonly downstreamServerId: StableId;
-  readonly inputSchema: JsonObject;
+  readonly inputSchema: JsonSchema;
   readonly destructiveRisk: "none" | "low" | "medium" | "high";
+}
+
+export interface ToolExecutionContext {
+  readonly signal: AbortSignal;
+  readonly call: ToolCall;
+}
+
+export interface RegisteredTool extends ToolDefinition {
+  readonly inputSchema: JsonSchema;
+  readonly execute: (context: ToolExecutionContext) => Promise<JsonValue> | JsonValue;
+  readonly preflight?: () => Promise<PreflightProbeResult> | PreflightProbeResult;
+}
+
+export interface PreflightProbeResult {
+  readonly status: "healthy" | "degraded" | "failed";
+  readonly summary: string;
+  readonly remediation?: string;
+}
+
+export interface PreflightFinding extends PreflightProbeResult {
+  readonly downstreamServerId: StableId;
+  readonly toolName: string;
 }
 
 export interface ToolCall {
@@ -54,6 +85,8 @@ export interface ToolResult {
 }
 
 export type FailureType =
+  | "unknown_tool"
+  | "invalid_arguments"
   | "timeout"
   | "cancellation"
   | "cwd_mismatch"

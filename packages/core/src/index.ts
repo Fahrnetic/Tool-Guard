@@ -2,6 +2,7 @@ export { PROJECT_NAME, PRODUCT_DISPLAY_NAME } from "./product.js";
 export { createId, type StableId } from "./ids.js";
 export { EventBus, type CoreEvent, type CoreEventType, type CorrelationFields } from "./events.js";
 export { EvidenceRecorder, type EvidenceRecorderOptions } from "./evidence.js";
+export { ToolRegistry, validateJsonSchema, type ArgumentValidationResult } from "./registry.js";
 export { CoreSession, type CoreSessionOptions } from "./session.js";
 export type {
   AdapterDescriptor,
@@ -12,12 +13,18 @@ export type {
   FailureType,
   HarnessDescriptor,
   HarnessKind,
+  JsonSchema,
+  JsonSchemaType,
   JsonObject,
   JsonPrimitive,
   JsonValue,
+  PreflightFinding,
+  PreflightProbeResult,
   PolicyDecision,
+  RegisteredTool,
   ReportManifest,
   ToolCall,
+  ToolExecutionContext,
   ToolDefinition,
   ToolProtocol,
   ToolResult,

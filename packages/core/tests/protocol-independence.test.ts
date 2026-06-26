@@ -29,6 +29,8 @@ describe("core package boundaries", () => {
       "src/ids.ts",
       "src/index.ts",
       "src/product.ts",
+      "src/registry.ts",
+      "src/server.ts",
       "src/session.ts",
       "src/types.ts"
     ];

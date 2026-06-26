@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
+import { z, type ZodType } from "zod";
 import {
   ClassifiedToolError,
   CoreSession,
@@ -98,11 +99,23 @@ export class SdkDownstreamMcpServer implements DownstreamMcpServer {
 
   async callTool(context: DownstreamMcpCallContext): Promise<JsonValue> {
     const client = this.#requireClient();
-    const result = await client.callTool(
+    const result = (await client.callTool(
       { name: context.toolName, arguments: context.args },
       undefined,
       { signal: context.signal }
-    );
+    )) as CallToolResult;
+    if (result.isError) {
+      throw new ClassifiedToolError(
+        "unknown",
+        "Downstream MCP tool returned an error result envelope.",
+        [
+          `downstreamServerId: ${this.serverId}`,
+          `toolName: ${context.toolName}`,
+          `mcpIsError: ${String(result.isError)}`,
+          `safeResultSummary: ${summarizeMcpErrorResult(result)}`
+        ]
+      );
+    }
     return normalizeJsonObject(result.structuredContent ?? result);
   }
 
@@ -267,6 +280,9 @@ export class ToolGuardMcpRouter {
         tool.name,
         {
           ...(tool.description === undefined ? {} : { description: tool.description }),
+          inputSchema: jsonSchemaToZodInputSchema(
+            tool.inputSchema as { readonly properties?: unknown; readonly required?: readonly string[] }
+          ),
           ...(tool.annotations === undefined ? {} : { annotations: tool.annotations })
         },
         async (args) => this.callVirtualTool(tool.name, normalizeJsonObject(args))
@@ -467,6 +483,66 @@ function normalizeMcpInputSchema(schema: JsonSchema): Tool["inputSchema"] {
     ...(schema.required ? { required: [...schema.required] } : {}),
     ...(schema.additionalProperties === undefined ? {} : { additionalProperties: schema.additionalProperties })
   };
+}
+
+function jsonSchemaToZodInputSchema(schema: { readonly properties?: unknown; readonly required?: readonly string[] }): Record<string, ZodType> {
+  const properties = isRecord(schema.properties) ? schema.properties : {};
+  const required = new Set(Array.isArray(schema.required) ? schema.required : []);
+  const shape: Record<string, ZodType> = {};
+  for (const [propertyName, propertySchema] of Object.entries(properties)) {
+    const property = jsonSchemaPropertyToZod(propertySchema);
+    shape[propertyName] = required.has(propertyName) ? property : property.optional();
+  }
+  return shape;
+}
+
+function jsonSchemaPropertyToZod(schema: unknown): ZodType {
+  if (!isRecord(schema)) {
+    return z.unknown();
+  }
+  const description = typeof schema.description === "string" ? schema.description : undefined;
+  const enumValues = Array.isArray(schema.enum) ? schema.enum : undefined;
+  let result: ZodType;
+  if (enumValues && enumValues.every((value) => typeof value === "string") && enumValues.length > 0) {
+    result = z.enum(enumValues as [string, ...string[]]);
+  } else {
+    switch (schema.type) {
+      case "string":
+        result = z.string();
+        break;
+      case "number":
+        result = z.number();
+        break;
+      case "integer":
+        result = z.number().int();
+        break;
+      case "boolean":
+        result = z.boolean();
+        break;
+      case "array":
+        result = z.array(jsonSchemaPropertyToZod(schema.items));
+        break;
+      case "object":
+        result = z.object(jsonSchemaToZodInputSchema(schema as JsonSchema)).passthrough();
+        break;
+      default:
+        result = z.unknown();
+    }
+  }
+  return description ? result.describe(description) : result;
+}
+
+function summarizeMcpErrorResult(result: CallToolResult): string {
+  const contentText = result.content
+    .filter((item) => item.type === "text")
+    .map((item) => item.text)
+    .join("\n")
+    .slice(0, 400);
+  return contentText.length > 0 ? contentText : "Downstream MCP call returned isError without text content.";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function normalizeJsonObject(value: unknown): JsonObject {

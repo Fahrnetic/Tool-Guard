@@ -1,0 +1,59 @@
+import type { StableId } from "./ids.js";
+import type { EvidenceArtifact, FailureCard, JsonObject, PolicyDecision, ToolResult } from "./types.js";
+
+export type CoreEventType =
+  | "run.started"
+  | "run.completed"
+  | "adapter.connected"
+  | "server.preflight.started"
+  | "server.preflight.completed"
+  | "tool.call.started"
+  | "tool.call.completed"
+  | "tool.call.failed"
+  | "tool.retry.scheduled"
+  | "circuit.opened"
+  | "circuit.closed"
+  | "output.sanitized"
+  | "evidence.artifact.created"
+  | "report.exported";
+
+export interface CorrelationFields {
+  readonly runId: StableId;
+  readonly traceId: StableId;
+  readonly parentId?: StableId;
+  readonly harnessId?: StableId;
+  readonly adapterId?: StableId;
+  readonly downstreamServerId?: StableId;
+  readonly toolCallId?: StableId;
+  readonly attemptId?: StableId;
+  readonly policyDecisionId?: StableId;
+  readonly artifactId?: StableId;
+}
+
+export interface CoreEvent extends CorrelationFields {
+  readonly eventId: StableId;
+  readonly type: CoreEventType;
+  readonly occurredAt: string;
+  readonly sequence: number;
+  readonly summary: string;
+  readonly data?: JsonObject | ToolResult | FailureCard | EvidenceArtifact | PolicyDecision;
+}
+
+export type EventListener = (event: CoreEvent) => void;
+
+export class EventBus {
+  readonly #listeners = new Set<EventListener>();
+
+  subscribe(listener: EventListener): () => void {
+    this.#listeners.add(listener);
+    return () => {
+      this.#listeners.delete(listener);
+    };
+  }
+
+  publish(event: CoreEvent): void {
+    for (const listener of this.#listeners) {
+      listener(event);
+    }
+  }
+}

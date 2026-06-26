@@ -1,0 +1,129 @@
+import type { StableId } from "./ids.js";
+
+export type HarnessKind = "direct" | "mcp" | "python-framework" | "cli" | "ui" | "test";
+export type AdapterKind = "direct" | "mcp" | "python-framework" | "cli" | "http";
+export type ToolProtocol = "in-process" | "process" | "http" | "mcp" | "browser" | "fixture";
+
+export interface HarnessDescriptor {
+  readonly harnessId: StableId;
+  readonly kind: HarnessKind;
+  readonly name: string;
+  readonly version?: string;
+}
+
+export interface AdapterDescriptor {
+  readonly adapterId: StableId;
+  readonly kind: AdapterKind;
+  readonly name: string;
+  readonly version?: string;
+}
+
+export interface ToolDefinition {
+  readonly toolName: string;
+  readonly title: string;
+  readonly description: string;
+  readonly protocol: ToolProtocol;
+  readonly downstreamServerId: StableId;
+  readonly inputSchema: JsonObject;
+  readonly destructiveRisk: "none" | "low" | "medium" | "high";
+}
+
+export interface ToolCall {
+  readonly runId: StableId;
+  readonly traceId: StableId;
+  readonly parentId?: StableId;
+  readonly harnessId: StableId;
+  readonly adapterId: StableId;
+  readonly downstreamServerId: StableId;
+  readonly toolCallId: StableId;
+  readonly attemptId: StableId;
+  readonly policyDecisionId: StableId;
+  readonly toolName: string;
+  readonly originalToolName?: string;
+  readonly arguments: JsonObject;
+  readonly deadlineMs?: number;
+  readonly idempotency: "idempotent" | "non-idempotent" | "unknown";
+  readonly sourcePath: "non-mcp-direct" | "mcp-adapter" | "framework-adapter" | "cli-wrapper";
+}
+
+export interface ToolResult {
+  readonly toolName: string;
+  readonly output: JsonValue;
+  readonly safeSummary: string;
+  readonly artifactIds: readonly StableId[];
+}
+
+export type FailureType =
+  | "timeout"
+  | "cancellation"
+  | "cwd_mismatch"
+  | "malformed_json"
+  | "process_crash"
+  | "prompt_injection_output"
+  | "secret_leak_risk"
+  | "destructive_action_blocked"
+  | "policy_blocked"
+  | "unknown";
+
+export interface FailureCard {
+  readonly toolName: string;
+  readonly failureType: FailureType;
+  readonly likelyRootCause: string;
+  readonly retryable: boolean;
+  readonly doNotRetrySameCall: boolean;
+  readonly safeRecoveryOptions: readonly string[];
+  readonly humanFix?: string;
+  readonly evidenceLinks: readonly EvidenceLink[];
+  readonly safeSummary: string;
+  readonly rawDetailsSeparated: true;
+}
+
+export interface EvidenceArtifact {
+  readonly artifactId: StableId;
+  readonly runId: StableId;
+  readonly traceId: StableId;
+  readonly toolCallId?: StableId;
+  readonly kind: "raw-stdout" | "raw-stderr" | "raw-result" | "safe-summary" | "report";
+  readonly relativePath: string;
+  readonly sha256: string;
+  readonly byteLength: number;
+  readonly redacted: boolean;
+}
+
+export interface EvidenceLink {
+  readonly artifactId: StableId;
+  readonly href: string;
+  readonly label: string;
+}
+
+export interface PolicyDecision {
+  readonly policyDecisionId: StableId;
+  readonly decision: "allow" | "block" | "retry" | "open-circuit" | "close-circuit";
+  readonly reason: string;
+  readonly retryable: boolean;
+}
+
+export interface TraceSummary {
+  readonly runId: StableId;
+  readonly traceId: StableId;
+  readonly parentId?: StableId;
+  readonly harnessId: StableId;
+  readonly adapterId: StableId;
+  readonly downstreamServerId: StableId;
+  readonly toolCallIds: readonly StableId[];
+  readonly artifactIds: readonly StableId[];
+}
+
+export interface ReportManifest {
+  readonly reportId: StableId;
+  readonly runId: StableId;
+  readonly generatedAt: string;
+  readonly eventFile: string;
+  readonly artifacts: readonly EvidenceArtifact[];
+}
+
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
+export interface JsonObject {
+  readonly [key: string]: JsonValue;
+}

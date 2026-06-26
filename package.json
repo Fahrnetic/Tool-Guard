@@ -1,0 +1,22 @@
+{
+  "name": "toolplane",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Toolplane monorepo for ToolGuard, a protocol-independent ToolOps layer for AI agent tool calls.",
+  "packageManager": "pnpm@10.25.0",
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

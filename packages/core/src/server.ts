@@ -13,6 +13,9 @@ export interface CoreApiServerOptions {
   readonly host?: string;
   readonly port?: number;
   readonly evidenceRoot?: string;
+  readonly session?: CoreSession;
+  readonly registry?: ToolRegistry;
+  readonly seedDirectRun?: boolean;
 }
 
 export interface CoreApiServerHandle {
@@ -26,24 +29,27 @@ export interface CoreApiServerHandle {
 export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApiServerHandle {
   const host = options.host ?? "127.0.0.1";
   const port = options.port ?? Number(process.env.TOOLGUARD_CORE_PORT ?? 3660);
-  const runId = createId("run");
   const evidenceRoot = options.evidenceRoot ?? path.join(process.cwd(), "runs");
-  const session = new CoreSession({ evidenceRoot, runId });
-  const registry = new ToolRegistry();
+  const session = options.session ?? new CoreSession({ evidenceRoot, runId: createId("run") });
+  const runId = session.runId;
+  const registry = options.registry ?? new ToolRegistry();
+  const seedDirectRun = options.seedDirectRun ?? options.session === undefined;
 
   const downstreamServerId = createId("server");
-  registerChaosFixtures(registry, { sandboxRoot: evidenceRoot });
-  registry.register({
-    toolName: "fixture.echo",
-    title: "Echo fixture",
-    description: "Safe in-process fixture used by the local Core API.",
-    protocol: "fixture",
-    downstreamServerId,
-    inputSchema: { type: "object", required: ["message"], properties: { message: { type: "string" } } },
-    destructiveRisk: "none",
-    preflight: () => ({ status: "healthy", summary: "Local in-process fixture is ready." }),
-    execute: ({ call }) => ({ echoed: String(call.arguments.message ?? "") })
-  });
+  if (seedDirectRun) {
+    registerChaosFixtures(registry, { sandboxRoot: evidenceRoot });
+    registry.register({
+      toolName: "fixture.echo",
+      title: "Echo fixture",
+      description: "Safe in-process fixture used by the local Core API.",
+      protocol: "fixture",
+      downstreamServerId,
+      inputSchema: { type: "object", required: ["message"], properties: { message: { type: "string" } } },
+      destructiveRisk: "none",
+      preflight: () => ({ status: "healthy", summary: "Local in-process fixture is ready." }),
+      execute: ({ call }) => ({ echoed: String(call.arguments.message ?? "") })
+    });
+  }
 
   const clients = new Set<http.ServerResponse>();
   session.bus.subscribe((event) => {
@@ -126,14 +132,16 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
       resolve();
     });
   }).then(async () => {
-    const call = makeApiToolCall(runId, downstreamServerId);
-    await session.preflight(registry, {
-      runId,
-      traceId: call.traceId,
-      harnessId: call.harnessId,
-      adapterId: call.adapterId
-    });
-    await session.executeToolCall(registry, call);
+    if (seedDirectRun) {
+      const call = makeApiToolCall(runId, downstreamServerId);
+      await session.preflight(registry, {
+        runId,
+        traceId: call.traceId,
+        harnessId: call.harnessId,
+        adapterId: call.adapterId
+      });
+      await session.executeToolCall(registry, call);
+    }
   });
 
   return {

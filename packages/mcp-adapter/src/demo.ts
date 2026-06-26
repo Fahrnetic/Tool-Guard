@@ -2,10 +2,24 @@ import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { ClassifiedToolError, CoreSession, ToolRegistry, createId, type CoreEvent } from "@toolplane/core";
+import {
+  ClassifiedToolError,
+  CoreSession,
+  ToolRegistry,
+  createCoreApiServer,
+  createId,
+  type CoreApiServerHandle,
+  type CoreEvent
+} from "@toolplane/core";
 import { ToolGuardMcpRouter, createInMemoryDownstreamServer } from "./index.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { PreflightProbeResult } from "@toolplane/core";
+
+export interface McpAdapterDemoOptions {
+  readonly evidenceRoot?: string;
+  readonly session?: CoreSession;
+  readonly coreRegistry?: ToolRegistry;
+}
 
 export interface McpAdapterDemoResult {
   readonly runId: string;
@@ -17,17 +31,26 @@ export interface McpAdapterDemoResult {
   readonly transcript: string;
 }
 
-export async function runMcpAdapterDemo(): Promise<McpAdapterDemoResult> {
-  const evidenceRoot = await mkdtemp(path.join(os.tmpdir(), "toolguard-mcp-demo-"));
-  const session = new CoreSession({
-    evidenceRoot,
-    runId: createId("run"),
-    retry: { maxRetries: 0 },
-    circuitBreaker: { failureThreshold: 2, openMs: 500 }
-  });
+export interface McpAdapterDemoApiServerHandle {
+  readonly api: CoreApiServerHandle;
+  readonly result: McpAdapterDemoResult;
+  close(): Promise<void>;
+}
+
+export async function runMcpAdapterDemo(options: McpAdapterDemoOptions = {}): Promise<McpAdapterDemoResult> {
+  const evidenceRoot = options.evidenceRoot ?? (await mkdtemp(path.join(os.tmpdir(), "toolguard-mcp-demo-")));
+  const session =
+    options.session ??
+    new CoreSession({
+      evidenceRoot,
+      runId: createId("run"),
+      retry: { maxRetries: 0 },
+      circuitBreaker: { failureThreshold: 2, openMs: 500 }
+    });
+  const coreRegistry = options.coreRegistry ?? new ToolRegistry();
   const router = await ToolGuardMcpRouter.create({
     session,
-    coreRegistry: new ToolRegistry(),
+    coreRegistry,
     downstreamServers: [
       createInMemoryDownstreamServer({
         serverId: "server_good",
@@ -93,6 +116,42 @@ export async function runMcpAdapterDemo(): Promise<McpAdapterDemoResult> {
   }
 }
 
+export async function createMcpAdapterDemoApiServer(options: {
+  readonly host?: string;
+  readonly port?: number;
+  readonly evidenceRoot?: string;
+} = {}): Promise<McpAdapterDemoApiServerHandle> {
+  const evidenceRoot = options.evidenceRoot ?? (await mkdtemp(path.join(os.tmpdir(), "toolguard-mcp-demo-api-")));
+  const session = new CoreSession({
+    evidenceRoot,
+    runId: createId("run"),
+    retry: { maxRetries: 0 },
+    circuitBreaker: { failureThreshold: 2, openMs: 500 }
+  });
+  const coreRegistry = new ToolRegistry();
+  const api = createCoreApiServer({
+    ...(options.host === undefined ? {} : { host: options.host }),
+    ...(options.port === undefined ? {} : { port: options.port }),
+    evidenceRoot,
+    session,
+    registry: coreRegistry,
+    seedDirectRun: false
+  });
+  await api.ready;
+  const result = await runMcpAdapterDemo({ evidenceRoot, session, coreRegistry });
+  await session.exportReport();
+
+  return {
+    api,
+    result: {
+      ...result,
+      events: session.recorder.events,
+      transcript: `${result.transcript}\nCore/API observability: http://${options.host ?? "127.0.0.1"}:${options.port ?? 3660}/api/runs/latest`
+    },
+    close: () => api.close()
+  };
+}
+
 function renderMcpDemoTranscript(input: {
   readonly runId: string;
   readonly evidenceDir: string;
@@ -123,9 +182,18 @@ function renderMcpDemoTranscript(input: {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  runMcpAdapterDemo()
-    .then((result) => {
+  const serve = process.argv.includes("--serve");
+  const run = serve ? createMcpAdapterDemoApiServer() : runMcpAdapterDemo();
+  run
+    .then((resultOrHandle) => {
+      const result = "result" in resultOrHandle ? resultOrHandle.result : resultOrHandle;
       console.log(result.transcript);
+      if ("api" in resultOrHandle) {
+        console.log("Core/API observability endpoints:");
+        console.log("  curl http://127.0.0.1:3660/health");
+        console.log("  curl http://127.0.0.1:3660/api/runs/latest");
+        console.log("  curl -N http://127.0.0.1:3660/events");
+      }
     })
     .catch((error: unknown) => {
       console.error(error instanceof Error ? error.message : String(error));

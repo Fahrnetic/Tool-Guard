@@ -4,6 +4,15 @@ export { EventBus, type CoreEvent, type CoreEventType, type CorrelationFields } 
 export { EvidenceRecorder, type EvidenceRecorderOptions } from "./evidence.js";
 export { ToolRegistry, validateJsonSchema, type ArgumentValidationResult } from "./registry.js";
 export { CoreSession, type CoreSessionOptions } from "./session.js";
+export {
+  ClassifiedToolError,
+  buildFailureCard,
+  classifyFailure,
+  detectSuspiciousOutput,
+  getRawFailureDetails,
+  type FailureClassification
+} from "./classifier.js";
+export { createChaosFixtures, registerChaosFixtures, type ChaosFixtureOptions } from "./chaos-fixtures.js";
 export type {
   AdapterDescriptor,
   AdapterKind,

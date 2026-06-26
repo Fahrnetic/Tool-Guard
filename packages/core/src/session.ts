@@ -2,8 +2,16 @@ import { EventBus, type CoreEvent, type CoreEventType } from "./events.js";
 import { EvidenceRecorder } from "./evidence.js";
 import { createId, type StableId } from "./ids.js";
 import type { ToolRegistry } from "./registry.js";
+import {
+  buildFailureCard,
+  classifyFailure,
+  detectSuspiciousOutput,
+  getRawFailureDetails,
+  type FailureClassification
+} from "./classifier.js";
 import type {
   EvidenceArtifact,
+  EvidenceLink,
   FailureCard,
   JsonValue,
   PreflightFinding,
@@ -107,9 +115,7 @@ export class CoreSession {
       await this.#emit("server.preflight.completed", call, `Preflight failed: unknown tool ${call.toolName}`, {
         data: { status: "failed", reason: "unknown_tool" }
       });
-      const failure = await this.#recordFailure(call, "unknown_tool", "Registered tool identity was not found.", [
-        `Unknown tool: ${call.toolName}`
-      ]);
+      const failure = await this.#recordFailure(call, "unknown_tool", [`Unknown tool: ${call.toolName}`]);
       await this.#emit("run.completed", call, "Run completed");
       return failure;
     }
@@ -119,9 +125,7 @@ export class CoreSession {
       await this.#emit("server.preflight.completed", call, `Preflight failed: invalid arguments for ${call.toolName}`, {
         data: { status: "failed", reason: "invalid_arguments", errors: validation.errors as unknown as JsonValue }
       });
-      const failure = await this.#recordFailure(call, "invalid_arguments", "Tool arguments failed schema validation.", [
-        ...validation.errors
-      ]);
+      const failure = await this.#recordFailure(call, "invalid_arguments", [...validation.errors]);
       await this.#emit("run.completed", call, "Run completed");
       return failure;
     }
@@ -167,6 +171,18 @@ export class CoreSession {
       });
       await this.#emitArtifactCreated(call, artifact);
 
+      const suspicious = detectSuspiciousOutput(rawOutput);
+      if (suspicious) {
+        await this.#emit("output.sanitized", call, `Suspicious output contained for ${call.toolName}`, {
+          data: { reason: suspicious.failureType, artifactId: artifact.artifactId }
+        });
+        const failure = await this.#recordFailure(call, suspicious, ["Unsafe downstream output stored as raw evidence."], [
+          artifact
+        ]);
+        await this.#emit("run.completed", call, "Run completed");
+        return failure;
+      }
+
       const serialized = JSON.stringify(rawOutput);
       const overLimit = Buffer.byteLength(serialized, "utf8") > this.#outputLimitBytes;
       if (overLimit) {
@@ -195,13 +211,8 @@ export class CoreSession {
       const failureType = controller.signal.aborted ? (abortReason ?? "cancellation") : "unknown";
       const failure = await this.#recordFailure(
         call,
-        failureType,
-        failureType === "timeout"
-          ? "Tool execution exceeded its deadline."
-          : failureType === "cancellation"
-            ? "Tool execution was cancelled before completion."
-            : "Tool execution failed.",
-        [error instanceof Error ? error.message : String(error)]
+        classifyFailure(controller.signal.aborted ? { error, failureType } : { error }),
+        getRawFailureDetails(error)
       );
       await this.#emit("run.completed", call, "Run completed");
       return failure;
@@ -238,10 +249,14 @@ export class CoreSession {
 
   async #recordFailure(
     call: ToolCall,
-    failureType: FailureCard["failureType"],
-    likelyRootCause: string,
-    rawDetails: readonly string[]
+    failureTypeOrClassification: FailureCard["failureType"] | FailureClassification,
+    rawDetails: readonly string[],
+    existingArtifacts: readonly EvidenceArtifact[] = []
   ): Promise<FailureCard> {
+    const classification =
+      typeof failureTypeOrClassification === "string"
+        ? classifyFailure({ failureType: failureTypeOrClassification })
+        : failureTypeOrClassification;
     const artifact = await this.#recorder.writeArtifact({
       runId: call.runId,
       traceId: call.traceId,
@@ -253,32 +268,20 @@ export class CoreSession {
     });
     await this.#emitArtifactCreated(call, artifact);
 
-    const failure: FailureCard = {
-      toolName: call.toolName,
-      failureType,
-      likelyRootCause,
-      retryable: failureType === "timeout",
-      doNotRetrySameCall: failureType !== "timeout",
-      safeRecoveryOptions:
-        failureType === "timeout"
-          ? ["Retry with a larger deadline only if the operation is idempotent.", "Check downstream health."]
-          : ["Correct the tool name or arguments before retrying.", "Inspect the referenced raw artifact if needed."],
-      humanFix:
-        failureType === "unknown_tool"
-          ? "Register the tool before routing calls to it."
-          : failureType === "invalid_arguments"
-            ? "Update arguments to match the registered JSON schema."
-            : "Inspect the downstream fixture and deadline settings.",
-      evidenceLinks: [
-        {
-          artifactId: artifact.artifactId,
-          href: artifact.relativePath,
-          label: "Raw failure artifact"
-        }
-      ],
-      safeSummary: `Tool ${call.toolName} failed with ${failureType}. Raw details are stored separately.`,
-      rawDetailsSeparated: true
-    };
+    const links: EvidenceLink[] = [
+      ...existingArtifacts.map((existing) => ({
+        artifactId: existing.artifactId,
+        href: existing.relativePath,
+        label: `${existing.kind} artifact`
+      })),
+      {
+        artifactId: artifact.artifactId,
+        href: artifact.relativePath,
+        label: "Raw failure artifact"
+      }
+    ];
+
+    const failure = buildFailureCard({ call, classification, evidenceLinks: links });
 
     await this.#emit("tool.call.failed", call, `Tool call failed: ${call.toolName}`, { data: failure });
     return failure;

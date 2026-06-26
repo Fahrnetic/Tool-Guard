@@ -8,6 +8,7 @@
   "scripts": {
     "build": "pnpm -r build",
     "demo": "pnpm demo:toolplane",
+    "demo:mcp": "pnpm --filter @toolplane/mcp-adapter demo",
     "demo:raw-failure": "pnpm --filter @toolplane/core demo:raw-failure",
     "demo:toolplane": "pnpm --filter @toolplane/core demo:toolplane",
     "dev:core": "pnpm --filter @toolplane/core dev",

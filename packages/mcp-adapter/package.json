@@ -17,6 +17,7 @@
   ],
   "scripts": {
     "build": "tsc --build tsconfig.json",
+    "demo": "pnpm build && node dist/demo.js",
     "lint": "pnpm typecheck",
     "test": "vitest run",
     "typecheck": "tsc --noEmit --project tsconfig.json && tsc --noEmit --project tsconfig.test.json"

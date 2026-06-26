@@ -18,6 +18,8 @@ import {
   type ToolResult
 } from "@toolplane/core";
 
+export { generateHostConfigSnippets, type HostConfigSnippet, type HostConfigSnippetOptions } from "./config-snippets.js";
+
 export interface DownstreamMcpToolDefinition {
   readonly name: string;
   readonly description?: string;

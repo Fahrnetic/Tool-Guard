@@ -6,6 +6,12 @@ export interface RedactionResult {
   readonly reasons: readonly string[];
 }
 
+export interface JsonRedactionResult {
+  readonly value: JsonValue;
+  readonly count: number;
+  readonly reasons: readonly string[];
+}
+
 const REDACTIONS: readonly { readonly reason: string; readonly pattern: RegExp }[] = [
   { reason: "bearer-token", pattern: /Bearer\s+[A-Za-z0-9._~+/-]{12,}/g },
   { reason: "openai-style-key", pattern: /\bsk-[A-Za-z0-9_-]{20,}\b/g },
@@ -36,20 +42,42 @@ export function redactStringWithSummary(input: string): RedactionResult {
 }
 
 export function redactJsonValue(value: JsonValue): JsonValue {
+  return redactJsonValueWithSummary(value).value;
+}
+
+export function redactJsonValueWithSummary(value: JsonValue): JsonRedactionResult {
   if (typeof value === "string") {
-    return redactString(value);
+    return redactStringWithSummary(value);
   }
   if (Array.isArray(value)) {
-    return value.map((entry) => redactJsonValue(entry));
+    const entries = value.map((entry) => redactJsonValueWithSummary(entry));
+    return {
+      value: entries.map((entry) => entry.value),
+      count: entries.reduce((sum, entry) => sum + entry.count, 0),
+      reasons: mergeReasons(entries)
+    };
   }
   if (value && typeof value === "object") {
     const redacted: Record<string, JsonValue> = {};
+    let count = 0;
+    const reasons = new Set<string>();
     for (const [key, entry] of Object.entries(value)) {
-      redacted[key] = isSensitiveKey(key) ? "[REDACTED:sensitive-key]" : redactJsonValue(entry);
+      if (isSensitiveKey(key)) {
+        redacted[key] = "[REDACTED:sensitive-key]";
+        count += 1;
+        reasons.add("sensitive-key");
+        continue;
+      }
+      const redactedEntry = redactJsonValueWithSummary(entry);
+      redacted[key] = redactedEntry.value;
+      count += redactedEntry.count;
+      for (const reason of redactedEntry.reasons) {
+        reasons.add(reason);
+      }
     }
-    return redacted as JsonObject;
+    return { value: redacted as JsonObject, count, reasons: [...reasons] };
   }
-  return value;
+  return { value, count: 0, reasons: [] };
 }
 
 export function countRedactions(input: string): RedactionResult {
@@ -58,4 +86,14 @@ export function countRedactions(input: string): RedactionResult {
 
 function isSensitiveKey(key: string): boolean {
   return /^(api[_-]?key|token|secret|password|authorization)$/i.test(key);
+}
+
+function mergeReasons(results: readonly { readonly reasons: readonly string[] }[]): readonly string[] {
+  const reasons = new Set<string>();
+  for (const result of results) {
+    for (const reason of result.reasons) {
+      reasons.add(reason);
+    }
+  }
+  return [...reasons];
 }

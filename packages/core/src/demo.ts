@@ -9,6 +9,12 @@ import { redactString } from "./redaction.js";
 import { CoreSession } from "./session.js";
 import type { ToolCall } from "./types.js";
 
+export const DEMO_FAILURE_SCENARIO = {
+  scenarioId: "v0.1-core-malformed-json-baseline",
+  fixtureId: "fixture.malformed-json",
+  input: {}
+} as const;
+
 async function main(): Promise<void> {
   const command = process.argv[2] ?? "toolplane";
   if (command === "raw-failure") {
@@ -24,16 +30,18 @@ async function main(): Promise<void> {
 
 async function rawFailureDemo(): Promise<void> {
   const root = await mkdtemp(path.join(tmpdir(), "toolguard-raw-demo-"));
-  const fixture = createChaosFixtures({ sandboxRoot: root }).find((tool) => tool.toolName === "fixture.malformed-json");
+  const fixture = createChaosFixtures({ sandboxRoot: root }).find((tool) => tool.toolName === DEMO_FAILURE_SCENARIO.fixtureId);
   if (!fixture) {
     throw new Error("Raw failure fixture is unavailable.");
   }
 
   console.log("ToolGuard raw failure demo");
-  console.log(`Fixture target: ${fixture.toolName}`);
+  console.log(`fixtureId: ${DEMO_FAILURE_SCENARIO.fixtureId}`);
+  console.log(`scenarioId: ${DEMO_FAILURE_SCENARIO.scenarioId}`);
+  console.log(`input: ${JSON.stringify(DEMO_FAILURE_SCENARIO.input)}`);
   console.log("Mediation: disabled");
   try {
-    await fixture.execute({ signal: new AbortController().signal, call: makeCall(createId("run"), fixture.downstreamServerId) });
+    await fixture.execute({ signal: new AbortController().signal, call: makeDemoCall(createId("run"), fixture.downstreamServerId) });
   } catch (error) {
     console.log("Raw downstream failure:");
     console.log(error instanceof Error ? error.message : String(error));
@@ -49,18 +57,18 @@ async function toolplaneDemo(): Promise<void> {
   const session = new CoreSession({ evidenceRoot: root, runId, retry: { maxRetries: 1 } });
   const registry = new ToolRegistry();
   registerChaosFixtures(registry, { sandboxRoot: root });
-  const tool = registry.get("fixture.prompt-injection-output");
+  const tool = registry.get(DEMO_FAILURE_SCENARIO.fixtureId);
   if (!tool) {
     throw new Error("ToolGuard demo fixture is unavailable.");
   }
 
-  const result = await session.executeToolCall(
-    registry,
-    makeCall(runId, tool.downstreamServerId, { toolName: "fixture.prompt-injection-output" })
-  );
+  const result = await session.executeToolCall(registry, makeDemoCall(runId, tool.downstreamServerId));
   const report = await session.exportReport();
 
   console.log("ToolGuard mediated failure demo");
+  console.log(`fixtureId: ${DEMO_FAILURE_SCENARIO.fixtureId}`);
+  console.log(`scenarioId: ${DEMO_FAILURE_SCENARIO.scenarioId}`);
+  console.log(`input: ${JSON.stringify(DEMO_FAILURE_SCENARIO.input)}`);
   console.log(`runId: ${runId}`);
   console.log(`evidenceDir: ${session.recorder.runDir}`);
   console.log(`eventsJsonl: ${session.recorder.eventsPath}`);
@@ -79,7 +87,11 @@ async function toolplaneDemo(): Promise<void> {
   }
 }
 
-function makeCall(runId: ToolCall["runId"], downstreamServerId: ToolCall["downstreamServerId"], overrides: Partial<ToolCall> = {}): ToolCall {
+export function makeDemoCall(
+  runId: ToolCall["runId"],
+  downstreamServerId: ToolCall["downstreamServerId"],
+  overrides: Partial<ToolCall> = {}
+): ToolCall {
   return {
     runId,
     traceId: createId("trace"),
@@ -90,8 +102,8 @@ function makeCall(runId: ToolCall["runId"], downstreamServerId: ToolCall["downst
     toolCallId: createId("toolcall"),
     attemptId: createId("attempt"),
     policyDecisionId: createId("policy"),
-    toolName: "fixture.malformed-json",
-    arguments: {},
+    toolName: DEMO_FAILURE_SCENARIO.fixtureId,
+    arguments: DEMO_FAILURE_SCENARIO.input,
     deadlineMs: 100,
     idempotency: "idempotent",
     sourcePath: "non-mcp-direct",

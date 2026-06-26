@@ -1,4 +1,4 @@
-import { access, mkdtemp, readFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -16,6 +16,7 @@ import {
   type RegisteredTool,
   type ToolCall
 } from "../src/index.js";
+import { DEMO_FAILURE_SCENARIO, makeDemoCall } from "../src/demo.js";
 
 function makeCall(overrides: Partial<ToolCall> = {}): ToolCall {
   return {
@@ -292,5 +293,76 @@ describe("policy, redaction, reports, and demos", () => {
     expect(html).not.toMatch(/ignore previous instructions/i);
     const events = await readEvents(session);
     expect(events.map((event) => event.type)).toContain("report.exported");
+  });
+
+  it("uses one deterministic fixture, scenario, and input for raw and mediated demos", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-demo-parity-"));
+    const runId = createId("run");
+    const registry = new ToolRegistry();
+    registerChaosFixtures(registry, { sandboxRoot: root });
+    const tool = registry.get(DEMO_FAILURE_SCENARIO.fixtureId);
+    expect(tool).toBeDefined();
+
+    const rawCall = makeDemoCall(runId, tool?.downstreamServerId ?? createId("server"));
+    const mediatedCall = makeDemoCall(runId, tool?.downstreamServerId ?? createId("server"));
+    expect(rawCall.toolName).toBe(DEMO_FAILURE_SCENARIO.fixtureId);
+    expect(mediatedCall.toolName).toBe(DEMO_FAILURE_SCENARIO.fixtureId);
+    expect(rawCall.arguments).toEqual(DEMO_FAILURE_SCENARIO.input);
+    expect(mediatedCall.arguments).toEqual(DEMO_FAILURE_SCENARIO.input);
+
+    try {
+      tool?.execute({ signal: new AbortController().signal, call: rawCall });
+      throw new Error("Expected raw demo fixture to fail.");
+    } catch (error) {
+      expect(error).toMatchObject({ failureType: "malformed_json" });
+    }
+    const session = new CoreSession({ evidenceRoot: root, runId });
+    const result = await session.executeToolCall(registry, mediatedCall);
+    expect("failureType" in result ? result.failureType : undefined).toBe("malformed_json");
+  });
+
+  it("counts report redactions while converting raw events to safe report data", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-redaction-summary-"));
+    const runId = createId("run");
+    const rawSecret = `Bearer ${"S".repeat(24)}`;
+    const event: CoreEvent = {
+      eventId: createId("event"),
+      type: "tool.call.failed",
+      occurredAt: new Date(0).toISOString(),
+      sequence: 1,
+      summary: "Tool call failed",
+      runId,
+      traceId: createId("trace"),
+      harnessId: createId("harness"),
+      adapterId: createId("adapter"),
+      downstreamServerId: createId("server"),
+      toolCallId: createId("toolcall"),
+      attemptId: createId("attempt"),
+      policyDecisionId: createId("policy"),
+      data: {
+        toolName: "fixture.secret",
+        failureType: "secret_leak_risk",
+        likelyRootCause: "Synthetic event for redaction summary counting.",
+        retryable: false,
+        doNotRetrySameCall: true,
+        safeRecoveryOptions: ["Inspect the sanitized report."],
+        humanFix: "Remove secret-like test output.",
+        evidenceLinks: [],
+        safeSummary: `Unsafe event detail contains ${rawSecret}`,
+        rawDetailsSeparated: true
+      }
+    };
+    await writeFile(path.join(root, "events.jsonl"), `${JSON.stringify(event)}\n`, "utf8");
+
+    const report = await exportStaticReport({ runDir: root });
+    const redactionSummary = JSON.parse(await readFile(report.redactionSummaryPath, "utf8")) as {
+      redactionCount: number;
+      reasons: string[];
+    };
+    const html = await readFile(report.reportPath, "utf8");
+
+    expect(redactionSummary.redactionCount).toBeGreaterThanOrEqual(1);
+    expect(redactionSummary.reasons).toContain("bearer-token");
+    expect(html).not.toContain(rawSecret);
   });
 });

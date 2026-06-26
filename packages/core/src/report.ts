@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createId } from "./ids.js";
-import { countRedactions, redactJsonValue, redactStringWithSummary } from "./redaction.js";
+import { redactJsonValue, redactJsonValueWithSummary, redactStringWithSummary } from "./redaction.js";
 import type { CoreEvent } from "./events.js";
 import type { EvidenceArtifact, FailureCard, ReportManifest } from "./types.js";
 
@@ -25,7 +25,8 @@ export async function exportStaticReport(input: { readonly runDir: string }): Pr
   const events = await readEvents(eventsPath);
   const runId = events[0]?.runId ?? (path.basename(input.runDir) as ReportManifest["runId"]);
   const artifacts = extractArtifacts(events);
-  const safeEvents = redactJsonValue(events as unknown as import("./types.js").JsonValue) as unknown as CoreEvent[];
+  const safeEventsResult = redactJsonValueWithSummary(events as unknown as import("./types.js").JsonValue);
+  const safeEvents = safeEventsResult.value as unknown as CoreEvent[];
   const failures = safeEvents
     .filter((event) => event.type === "tool.call.failed")
     .map((event) => event.data as FailureCard | undefined)
@@ -45,10 +46,9 @@ export async function exportStaticReport(input: { readonly runDir: string }): Pr
   const remediationSteps = failures.flatMap((failure) => [...failure.safeRecoveryOptions, failure.humanFix ?? ""]);
   const safeNarrative = redactStringWithSummary(narrative);
   const safeRemediation = redactStringWithSummary(remediationSteps.filter(Boolean).join("\n"));
-  const eventRedactions = countRedactions(JSON.stringify(safeEvents));
   const redactionSummary = {
-    redactionCount: safeNarrative.count + safeRemediation.count + eventRedactions.count,
-    reasons: [...new Set([...safeNarrative.reasons, ...safeRemediation.reasons, ...eventRedactions.reasons])]
+    redactionCount: safeEventsResult.count + safeNarrative.count + safeRemediation.count,
+    reasons: [...new Set([...safeEventsResult.reasons, ...safeNarrative.reasons, ...safeRemediation.reasons])]
   };
 
   const manifest: ReportManifest = {

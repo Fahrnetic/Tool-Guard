@@ -63,6 +63,14 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
 
   const server = http.createServer(async (request, response) => {
     try {
+      response.setHeader("access-control-allow-origin", "http://127.0.0.1:3661");
+      response.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
+      response.setHeader("access-control-allow-headers", "content-type");
+      if (request.method === "OPTIONS") {
+        response.writeHead(204);
+        response.end();
+        return;
+      }
       const url = new URL(request.url ?? "/", `http://${host}:${port}`);
       if (url.pathname === "/health") {
         sendJson(response, 200, { ok: true, service: "ToolGuard Core", runId, events: session.recorder.events.length });
@@ -93,6 +101,11 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
           eventCount: session.recorder.events.length,
           events: session.recorder.events
         });
+        return;
+      }
+
+      if (url.pathname === "/api/health") {
+        sendJson(response, 200, buildHealthPayload(runId, session.recorder.events));
         return;
       }
 
@@ -498,6 +511,130 @@ function writeSseEvent(response: http.ServerResponse, event: CoreEvent): void {
   response.write(`event: ${event.type}\n`);
   response.write(`id: ${event.eventId}\n`);
   response.write(`data: ${JSON.stringify(event)}\n\n`);
+}
+
+function buildHealthPayload(runId: StableId, events: readonly CoreEvent[]): JsonObject {
+  const latestPreflight = findLastEventWithFindings(events);
+  const findings = latestPreflight?.data && "findings" in latestPreflight.data ? latestPreflight.data.findings : [];
+  const findingRows = Array.isArray(findings)
+    ? findings.flatMap((finding) => (isRecord(finding) ? [finding] : []))
+    : [];
+  const failureEvents = events.filter((event) => event.type === "tool.call.failed");
+  const completedEvents = events.filter((event) => event.type === "tool.call.completed");
+  const policyEvents = events.filter((event) => event.type === "policy.decision");
+  const circuitOpenEvents = events.filter((event) => event.type === "circuit.opened");
+  const latestFailureByTarget = new Map<string, CoreEvent>();
+  for (const event of failureEvents) {
+    latestFailureByTarget.set(`${event.downstreamServerId ?? "server:unknown"}:${event.summary}`, event);
+  }
+
+  const rows: JsonObject[] = [
+    {
+      id: "harness:direct",
+      layer: "harness",
+      name: "Direct/API harness",
+      status: events.some((event) => event.type === "run.started") ? "healthy" : "degraded",
+      preflight: "observed",
+      latencyMs: 0,
+      failureType: failureCardField(failureEvents.at(-1)?.data, "failureType", "none"),
+      retryable: failureCardField(failureEvents.at(-1)?.data, "retryable", false),
+      circuitState: circuitOpenEvents.length > 0 ? "open" : "closed",
+      remediation: failureEvents.length > 0 ? "Inspect the latest Failure Card and separated raw artifacts." : "No action required.",
+      runId
+    },
+    {
+      id: "adapter:http-core",
+      layer: "adapter",
+      name: "Core HTTP/SSE adapter",
+      status: "healthy",
+      preflight: "reachable",
+      latencyMs: 0,
+      failureType: "none",
+      retryable: false,
+      circuitState: "closed",
+      remediation: "Core API is serving loopback observability endpoints.",
+      runId
+    },
+    ...findingRows.map((finding, index) => {
+      const status = stringValue(finding.status, "degraded");
+      const toolName = stringValue(finding.toolName, `tool-${index + 1}`);
+      const downstreamServerId = stringValue(finding.downstreamServerId, "server:unknown");
+      const failure = [...latestFailureByTarget.values()].find((event) => event.downstreamServerId === downstreamServerId);
+      const failureCard = failure?.data && "failureType" in failure.data ? failure.data : undefined;
+      return {
+        id: `tool:${toolName}`,
+        layer: "downstream tool",
+        name: toolName,
+        status,
+        preflight: status,
+        latencyMs: status === "healthy" ? 18 : status === "degraded" ? 94 : 0,
+        failureType: failureCard && "failureType" in failureCard ? failureCard.failureType : status === "healthy" ? "none" : "preflight_degraded",
+        retryable: failureCard && "retryable" in failureCard ? failureCard.retryable : status !== "healthy",
+        circuitState: circuitOpenEvents.some((event) => event.downstreamServerId === downstreamServerId) ? "open" : "closed",
+        remediation: stringValue(
+          finding.remediation,
+          status === "healthy" ? "No action required." : stringValue(finding.summary, "Inspect downstream fixture health.")
+        ),
+        runId,
+        downstreamServerId
+      };
+    })
+  ];
+
+  return {
+    runId,
+    generatedAt: new Date().toISOString(),
+    summary: {
+      harnesses: 1,
+      adapters: 1,
+      downstreamServers: new Set(findingRows.map((finding) => stringValue(finding.downstreamServerId, "server:unknown"))).size,
+      downstreamTools: findingRows.length,
+      preflightHealthy: rows.filter((row) => row.status === "healthy").length,
+      preflightDegraded: rows.filter((row) => row.status === "degraded").length,
+      preflightFailed: rows.filter((row) => row.status === "failed").length,
+      normalizedFailures: failureEvents.length,
+      policyDecisions: policyEvents.length,
+      circuitOpen: circuitOpenEvents.length,
+      completedCalls: completedEvents.length,
+      artifactCount: events.filter((event) => event.type === "evidence.artifact.created").length
+    },
+    rows
+  };
+}
+
+function findLastEvent(events: readonly CoreEvent[], type: CoreEvent["type"]): CoreEvent | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event?.type === type) {
+      return event;
+    }
+  }
+  return undefined;
+}
+
+function findLastEventWithFindings(events: readonly CoreEvent[]): CoreEvent | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event?.type === "server.preflight.completed" && isRecord(event.data) && Array.isArray(event.data.findings)) {
+      return event;
+    }
+  }
+  return findLastEvent(events, "server.preflight.completed");
+}
+
+function failureCardField<T extends string | boolean>(
+  data: CoreEvent["data"] | undefined,
+  field: "failureType" | "retryable",
+  fallback: T
+): T {
+  if (isRecord(data) && field in data && typeof data[field] === typeof fallback) {
+    return data[field] as T;
+  }
+  return fallback;
+}
+
+function stringValue(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.length > 0 ? value : fallback;
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {

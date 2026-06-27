@@ -1,0 +1,30 @@
+{
+  "name": "@toolplane/ui",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ToolGuard local observability UI for ToolOps health, runs, and evidence.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --build tsconfig.json && vite build",
+    "dev": "vite",
+    "lint": "pnpm typecheck",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit --project tsconfig.json && tsc --noEmit --project tsconfig.test.json"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.1.18",
+    "@tanstack/react-table": "^8.21.3",
+    "@toolplane/core": "workspace:*",
+    "@vitejs/plugin-react": "^5.1.2",
+    "vite": "^7.3.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "tailwindcss": "^4.1.18"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^5.9.3",
+    "vitest": "4.0.15"
+  }
+}

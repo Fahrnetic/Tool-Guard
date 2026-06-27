@@ -12,12 +12,14 @@
     "demo:raw-failure": "pnpm --filter @toolplane/core demo:raw-failure",
     "demo:toolplane": "pnpm --filter @toolplane/core demo:toolplane",
     "dev:core": "pnpm --filter @toolplane/core dev",
+    "dev:ui": "pnpm --filter @toolplane/ui dev -- --host 127.0.0.1 --port 3661",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck"
   },
   "devDependencies": {
     "@toolplane/cli": "workspace:*",
+    "@toolplane/ui": "workspace:*",
     "@types/node": "^24.10.0",
     "typescript": "^5.9.3",
     "vitest": "4.0.15"

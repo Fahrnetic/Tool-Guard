@@ -7,7 +7,7 @@ import { registerChaosFixtures } from "./chaos-fixtures.js";
 import { validateReportManifest } from "./report.js";
 import { createId, type StableId } from "./ids.js";
 import type { CoreEvent } from "./events.js";
-import type { JsonObject, JsonValue, ToolCall } from "./types.js";
+import type { EvidenceArtifact, FailureCard, JsonObject, JsonValue, PolicyDecision, ToolCall } from "./types.js";
 
 export const SIDECAR_PROTOCOL_VERSION = "toolguard.sidecar.v1";
 
@@ -64,7 +64,7 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
   const server = http.createServer(async (request, response) => {
     try {
       response.setHeader("access-control-allow-origin", "http://127.0.0.1:3661");
-      response.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
+      response.setHeader("access-control-allow-methods", "GET, POST, PUT, OPTIONS");
       response.setHeader("access-control-allow-headers", "content-type");
       if (request.method === "OPTIONS") {
         response.writeHead(204);
@@ -106,6 +106,32 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
 
       if (url.pathname === "/api/health") {
         sendJson(response, 200, buildHealthPayload(runId, session.recorder.events));
+        return;
+      }
+
+      if (url.pathname === "/api/failures") {
+        sendJson(response, 200, buildFailuresPayload(runId, session.recorder.events));
+        return;
+      }
+
+      if (url.pathname.startsWith("/api/traces/")) {
+        const requestedTraceId = decodeURIComponent(url.pathname.slice("/api/traces/".length));
+        sendJson(response, 200, buildTracePayload(runId, session.recorder.events, requestedTraceId));
+        return;
+      }
+
+      if (url.pathname === "/api/policies") {
+        if (request.method === "PUT") {
+          const body = await readJsonBody(request, 64 * 1024);
+          sendJson(response, 200, buildPolicyPayload(runId, session.recorder.events, body.ok ? body.payload : undefined));
+          return;
+        }
+        sendJson(response, 200, buildPolicyPayload(runId, session.recorder.events));
+        return;
+      }
+
+      if (url.pathname === "/api/integrations") {
+        sendJson(response, 200, buildIntegrationsPayload(runId));
         return;
       }
 
@@ -600,6 +626,245 @@ function buildHealthPayload(runId: StableId, events: readonly CoreEvent[]): Json
     },
     rows
   };
+}
+
+function buildFailuresPayload(runId: StableId, events: readonly CoreEvent[]): JsonObject {
+  const artifactEvents = events.filter((event) => event.type === "evidence.artifact.created");
+  const artifacts = artifactEvents.flatMap((event) => (isEvidenceArtifact(event.data) ? [event.data] : []));
+  const sanitizedEvents = events.filter((event) => event.type === "output.sanitized");
+  const failures = events
+    .filter((event) => event.type === "tool.call.failed" && isFailureCard(event.data))
+    .map((event) => {
+      const card = event.data as FailureCard;
+      const linkedArtifactIds = new Set(card.evidenceLinks.map((link) => link.artifactId));
+      const cardArtifacts = artifacts.filter(
+        (artifact) => linkedArtifactIds.has(artifact.artifactId) || artifact.toolCallId === event.toolCallId
+      );
+      return {
+        ...card,
+        eventId: event.eventId,
+        occurredAt: event.occurredAt,
+        summary: event.summary,
+        correlation: correlationFromCoreEvent(event),
+        rawStdout: cardArtifacts.filter((artifact) => artifact.kind === "raw-stdout"),
+        rawStderr: cardArtifacts.filter((artifact) => artifact.kind === "raw-stderr"),
+        rawArtifacts: cardArtifacts,
+        sanitizedEvents: sanitizedEvents.filter((sanitized) => sanitized.toolCallId === event.toolCallId)
+      };
+    });
+  return {
+    runId,
+    generatedAt: new Date().toISOString(),
+    failures: failures as unknown as JsonValue
+  };
+}
+
+function buildTracePayload(runId: StableId, events: readonly CoreEvent[], requestedTraceId: string): JsonObject {
+  const fallbackTraceId = events.find((event) => event.traceId)?.traceId ?? "trace:waiting";
+  const traceId = requestedTraceId === "latest" ? fallbackTraceId : requestedTraceId;
+  const traceEvents = events.filter((event) => event.traceId === traceId);
+  const baseEvents = traceEvents.length > 0 ? traceEvents : events;
+  const warnings =
+    traceEvents.length === 0 && events.length > 0
+      ? [`Trace ${traceId} was not found. Showing latest run events as partial context.`]
+      : [];
+  const first = baseEvents[0];
+  return {
+    runId,
+    traceId,
+    generatedAt: new Date().toISOString(),
+    status: events.length === 0 ? "empty" : warnings.length > 0 ? "degraded" : "ready",
+    events: baseEvents as unknown as JsonValue,
+    nodes: buildTraceNodes(baseEvents),
+    correlation: first ? correlationFromCoreEvent(first) : { runId, traceId },
+    warnings
+  };
+}
+
+function buildTraceNodes(events: readonly CoreEvent[]): JsonObject[] {
+  const nodes = new Map<string, JsonObject>();
+  for (const event of events) {
+    const correlated = [
+      ["harness", event.harnessId, undefined],
+      ["adapter", event.adapterId, event.harnessId],
+      ["downstream", event.downstreamServerId, event.adapterId],
+      ["toolCall", event.toolCallId, event.downstreamServerId],
+      ["attempt", event.attemptId, event.toolCallId],
+      ["policyDecision", event.policyDecisionId, event.attemptId],
+      ["artifact", event.artifactId, event.toolCallId]
+    ] as const;
+    for (const [kind, id, parentId] of correlated) {
+      if (!id || nodes.has(id)) {
+        continue;
+      }
+      nodes.set(id, {
+        id,
+        label: id,
+        kind,
+        ...(parentId ? { parentId } : {}),
+        summary: `${kind} observed in ${event.type}`
+      });
+    }
+  }
+  return [...nodes.values()];
+}
+
+function buildPolicyPayload(runId: StableId, events: readonly CoreEvent[], draft?: Record<string, unknown>): JsonObject {
+  const retryLimit = typeof draft?.retryLimit === "number" && Number.isFinite(draft.retryLimit) ? draft.retryLimit : 1;
+  const timeoutMs = typeof draft?.timeoutMs === "number" && Number.isFinite(draft.timeoutMs) ? draft.timeoutMs : 1000;
+  const decisions = events
+    .filter((event) => event.type === "policy.decision" && isPolicyDecision(event.data))
+    .map((event) => ({
+      ...(event.data as PolicyDecision),
+      eventId: event.eventId,
+      occurredAt: event.occurredAt,
+      correlation: correlationFromCoreEvent(event)
+    }));
+  return {
+    runId,
+    generatedAt: new Date().toISOString(),
+    decisions,
+    rules: [
+      {
+        id: "retry-limit",
+        label: "Bounded retry rules",
+        value: `${retryLimit} retry maximum`,
+        description: "Retryable failures are retried only within configured limits and every attempt is evidenced."
+      },
+      {
+        id: "circuit-threshold",
+        label: "Circuit thresholds",
+        value: "2 qualifying failures open circuit",
+        description: "Repeated qualifying target failures open a scoped circuit and fail fast until recovery."
+      },
+      {
+        id: "timeout",
+        label: "Deadlines and timeouts",
+        value: `${timeoutMs} ms preview deadline`,
+        description: "Downstream work must complete before the deadline or returns a timeout Failure Card."
+      },
+      {
+        id: "output-limit",
+        label: "Output limits",
+        value: "64 KiB safe output budget",
+        description: "Oversized output is bounded, linked as evidence, and marked as truncated for model safety."
+      },
+      {
+        id: "sanitizer",
+        label: "Sanitizer policy",
+        value: "Prompt-injection and secret-shaped output contained",
+        description: "Suspicious content emits output.sanitized and keeps raw data in separated artifacts."
+      },
+      {
+        id: "preflight",
+        label: "Preflight gates",
+        value: "Registered tool and argument checks before execution",
+        description: "Unknown tools and invalid arguments fail closed before downstream execution."
+      }
+    ],
+    preview: {
+      decision: retryLimit < 0 || timeoutMs < 1 ? "block" : retryLimit === 0 ? "allow" : "retry",
+      policyDecisionId: decisions.at(-1)?.policyDecisionId ?? "policy_preview",
+      reason:
+        retryLimit < 0 || timeoutMs < 1
+          ? "Invalid policy values would block execution."
+          : retryLimit === 0
+            ? "Preview allows first execution with no automatic same-call retry."
+            : "Preview allows execution and may retry bounded retryable failures."
+    }
+  };
+}
+
+function buildIntegrationsPayload(runId: StableId): JsonObject {
+  return {
+    runId,
+    generatedAt: new Date().toISOString(),
+    integrations: [
+      {
+        id: "cline",
+        name: "Cline",
+        route: "MCP-routed",
+        claimLevel: "available",
+        status: "available",
+        limitation: "ToolGuard protects calls routed through the MCP proxy only, not native host tools."
+      },
+      {
+        id: "roo-code",
+        name: "Roo Code",
+        route: "MCP-routed",
+        claimLevel: "available",
+        status: "available",
+        limitation: "Use generated MCP config snippets with local ToolGuard Core on loopback."
+      },
+      {
+        id: "claude-desktop-code",
+        name: "Claude Desktop / Code",
+        route: "MCP-routed",
+        claimLevel: "available",
+        status: "available",
+        limitation: "Native host tools are outside ToolGuard unless configured through MCP."
+      },
+      {
+        id: "cursor-windsurf",
+        name: "Cursor / Windsurf",
+        route: "MCP-routed",
+        claimLevel: "not-yet-verified",
+        status: "not-yet-verified",
+        limitation: "MCP route is the supported claim. Native IDE tool interception is not claimed."
+      },
+      {
+        id: "python-framework-adapters",
+        name: "Python framework adapters",
+        route: "SDK-wrapped",
+        claimLevel: "configured",
+        status: "configured",
+        limitation: "Framework support requires installing and using ToolGuard wrapper functions rather than direct tools."
+      },
+      {
+        id: "aider-crush",
+        name: "Aider / Crush-style CLIs",
+        route: "CLI-supervised",
+        claimLevel: "available",
+        status: "available",
+        limitation: "Process-level supervision only unless a stable native tool-router boundary is proven."
+      },
+      {
+        id: "native-host-tools",
+        name: "Unrouted native host tools",
+        route: "unsupported",
+        claimLevel: "unsupported",
+        status: "unsupported",
+        limitation: "Unsupported in v0. Calls must route through MCP, SDK wrappers, CLI shim, or ToolGuard API."
+      }
+    ]
+  };
+}
+
+function correlationFromCoreEvent(event: CoreEvent): JsonObject {
+  return {
+    runId: event.runId,
+    traceId: event.traceId,
+    ...(event.parentId ? { parentId: event.parentId } : {}),
+    ...(event.harnessId ? { harnessId: event.harnessId } : {}),
+    ...(event.adapterId ? { adapterId: event.adapterId } : {}),
+    ...(event.downstreamServerId ? { downstreamServerId: event.downstreamServerId } : {}),
+    ...(event.toolCallId ? { toolCallId: event.toolCallId } : {}),
+    ...(event.attemptId ? { attemptId: event.attemptId } : {}),
+    ...(event.policyDecisionId ? { policyDecisionId: event.policyDecisionId } : {}),
+    ...(event.artifactId ? { artifactId: event.artifactId } : {})
+  };
+}
+
+function isFailureCard(value: CoreEvent["data"]): value is FailureCard {
+  return isRecord(value) && typeof value.toolName === "string" && typeof value.failureType === "string";
+}
+
+function isEvidenceArtifact(value: CoreEvent["data"]): value is EvidenceArtifact {
+  return isRecord(value) && typeof value.artifactId === "string" && typeof value.kind === "string";
+}
+
+function isPolicyDecision(value: CoreEvent["data"]): value is PolicyDecision {
+  return isRecord(value) && typeof value.policyDecisionId === "string" && typeof value.decision === "string";
 }
 
 function findLastEvent(events: readonly CoreEvent[], type: CoreEvent["type"]): CoreEvent | undefined {

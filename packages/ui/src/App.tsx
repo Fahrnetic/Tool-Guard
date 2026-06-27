@@ -1,10 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { AppShell, type NavigationItem } from "./components/AppShell.js";
-import { fetchHealth, fetchLatestRun } from "./lib/api.js";
-import type { HealthPayload, LatestRunPayload, ResourceStatus, ScreenId } from "./lib/model.js";
+import { fetchFailures, fetchHealth, fetchIntegrations, fetchLatestRun, fetchPolicies, fetchTrace, streamCoreEvents } from "./lib/api.js";
+import type { CoreEvent } from "@toolplane/core";
+import type {
+  FailureInboxPayload,
+  HealthPayload,
+  IntegrationsPayload,
+  LatestRunPayload,
+  PolicyPayload,
+  ResourceStatus,
+  ScreenId,
+  TracePayload
+} from "./lib/model.js";
+import { FailureInbox } from "./screens/FailureInbox.js";
 import { HealthMatrix } from "./screens/HealthMatrix.js";
+import { HarnessIntegrations } from "./screens/HarnessIntegrations.js";
 import { Overview } from "./screens/Overview.js";
+import { PolicyStudio } from "./screens/PolicyStudio.js";
 import { ScreenStateGallery } from "./screens/ScreenStateGallery.js";
+import { Timeline } from "./screens/Timeline.js";
+import { TraceExplorer } from "./screens/TraceExplorer.js";
 
 const navigation: readonly NavigationItem[] = [
   { id: "overview", label: "Overview" },
@@ -21,6 +36,10 @@ const navigation: readonly NavigationItem[] = [
 interface DataState {
   readonly run?: LatestRunPayload | undefined;
   readonly health?: HealthPayload | undefined;
+  readonly failures?: FailureInboxPayload | undefined;
+  readonly trace?: TracePayload | undefined;
+  readonly policies?: PolicyPayload | undefined;
+  readonly integrations?: IntegrationsPayload | undefined;
   readonly status: ResourceStatus;
   readonly error?: string | undefined;
 }
@@ -28,35 +47,51 @@ interface DataState {
 export function App() {
   const [active, setActive] = useState<ScreenId>("overview");
   const [data, setData] = useState<DataState>({ status: "loading" });
+  const [streamEvents, setStreamEvents] = useState<CoreEvent[]>([]);
+  const [streamState, setStreamState] = useState<"loading" | "connected" | "degraded" | "error">("loading");
 
   useEffect(() => {
     const controller = new AbortController();
     async function load() {
       setData({ status: "loading" });
-      const [runResult, healthResult] = await Promise.allSettled([
+      const [runResult, healthResult, failureResult, traceResult, policyResult, integrationResult] = await Promise.allSettled([
         fetchLatestRun(controller.signal),
-        fetchHealth(controller.signal)
+        fetchHealth(controller.signal),
+        fetchFailures(controller.signal),
+        fetchTrace("latest", controller.signal),
+        fetchPolicies(controller.signal),
+        fetchIntegrations(controller.signal)
       ]);
       if (controller.signal.aborted) {
         return;
       }
       const run = runResult.status === "fulfilled" ? runResult.value : undefined;
       const health = healthResult.status === "fulfilled" ? healthResult.value : undefined;
+      const failures = failureResult.status === "fulfilled" ? failureResult.value : undefined;
+      const trace = traceResult.status === "fulfilled" ? traceResult.value : undefined;
+      const policies = policyResult.status === "fulfilled" ? policyResult.value : undefined;
+      const integrations = integrationResult.status === "fulfilled" ? integrationResult.value : undefined;
       if (!run && !health) {
         const reason = runResult.status === "rejected" ? String(runResult.reason) : "Unknown Core API error";
         setData({ status: "error", error: reason });
         return;
       }
       if (run && run.eventCount === 0) {
-        setData({ run, ...(health ? { health } : {}), status: "empty" });
+        setData({ run, ...(health ? { health } : {}), ...(failures ? { failures } : {}), ...(trace ? { trace } : {}), ...(policies ? { policies } : {}), ...(integrations ? { integrations } : {}), status: "empty" });
         return;
       }
       const degradedError =
-        runResult.status === "rejected" || healthResult.status === "rejected" ? "One Core endpoint returned an error." : undefined;
+        [runResult, healthResult, failureResult, traceResult, policyResult, integrationResult].some((result) => result.status === "rejected")
+          ? "One Core endpoint returned an error."
+          : undefined;
       setData({
         ...(run ? { run } : {}),
         ...(health ? { health } : {}),
-        status: runResult.status === "fulfilled" && healthResult.status === "fulfilled" ? "ready" : "degraded",
+        ...(failures ? { failures } : {}),
+        ...(trace ? { trace } : {}),
+        ...(policies ? { policies } : {}),
+        ...(integrations ? { integrations } : {}),
+        status: [runResult, healthResult, failureResult, traceResult, policyResult, integrationResult].every((result) => result.status === "fulfilled") ? "ready" : "degraded",
         ...(degradedError ? { error: degradedError } : {})
       });
     }
@@ -68,6 +103,20 @@ export function App() {
       controller.abort();
       window.clearInterval(timer);
     };
+  }, []);
+
+  useEffect(() => {
+    return streamCoreEvents({
+      onState: setStreamState,
+      onEvent: (event) => {
+        setStreamEvents((current) => {
+          if (current.some((existing) => existing.eventId === event.eventId)) {
+            return current;
+          }
+          return [...current, event].sort((a, b) => a.sequence - b.sequence || a.occurredAt.localeCompare(b.occurredAt));
+        });
+      }
+    });
   }, []);
 
   const coreState = useMemo(() => {
@@ -87,8 +136,23 @@ export function App() {
     >
       {active === "overview" ? (
         <Overview {...(data.run ? { run: data.run } : {})} {...(data.health ? { health: data.health } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
+      ) : active === "timeline" ? (
+        <Timeline events={streamEvents.length > 0 ? streamEvents : data.run?.events ?? []} status={data.status} streamState={streamState} {...(data.error ? { error: data.error } : {})} />
       ) : active === "health" ? (
         <HealthMatrix {...(data.health ? { health: data.health } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
+      ) : active === "failures" ? (
+        <FailureInbox {...(data.failures ? { payload: data.failures } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
+      ) : active === "traces" ? (
+        <TraceExplorer {...(data.trace ? { payload: data.trace } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
+      ) : active === "policy" ? (
+        <PolicyStudio
+          {...(data.policies ? { payload: data.policies } : {})}
+          status={data.status}
+          {...(data.error ? { error: data.error } : {})}
+          onSaved={(policies) => setData((current) => ({ ...current, policies, status: current.status === "error" ? "degraded" : current.status }))}
+        />
+      ) : active === "integrations" ? (
+        <HarnessIntegrations {...(data.integrations ? { payload: data.integrations } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
       ) : (
         <ScreenStateGallery screen={active} />
       )}

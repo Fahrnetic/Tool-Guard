@@ -1,4 +1,5 @@
 import type { CoreEvent } from "@toolplane/core";
+import type { EvidenceArtifact, EvidenceLink, FailureCard, PolicyDecision } from "@toolplane/core";
 
 export type ScreenId =
   | "overview"
@@ -56,6 +57,127 @@ export interface HealthRow {
   readonly downstreamServerId?: string;
 }
 
+export interface FailureInboxPayload {
+  readonly runId: string;
+  readonly generatedAt: string;
+  readonly failures: readonly FailureCardView[];
+}
+
+export interface FailureCardView extends FailureCard {
+  readonly eventId: string;
+  readonly occurredAt: string;
+  readonly summary: string;
+  readonly correlation: CorrelationContext;
+  readonly rawStdout: readonly EvidenceArtifact[];
+  readonly rawStderr: readonly EvidenceArtifact[];
+  readonly rawArtifacts: readonly EvidenceArtifact[];
+  readonly sanitizedEvents: readonly CoreEvent[];
+}
+
+export interface TracePayload {
+  readonly runId: string;
+  readonly traceId: string;
+  readonly generatedAt: string;
+  readonly status: "ready" | "degraded" | "empty" | "error";
+  readonly events: readonly CoreEvent[];
+  readonly nodes: readonly TraceNode[];
+  readonly correlation: CorrelationContext;
+  readonly warnings: readonly string[];
+}
+
+export interface TraceNode {
+  readonly id: string;
+  readonly label: string;
+  readonly kind: string;
+  readonly parentId?: string;
+  readonly summary: string;
+}
+
+export interface PolicyPayload {
+  readonly runId: string;
+  readonly generatedAt: string;
+  readonly decisions: readonly PolicyDecisionView[];
+  readonly rules: readonly PolicyRule[];
+  readonly preview: PolicyPreview;
+}
+
+export interface PolicyDecisionView extends PolicyDecision {
+  readonly eventId: string;
+  readonly occurredAt: string;
+  readonly correlation: CorrelationContext;
+}
+
+export interface PolicyRule {
+  readonly id: string;
+  readonly label: string;
+  readonly value: string;
+  readonly description: string;
+}
+
+export interface PolicyPreview {
+  readonly decision: "allow" | "retry" | "block" | "open-circuit" | "close-circuit" | "fail-fast";
+  readonly policyDecisionId: string;
+  readonly reason: string;
+}
+
+export interface IntegrationsPayload {
+  readonly runId: string;
+  readonly generatedAt: string;
+  readonly integrations: readonly IntegrationView[];
+}
+
+export interface IntegrationView {
+  readonly id: string;
+  readonly name: string;
+  readonly route: "MCP-routed" | "SDK-wrapped" | "CLI-supervised" | "unsupported" | "not-yet-verified";
+  readonly claimLevel: "configured" | "available" | "unsupported" | "not-yet-verified";
+  readonly status: "configured" | "available" | "unsupported" | "not-yet-verified";
+  readonly limitation: string;
+}
+
+export interface CorrelationContext {
+  readonly runId?: string;
+  readonly traceId?: string;
+  readonly parentId?: string;
+  readonly harnessId?: string;
+  readonly adapterId?: string;
+  readonly downstreamServerId?: string;
+  readonly toolCallId?: string;
+  readonly attemptId?: string;
+  readonly policyDecisionId?: string;
+  readonly artifactId?: string;
+}
+
+export const correlationKeys = [
+  "runId",
+  "traceId",
+  "parentId",
+  "harnessId",
+  "adapterId",
+  "downstreamServerId",
+  "toolCallId",
+  "attemptId",
+  "policyDecisionId",
+  "artifactId"
+] as const;
+
+export const requiredCoreEventTypes = [
+  "run.started",
+  "run.completed",
+  "adapter.connected",
+  "server.preflight.started",
+  "server.preflight.completed",
+  "tool.call.started",
+  "tool.call.completed",
+  "tool.call.failed",
+  "tool.retry.scheduled",
+  "circuit.opened",
+  "circuit.closed",
+  "output.sanitized",
+  "evidence.artifact.created",
+  "report.exported"
+] as const;
+
 export interface ToolOpsSummary {
   readonly runId: string;
   readonly harnessCount: number;
@@ -107,4 +229,19 @@ export function summarizeToolOps(run: LatestRunPayload | undefined, health: Heal
 function uniqueCount(events: readonly CoreEvent[], key: keyof CoreEvent): number {
   const values = new Set(events.map((event) => event[key]).filter((value): value is string => typeof value === "string"));
   return values.size;
+}
+
+export function correlationFromEvent(event: CoreEvent): CorrelationContext {
+  const correlation: Record<string, string> = {};
+  for (const key of correlationKeys) {
+    const value = event[key];
+    if (typeof value === "string" && value.length > 0) {
+      correlation[key] = value;
+    }
+  }
+  return correlation;
+}
+
+export function evidenceLinksFromFailure(failure: FailureCardView | FailureCard): readonly EvidenceLink[] {
+  return Array.isArray(failure.evidenceLinks) ? failure.evidenceLinks : [];
 }

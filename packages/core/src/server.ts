@@ -111,7 +111,7 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
       }
 
       if (url.pathname === "/api/failures") {
-        sendJson(response, 200, await buildFailuresPayload(runId, session.recorder.events, session.recorder.runDir));
+        sendJson(response, 200, await buildFailuresPayload(runId, session.recorder.events, session.recorder.runDir, requestBaseUrl(request, host, port, server)));
         return;
       }
 
@@ -171,12 +171,17 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
       if (url.pathname === "/api/reports/export") {
         const report = await session.exportReport();
         const validation = await validateReportManifest({ runDir: session.recorder.runDir });
+        const baseUrl = requestBaseUrl(request, host, port, server);
         sendJson(response, 200, {
           runId,
           reportHtml: report.reportPath,
+          reportUrl: reportFileUrl(baseUrl, runId, "report.html"),
           manifestJson: report.manifestPath,
+          manifestUrl: reportFileUrl(baseUrl, runId, "manifest.json"),
           artifactHashList: report.artifactHashPath,
+          artifactHashUrl: reportFileUrl(baseUrl, runId, "artifact-hashes.json"),
           redactionSummary: report.redactionSummaryPath,
+          redactionSummaryUrl: reportFileUrl(baseUrl, runId, "redaction-summary.json"),
           manifestValid: validation.valid,
           validationErrors: validation.errors
         });
@@ -184,7 +189,28 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
       }
 
       if (url.pathname === "/api/reports") {
-        sendJson(response, 200, await buildReportsPayload({ runId, runDir: session.recorder.runDir, events: session.recorder.events }));
+        sendJson(response, 200, await buildReportsPayload({ runId, runDir: session.recorder.runDir, events: session.recorder.events, baseUrl: requestBaseUrl(request, host, port, server) }));
+        return;
+      }
+
+      if (url.pathname.startsWith("/api/reports/") && url.pathname.includes("/files/")) {
+        await serveReportFile({
+          response,
+          runId,
+          requestedPath: url.pathname,
+          runDir: session.recorder.runDir
+        });
+        return;
+      }
+
+      if (url.pathname.startsWith("/api/reports/") && url.pathname.includes("/artifacts/")) {
+        await serveArtifactFile({
+          response,
+          runId,
+          requestedPath: url.pathname,
+          runDir: session.recorder.runDir,
+          events: session.recorder.events
+        });
         return;
       }
 
@@ -194,7 +220,7 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
           sendJson(response, 404, { error: "report_run_not_found", runId: requestedRunId });
           return;
         }
-        sendJson(response, 200, await buildReportDetailPayload({ runId, runDir: session.recorder.runDir, events: session.recorder.events }));
+        sendJson(response, 200, await buildReportDetailPayload({ runId, runDir: session.recorder.runDir, events: session.recorder.events, baseUrl: requestBaseUrl(request, host, port, server) }));
         return;
       }
 
@@ -570,6 +596,93 @@ function sendJson(response: http.ServerResponse, statusCode: number, body: unkno
   response.end(`${JSON.stringify(body, null, 2)}\n`);
 }
 
+function requestBaseUrl(request: http.IncomingMessage, host: string, port: number, server: http.Server): string {
+  const headerHost = request.headers.host;
+  if (headerHost) {
+    return `http://${headerHost}`;
+  }
+  const address = server.address();
+  const actualPort = typeof address === "object" && address ? address.port : port;
+  const loopbackHost = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
+  return `http://${loopbackHost}:${actualPort}`;
+}
+
+type ReportFileName = "report.html" | "manifest.json" | "artifact-hashes.json" | "redaction-summary.json";
+
+const reportFileNames = new Set<ReportFileName>(["report.html", "manifest.json", "artifact-hashes.json", "redaction-summary.json"]);
+
+function reportFileUrl(baseUrl: string, runId: StableId, fileName: ReportFileName): string {
+  return `${baseUrl}/api/reports/${encodeURIComponent(runId)}/files/${fileName}`;
+}
+
+function artifactFileUrl(baseUrl: string, runId: StableId, artifactId: StableId): string {
+  return `${baseUrl}/api/reports/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(artifactId)}`;
+}
+
+async function serveReportFile(input: {
+  readonly response: http.ServerResponse;
+  readonly runId: StableId;
+  readonly requestedPath: string;
+  readonly runDir: string;
+}): Promise<void> {
+  const match = /^\/api\/reports\/([^/]+)\/files\/([^/]+)$/.exec(input.requestedPath);
+  const requestedRunId = match ? decodeURIComponent(match[1] ?? "") : "";
+  const requestedFileName = match ? decodeURIComponent(match[2] ?? "") : "";
+  if ((requestedRunId !== input.runId && requestedRunId !== "latest") || !reportFileNames.has(requestedFileName as ReportFileName)) {
+    sendJson(input.response, 404, { error: "report_file_not_found", runId: requestedRunId, fileName: requestedFileName });
+    return;
+  }
+  await serveRunFile(input.response, input.runDir, requestedFileName, contentTypeForFile(requestedFileName));
+}
+
+async function serveArtifactFile(input: {
+  readonly response: http.ServerResponse;
+  readonly runId: StableId;
+  readonly requestedPath: string;
+  readonly runDir: string;
+  readonly events: readonly CoreEvent[];
+}): Promise<void> {
+  const match = /^\/api\/reports\/([^/]+)\/artifacts\/([^/]+)$/.exec(input.requestedPath);
+  const requestedRunId = match ? decodeURIComponent(match[1] ?? "") : "";
+  const requestedArtifactId = match ? decodeURIComponent(match[2] ?? "") : "";
+  const artifact = input.events
+    .flatMap((event) => (isEvidenceArtifact(event.data) ? [event.data] : []))
+    .find((candidate) => candidate.artifactId === requestedArtifactId);
+  if ((requestedRunId !== input.runId && requestedRunId !== "latest") || !artifact) {
+    sendJson(input.response, 404, { error: "artifact_not_found", runId: requestedRunId, artifactId: requestedArtifactId });
+    return;
+  }
+  await serveRunFile(input.response, input.runDir, artifact.relativePath, contentTypeForArtifact(artifact));
+}
+
+async function serveRunFile(response: http.ServerResponse, runDir: string, relativePath: string, contentType: string): Promise<void> {
+  const safeRunDir = path.resolve(runDir);
+  const filePath = path.resolve(runDir, relativePath);
+  if (filePath !== safeRunDir && !filePath.startsWith(`${safeRunDir}${path.sep}`)) {
+    sendJson(response, 403, { error: "path_outside_run_directory" });
+    return;
+  }
+  try {
+    const content = await readFile(filePath);
+    response.writeHead(200, {
+      "content-type": contentType,
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff"
+    });
+    response.end(content);
+  } catch (error) {
+    sendJson(response, 404, { error: "file_not_found", message: error instanceof Error ? error.message : "Could not read run file." });
+  }
+}
+
+function contentTypeForFile(fileName: string): string {
+  return fileName.endsWith(".html") ? "text/html; charset=utf-8" : "application/json; charset=utf-8";
+}
+
+function contentTypeForArtifact(artifact: EvidenceArtifact): string {
+  return artifact.relativePath.endsWith(".json") || artifact.kind === "raw-result" ? "application/json; charset=utf-8" : "text/plain; charset=utf-8";
+}
+
 async function handleReplayRequest(input: {
   readonly runId: StableId;
   readonly session: CoreSession;
@@ -710,6 +823,7 @@ async function buildReportsPayload(input: {
   readonly runId: StableId;
   readonly runDir: string;
   readonly events: readonly CoreEvent[];
+  readonly baseUrl: string;
 }): Promise<JsonObject> {
   const detail = await buildReportDetailPayload(input);
   return {
@@ -723,6 +837,7 @@ async function buildReportDetailPayload(input: {
   readonly runId: StableId;
   readonly runDir: string;
   readonly events: readonly CoreEvent[];
+  readonly baseUrl: string;
 }): Promise<JsonObject> {
   const reportPath = path.join(input.runDir, "report.html");
   const manifestPath = path.join(input.runDir, "manifest.json");
@@ -747,17 +862,20 @@ async function buildReportDetailPayload(input: {
     runId: input.runId,
     generatedAt: new Date().toISOString(),
     reportHtml: reportPath,
-    reportUrl: pathToFileURL(reportPath).href,
+    reportUrl: reportFileUrl(input.baseUrl, input.runId, "report.html"),
     manifestJson: manifestPath,
-    manifestUrl: pathToFileURL(manifestPath).href,
+    manifestUrl: reportFileUrl(input.baseUrl, input.runId, "manifest.json"),
     artifactHashList: artifactHashPath,
-    artifactHashUrl: pathToFileURL(artifactHashPath).href,
+    artifactHashUrl: reportFileUrl(input.baseUrl, input.runId, "artifact-hashes.json"),
     redactionSummaryPath,
-    redactionSummaryUrl: pathToFileURL(redactionSummaryPath).href,
+    redactionSummaryUrl: reportFileUrl(input.baseUrl, input.runId, "redaction-summary.json"),
     manifestValid: validation.valid,
     validationErrors: [...validation.errors],
     artifactCount: artifacts.length,
-    artifacts: artifacts as unknown as JsonValue,
+    artifacts: artifacts.map((artifact) => ({
+      ...artifact,
+      artifactUrl: artifactFileUrl(input.baseUrl, input.runId, artifact.artifactId)
+    })) as unknown as JsonValue,
     artifactHashes: (artifactHashes ?? []) as JsonValue,
     redactionSummary: (redactionSummary ?? { redactionCount: 0, reasons: [] }) as JsonValue,
     narrative,
@@ -922,7 +1040,7 @@ function buildDownstreamServerHealthRows(input: {
   });
 }
 
-async function buildFailuresPayload(runId: StableId, events: readonly CoreEvent[], runDir: string): Promise<JsonObject> {
+async function buildFailuresPayload(runId: StableId, events: readonly CoreEvent[], runDir: string, baseUrl: string): Promise<JsonObject> {
   const artifactEvents = events.filter((event) => event.type === "evidence.artifact.created");
   const artifacts = artifactEvents.flatMap((event) => (isEvidenceArtifact(event.data) ? [event.data] : []));
   const sanitizedEvents = events.filter((event) => event.type === "output.sanitized");
@@ -938,6 +1056,10 @@ async function buildFailuresPayload(runId: StableId, events: readonly CoreEvent[
       );
       return {
         ...card,
+        evidenceLinks: card.evidenceLinks.map((link) => ({
+          ...link,
+          href: artifactFileUrl(baseUrl, runId, link.artifactId)
+        })),
         eventId: event.eventId,
         occurredAt: event.occurredAt,
         summary: event.summary,

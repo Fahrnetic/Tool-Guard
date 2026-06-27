@@ -25,7 +25,7 @@ export function EvidenceReportViewer({ payload, status, error }: EvidenceReportV
       const next = await fetchReports();
       setReports(next);
       setExportState("success");
-      setExportMessage(`Created ${exported.reportHtml} and ${exported.manifestJson}. Manifest valid: ${String(exported.manifestValid)}.`);
+      setExportMessage(`Created ${exported.reportUrl} and ${exported.manifestUrl}. Manifest valid: ${String(exported.manifestValid)}.`);
     } catch (caught) {
       setExportState("failure");
       setExportMessage(caught instanceof Error ? caught.message : String(caught));
@@ -103,8 +103,8 @@ function ReportCard({ report }: { readonly report: ReportView }) {
           <p className="mt-1 text-sm text-text-muted">Generated {report.generatedAt}</p>
         </div>
         <div className="grid gap-2 text-sm">
-          <LocalLink href={report.reportUrl} label="Open local report.html" path={report.reportHtml} />
-          <LocalLink href={report.manifestUrl} label="Open manifest.json" path={report.manifestJson} />
+          <LocalLink href={report.reportUrl} label="Open local report.html" path={report.reportUrl} />
+          <LocalLink href={report.manifestUrl} label="Open manifest.json" path={report.manifestUrl} />
         </div>
       </div>
 
@@ -123,8 +123,8 @@ function ReportCard({ report }: { readonly report: ReportView }) {
       <section className="rounded-xl border border-border bg-bg/55 p-4">
         <h4 className="text-sm font-semibold text-text">Artifact and manifest links</h4>
         <div className="mt-3 grid gap-2 md:grid-cols-2">
-          <LocalLink href={report.artifactHashUrl} label="Open artifact-hashes.json" path={report.artifactHashList} />
-          <LocalLink href={report.redactionSummaryUrl} label="Open redaction-summary.json" path={report.redactionSummaryPath} />
+          <LocalLink href={report.artifactHashUrl} label="Open artifact-hashes.json" path={report.artifactHashUrl} />
+          <LocalLink href={report.redactionSummaryUrl} label="Open redaction-summary.json" path={report.redactionSummaryUrl} />
         </div>
       </section>
 
@@ -146,7 +146,11 @@ function ReportCard({ report }: { readonly report: ReportView }) {
                 const hash = report.artifactHashes.find((item) => item.artifactId === artifact.artifactId);
                 return (
                   <tr key={artifact.artifactId} className="hover:bg-primary/5">
-                    <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-primary">{artifact.artifactId}</td>
+                    <td className="border-b border-border/70 px-3 py-2 font-mono text-xs">
+                      <a href={artifact.artifactUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                        {artifact.artifactId}
+                      </a>
+                    </td>
                     <td className="border-b border-border/70 px-3 py-2"><StatusChip label={artifact.kind} tone="neutral" /></td>
                     <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-text-muted">{artifact.relativePath}</td>
                     <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-text-muted">{hash?.sha256 ?? artifact.sha256}</td>
@@ -164,7 +168,7 @@ function ReportCard({ report }: { readonly report: ReportView }) {
 
 function LocalLink({ href, label, path }: { readonly href: string; readonly label: string; readonly path: string }) {
   return (
-    <a href={href} target="_blank" rel="noreferrer" className="rounded-xl border border-border bg-bg/55 p-3 font-mono text-xs text-primary transition hover:border-primary/50 active:scale-[0.99]">
+    <a href={href} target="_blank" rel="noreferrer" className="rounded-xl border border-border bg-bg/55 p-3 font-mono text-xs text-primary transition hover:border-primary/50 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
       <span className="block font-sans text-sm font-semibold text-text">{label}</span>
       <span className="mt-1 block break-all">{path}</span>
     </a>

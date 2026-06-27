@@ -194,7 +194,7 @@ export interface ReportView {
   readonly manifestValid: boolean;
   readonly validationErrors: readonly string[];
   readonly artifactCount: number;
-  readonly artifacts: readonly EvidenceArtifact[];
+  readonly artifacts: readonly ReportArtifactView[];
   readonly artifactHashes: readonly ArtifactHashView[];
   readonly redactionSummary: RedactionSummaryView;
   readonly narrative: string;
@@ -209,6 +209,10 @@ export interface ArtifactHashView {
   readonly byteLength: number;
 }
 
+export interface ReportArtifactView extends EvidenceArtifact {
+  readonly artifactUrl: string;
+}
+
 export interface RedactionSummaryView {
   readonly redactionCount: number;
   readonly reasons: readonly string[];
@@ -217,9 +221,13 @@ export interface RedactionSummaryView {
 export interface ReportExportResponse {
   readonly runId: string;
   readonly reportHtml: string;
+  readonly reportUrl: string;
   readonly manifestJson: string;
+  readonly manifestUrl: string;
   readonly artifactHashList: string;
+  readonly artifactHashUrl: string;
   readonly redactionSummary: string;
+  readonly redactionSummaryUrl: string;
   readonly manifestValid: boolean;
   readonly validationErrors: readonly string[];
 }

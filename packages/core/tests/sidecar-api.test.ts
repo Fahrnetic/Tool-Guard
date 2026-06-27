@@ -385,13 +385,40 @@ describe("local sidecar API", () => {
       expect(exportResponse.status).toBe(200);
       const reportsResponse = await fetch(`${origin}/api/reports`);
       expect(reportsResponse.status).toBe(200);
-      const reports = (await reportsResponse.json()) as { reports: { reportHtml: string; manifestJson: string; artifactHashList: string; redactionSummaryPath: string; manifestValid: boolean; narrative: string }[] };
+      const reports = (await reportsResponse.json()) as { reports: { reportHtml: string; reportUrl: string; manifestJson: string; manifestUrl: string; artifactHashList: string; artifactHashUrl: string; redactionSummaryPath: string; redactionSummaryUrl: string; manifestValid: boolean; narrative: string; artifacts: { artifactId: string; artifactUrl: string }[] }[] };
       expect(reports.reports[0]).toMatchObject({ manifestValid: true });
       expect(reports.reports[0]?.reportHtml).toContain("report.html");
       expect(reports.reports[0]?.manifestJson).toContain("manifest.json");
       expect(reports.reports[0]?.artifactHashList).toContain("artifact-hashes.json");
       expect(reports.reports[0]?.redactionSummaryPath).toContain("redaction-summary.json");
+      expect(reports.reports[0]?.reportUrl).toBe(`${origin}/api/reports/${handle.session.runId}/files/report.html`);
+      expect(reports.reports[0]?.manifestUrl).toBe(`${origin}/api/reports/${handle.session.runId}/files/manifest.json`);
+      expect(reports.reports[0]?.artifactHashUrl).toBe(`${origin}/api/reports/${handle.session.runId}/files/artifact-hashes.json`);
+      expect(reports.reports[0]?.redactionSummaryUrl).toBe(`${origin}/api/reports/${handle.session.runId}/files/redaction-summary.json`);
+      expect(JSON.stringify(reports)).not.toContain("file://");
       expect(reports.reports[0]?.narrative).toContain("fixture.wrong-cwd");
+
+      const reportFileResponse = await fetch(reports.reports[0]?.reportUrl ?? "");
+      expect(reportFileResponse.status).toBe(200);
+      expect(reportFileResponse.headers.get("content-type")).toContain("text/html");
+      expect(await reportFileResponse.text()).toContain("ToolGuard Evidence Report");
+
+      const manifestFileResponse = await fetch(reports.reports[0]?.manifestUrl ?? "");
+      expect(manifestFileResponse.status).toBe(200);
+      expect(await manifestFileResponse.json()).toMatchObject({ runId: handle.session.runId });
+
+      const artifactHashesResponse = await fetch(reports.reports[0]?.artifactHashUrl ?? "");
+      expect(artifactHashesResponse.status).toBe(200);
+      expect(await artifactHashesResponse.json()).toEqual(expect.arrayContaining([expect.objectContaining({ artifactId: expect.stringMatching(/^artifact_/) })]));
+
+      const redactionSummaryResponse = await fetch(reports.reports[0]?.redactionSummaryUrl ?? "");
+      expect(redactionSummaryResponse.status).toBe(200);
+      expect(await redactionSummaryResponse.json()).toMatchObject({ redactionCount: expect.any(Number) });
+
+      const artifactUrl = reports.reports[0]?.artifacts[0]?.artifactUrl;
+      expect(artifactUrl).toContain(`${origin}/api/reports/${handle.session.runId}/artifacts/artifact_`);
+      const artifactResponse = await fetch(artifactUrl ?? "");
+      expect(artifactResponse.status).toBe(200);
     } finally {
       await handle.close();
     }

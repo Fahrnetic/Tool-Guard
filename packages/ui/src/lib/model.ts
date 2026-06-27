@@ -126,6 +126,94 @@ export interface IntegrationsPayload {
   readonly integrations: readonly IntegrationView[];
 }
 
+export interface ReplayPayload {
+  readonly runId: string;
+  readonly generatedAt: string;
+  readonly replayableRuns: readonly ReplayableRun[];
+  readonly fixtures: readonly ReplayFixture[];
+  readonly latestReplayEvents: readonly CoreEvent[];
+}
+
+export interface ReplayableRun {
+  readonly sourceRunId: string;
+  readonly label: string;
+  readonly failureCount: number;
+  readonly safe: boolean;
+  readonly fixtureOnly: boolean;
+}
+
+export interface ReplayFixture {
+  readonly id: string;
+  readonly label: string;
+  readonly status: "safe" | "blocked" | "degraded" | string;
+  readonly safe: boolean;
+  readonly fixtureOnly: boolean;
+  readonly destructiveRisk: "none" | "low" | "medium" | "high" | string;
+  readonly description: string;
+}
+
+export interface ReplayResponse {
+  readonly status: "success" | "failed" | "blocked";
+  readonly replayId: string;
+  readonly sourceRunId: string;
+  readonly runId: string;
+  readonly reason?: string;
+  readonly safe: boolean;
+  readonly fixtureOnly: boolean;
+  readonly freshCorrelation?: CorrelationContext;
+  readonly result?: unknown;
+}
+
+export interface ReportsPayload {
+  readonly runId: string;
+  readonly generatedAt: string;
+  readonly reports: readonly ReportView[];
+}
+
+export interface ReportView {
+  readonly runId: string;
+  readonly generatedAt: string;
+  readonly reportHtml: string;
+  readonly reportUrl: string;
+  readonly manifestJson: string;
+  readonly manifestUrl: string;
+  readonly artifactHashList: string;
+  readonly artifactHashUrl: string;
+  readonly redactionSummaryPath: string;
+  readonly redactionSummaryUrl: string;
+  readonly manifestValid: boolean;
+  readonly validationErrors: readonly string[];
+  readonly artifactCount: number;
+  readonly artifacts: readonly EvidenceArtifact[];
+  readonly artifactHashes: readonly ArtifactHashView[];
+  readonly redactionSummary: RedactionSummaryView;
+  readonly narrative: string;
+  readonly remediation: string;
+  readonly exists: boolean;
+}
+
+export interface ArtifactHashView {
+  readonly artifactId: string;
+  readonly relativePath: string;
+  readonly sha256: string;
+  readonly byteLength: number;
+}
+
+export interface RedactionSummaryView {
+  readonly redactionCount: number;
+  readonly reasons: readonly string[];
+}
+
+export interface ReportExportResponse {
+  readonly runId: string;
+  readonly reportHtml: string;
+  readonly manifestJson: string;
+  readonly artifactHashList: string;
+  readonly redactionSummary: string;
+  readonly manifestValid: boolean;
+  readonly validationErrors: readonly string[];
+}
+
 export interface IntegrationView {
   readonly id: string;
   readonly name: string;

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { AppShell, type NavigationItem } from "./components/AppShell.js";
-import { fetchFailures, fetchHealth, fetchIntegrations, fetchLatestRun, fetchPolicies, fetchTrace, streamCoreEvents } from "./lib/api.js";
+import { fetchFailures, fetchHealth, fetchIntegrations, fetchLatestRun, fetchPolicies, fetchReplay, fetchReports, fetchTrace, streamCoreEvents } from "./lib/api.js";
 import type { CoreEvent } from "@toolplane/core";
 import type {
   FailureInboxPayload,
@@ -8,6 +8,8 @@ import type {
   IntegrationsPayload,
   LatestRunPayload,
   PolicyPayload,
+  ReplayPayload,
+  ReportsPayload,
   ResourceStatus,
   ScreenId,
   TracePayload
@@ -17,6 +19,8 @@ import { HealthMatrix } from "./screens/HealthMatrix.js";
 import { HarnessIntegrations } from "./screens/HarnessIntegrations.js";
 import { Overview } from "./screens/Overview.js";
 import { PolicyStudio } from "./screens/PolicyStudio.js";
+import { ReplayLab } from "./screens/ReplayLab.js";
+import { EvidenceReportViewer } from "./screens/EvidenceReportViewer.js";
 import { ScreenStateGallery } from "./screens/ScreenStateGallery.js";
 import { Timeline } from "./screens/Timeline.js";
 import { TraceExplorer } from "./screens/TraceExplorer.js";
@@ -40,6 +44,8 @@ interface DataState {
   readonly trace?: TracePayload | undefined;
   readonly policies?: PolicyPayload | undefined;
   readonly integrations?: IntegrationsPayload | undefined;
+  readonly replay?: ReplayPayload | undefined;
+  readonly reports?: ReportsPayload | undefined;
   readonly status: ResourceStatus;
   readonly error?: string | undefined;
 }
@@ -54,13 +60,15 @@ export function App() {
     const controller = new AbortController();
     async function load() {
       setData({ status: "loading" });
-      const [runResult, healthResult, failureResult, traceResult, policyResult, integrationResult] = await Promise.allSettled([
+      const [runResult, healthResult, failureResult, traceResult, policyResult, integrationResult, replayResult, reportsResult] = await Promise.allSettled([
         fetchLatestRun(controller.signal),
         fetchHealth(controller.signal),
         fetchFailures(controller.signal),
         fetchTrace("latest", controller.signal),
         fetchPolicies(controller.signal),
-        fetchIntegrations(controller.signal)
+        fetchIntegrations(controller.signal),
+        fetchReplay(controller.signal),
+        fetchReports(controller.signal)
       ]);
       if (controller.signal.aborted) {
         return;
@@ -71,17 +79,19 @@ export function App() {
       const trace = traceResult.status === "fulfilled" ? traceResult.value : undefined;
       const policies = policyResult.status === "fulfilled" ? policyResult.value : undefined;
       const integrations = integrationResult.status === "fulfilled" ? integrationResult.value : undefined;
+      const replay = replayResult.status === "fulfilled" ? replayResult.value : undefined;
+      const reports = reportsResult.status === "fulfilled" ? reportsResult.value : undefined;
       if (!run && !health) {
         const reason = runResult.status === "rejected" ? String(runResult.reason) : "Unknown Core API error";
         setData({ status: "error", error: reason });
         return;
       }
       if (run && run.eventCount === 0) {
-        setData({ run, ...(health ? { health } : {}), ...(failures ? { failures } : {}), ...(trace ? { trace } : {}), ...(policies ? { policies } : {}), ...(integrations ? { integrations } : {}), status: "empty" });
+        setData({ run, ...(health ? { health } : {}), ...(failures ? { failures } : {}), ...(trace ? { trace } : {}), ...(policies ? { policies } : {}), ...(integrations ? { integrations } : {}), ...(replay ? { replay } : {}), ...(reports ? { reports } : {}), status: "empty" });
         return;
       }
       const degradedError =
-        [runResult, healthResult, failureResult, traceResult, policyResult, integrationResult].some((result) => result.status === "rejected")
+        [runResult, healthResult, failureResult, traceResult, policyResult, integrationResult, replayResult, reportsResult].some((result) => result.status === "rejected")
           ? "One Core endpoint returned an error."
           : undefined;
       setData({
@@ -91,7 +101,9 @@ export function App() {
         ...(trace ? { trace } : {}),
         ...(policies ? { policies } : {}),
         ...(integrations ? { integrations } : {}),
-        status: [runResult, healthResult, failureResult, traceResult, policyResult, integrationResult].every((result) => result.status === "fulfilled") ? "ready" : "degraded",
+        ...(replay ? { replay } : {}),
+        ...(reports ? { reports } : {}),
+        status: [runResult, healthResult, failureResult, traceResult, policyResult, integrationResult, replayResult, reportsResult].every((result) => result.status === "fulfilled") ? "ready" : "degraded",
         ...(degradedError ? { error: degradedError } : {})
       });
     }
@@ -144,6 +156,8 @@ export function App() {
         <FailureInbox {...(data.failures ? { payload: data.failures } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
       ) : active === "traces" ? (
         <TraceExplorer {...(data.trace ? { payload: data.trace } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
+      ) : active === "replay" ? (
+        <ReplayLab {...(data.replay ? { payload: data.replay } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
       ) : active === "policy" ? (
         <PolicyStudio
           {...(data.policies ? { payload: data.policies } : {})}
@@ -153,6 +167,8 @@ export function App() {
         />
       ) : active === "integrations" ? (
         <HarnessIntegrations {...(data.integrations ? { payload: data.integrations } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
+      ) : active === "reports" ? (
+        <EvidenceReportViewer {...(data.reports ? { payload: data.reports } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
       ) : (
         <ScreenStateGallery screen={active} />
       )}

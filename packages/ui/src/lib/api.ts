@@ -5,6 +5,10 @@ import type {
   IntegrationsPayload,
   LatestRunPayload,
   PolicyPayload,
+  ReplayPayload,
+  ReplayResponse,
+  ReportExportResponse,
+  ReportsPayload,
   TracePayload
 } from "./model.js";
 
@@ -40,6 +44,26 @@ export async function savePolicyPreview(input: { timeoutMs: number; retryLimit: 
 
 export async function fetchIntegrations(signal?: AbortSignal): Promise<IntegrationsPayload> {
   return await fetchJson<IntegrationsPayload>("/api/integrations", signal);
+}
+
+export async function fetchReplay(signal?: AbortSignal): Promise<ReplayPayload> {
+  return await fetchJson<ReplayPayload>("/api/replay", signal);
+}
+
+export async function requestReplay(input: { toolName: string; sourceRunId: string; fixtureOnly: boolean; mode?: string; destructive?: boolean }, signal?: AbortSignal): Promise<ReplayResponse> {
+  return await fetchJsonAllowingStatus<ReplayResponse>("/api/replay", signal, {
+    method: "POST",
+    body: JSON.stringify(input),
+    headers: { "content-type": "application/json" }
+  });
+}
+
+export async function fetchReports(signal?: AbortSignal): Promise<ReportsPayload> {
+  return await fetchJson<ReportsPayload>("/api/reports", signal);
+}
+
+export async function exportReport(signal?: AbortSignal): Promise<ReportExportResponse> {
+  return await fetchJson<ReportExportResponse>("/api/reports/export", signal);
 }
 
 export function streamCoreEvents(input: {
@@ -90,6 +114,16 @@ async function fetchJson<T>(path: string, signal?: AbortSignal, init: RequestIni
     throw new Error(`Core API ${path} returned HTTP ${response.status}`);
   }
   return (await response.json()) as T;
+}
+
+async function fetchJsonAllowingStatus<T>(path: string, signal?: AbortSignal, init: RequestInit = {}): Promise<T> {
+  const requestInit: RequestInit = signal ? { ...init, signal } : init;
+  const response = await fetch(`${CORE_API_BASE}${path}`, requestInit);
+  const body = (await response.json()) as T;
+  if (!response.ok && typeof body !== "object") {
+    throw new Error(`Core API ${path} returned HTTP ${response.status}`);
+  }
+  return body;
 }
 
 function parseCoreEvent(data: string): CoreEvent | undefined {

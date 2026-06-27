@@ -180,4 +180,68 @@ describe("local sidecar API", () => {
       await handle.close();
     }
   });
+
+  it("serves replay metadata, blocks real-world replay, and exports report listings", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-replay-report-"));
+    const handle = createCoreApiServer({ port: 0, evidenceRoot: root, seedDirectRun: false });
+    await handle.ready;
+    const address = handle.server.address();
+    if (typeof address !== "object" || !address) {
+      throw new Error("Expected test server address");
+    }
+    const origin = `http://127.0.0.1:${address.port}`;
+    try {
+      const metadataResponse = await fetch(`${origin}/api/replay`);
+      expect(metadataResponse.status).toBe(200);
+      const metadata = (await metadataResponse.json()) as { fixtures: { id: string; fixtureOnly: boolean; safe: boolean }[] };
+      expect(metadata.fixtures).toContainEqual(expect.objectContaining({ id: "fixture.wrong-cwd", fixtureOnly: true, safe: true }));
+      expect(metadata.fixtures).toContainEqual(expect.objectContaining({ id: "real-world.rm-rf", fixtureOnly: false, safe: false }));
+
+      const blockedResponse = await fetch(`${origin}/api/replay`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          toolName: "real-world.rm-rf",
+          sourceRunId: handle.session.runId,
+          fixtureOnly: false,
+          mode: "real-world",
+          destructive: true
+        })
+      });
+      expect(blockedResponse.status).toBe(409);
+      const blocked = (await blockedResponse.json()) as { status: string; reason: string };
+      expect(blocked.status).toBe("blocked");
+      expect(blocked.reason).toContain("fixture-only");
+
+      const replayResponse = await fetch(`${origin}/api/replay`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          toolName: "fixture.wrong-cwd",
+          sourceRunId: handle.session.runId,
+          fixtureOnly: true
+        })
+      });
+      expect(replayResponse.status).toBe(200);
+      const replay = (await replayResponse.json()) as { status: string; sourceRunId: string; freshCorrelation?: { traceId: string; toolCallId: string } };
+      expect(replay.status).toBe("failed");
+      expect(replay.sourceRunId).toBe(handle.session.runId);
+      expect(replay.freshCorrelation?.traceId).toMatch(/^trace_/);
+      expect(replay.freshCorrelation?.toolCallId).toMatch(/^toolcall_/);
+
+      const exportResponse = await fetch(`${origin}/api/reports/export`);
+      expect(exportResponse.status).toBe(200);
+      const reportsResponse = await fetch(`${origin}/api/reports`);
+      expect(reportsResponse.status).toBe(200);
+      const reports = (await reportsResponse.json()) as { reports: { reportHtml: string; manifestJson: string; artifactHashList: string; redactionSummaryPath: string; manifestValid: boolean; narrative: string }[] };
+      expect(reports.reports[0]).toMatchObject({ manifestValid: true });
+      expect(reports.reports[0]?.reportHtml).toContain("report.html");
+      expect(reports.reports[0]?.manifestJson).toContain("manifest.json");
+      expect(reports.reports[0]?.artifactHashList).toContain("artifact-hashes.json");
+      expect(reports.reports[0]?.redactionSummaryPath).toContain("redaction-summary.json");
+      expect(reports.reports[0]?.narrative).toContain("fixture.wrong-cwd");
+    } finally {
+      await handle.close();
+    }
+  });
 });

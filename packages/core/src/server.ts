@@ -1,4 +1,5 @@
 import http from "node:http";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { CoreSession } from "./session.js";
@@ -135,6 +136,27 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
         return;
       }
 
+      if (url.pathname === "/api/replay") {
+        if (request.method === "POST") {
+          const body = await readJsonBody(request, 64 * 1024);
+          if (!body.ok) {
+            sendJson(response, body.statusCode, { status: "failed", error: body.message });
+            return;
+          }
+          const replay = await handleReplayRequest({
+            runId,
+            session,
+            registry,
+            downstreamServerId,
+            payload: body.payload
+          });
+          sendJson(response, replay.statusCode, replay.body);
+          return;
+        }
+        sendJson(response, 200, buildReplayPayload(runId, session.recorder.events));
+        return;
+      }
+
       if (url.pathname === "/api/evidence" || url.pathname === `/api/runs/${runId}/evidence`) {
         sendJson(response, 200, {
           runId,
@@ -158,6 +180,21 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
           manifestValid: validation.valid,
           validationErrors: validation.errors
         });
+        return;
+      }
+
+      if (url.pathname === "/api/reports") {
+        sendJson(response, 200, await buildReportsPayload({ runId, runDir: session.recorder.runDir, events: session.recorder.events }));
+        return;
+      }
+
+      if (url.pathname.startsWith("/api/reports/")) {
+        const requestedRunId = decodeURIComponent(url.pathname.slice("/api/reports/".length));
+        if (requestedRunId !== runId && requestedRunId !== "latest") {
+          sendJson(response, 404, { error: "report_run_not_found", runId: requestedRunId });
+          return;
+        }
+        sendJson(response, 200, await buildReportDetailPayload({ runId, runDir: session.recorder.runDir, events: session.recorder.events }));
         return;
       }
 
@@ -531,6 +568,210 @@ function isRecord(value: unknown): value is Record<string, JsonValue | unknown> 
 function sendJson(response: http.ServerResponse, statusCode: number, body: unknown): void {
   response.writeHead(statusCode, { "content-type": "application/json" });
   response.end(`${JSON.stringify(body, null, 2)}\n`);
+}
+
+async function handleReplayRequest(input: {
+  readonly runId: StableId;
+  readonly session: CoreSession;
+  readonly registry: ToolRegistry;
+  readonly downstreamServerId: StableId;
+  readonly payload: Record<string, unknown>;
+}): Promise<{ readonly statusCode: number; readonly body: JsonObject }> {
+  const sourceRunId = stringValue(input.payload.sourceRunId, input.runId);
+  const requestedTool = stringValue(input.payload.toolName, "fixture.wrong-cwd");
+  const fixtureOnly = input.payload.fixtureOnly === true;
+  const realWorld = input.payload.mode === "real-world" || input.payload.realWorld === true;
+  const destructive = input.payload.destructive === true || requestedTool.includes("rm -rf") || requestedTool.includes("delete");
+  if (!fixtureOnly || realWorld || destructive) {
+    return {
+      statusCode: 409,
+      body: {
+        status: "blocked",
+        replayId: createId("report"),
+        sourceRunId,
+        runId: input.runId,
+        reason: "Replay is fixture-only. Destructive or real-world commands are blocked before execution.",
+        safe: false,
+        fixtureOnly
+      }
+    };
+  }
+  const toolName = requestedTool.startsWith("fixture.") ? requestedTool : "fixture.wrong-cwd";
+  const tool = input.registry.get(toolName);
+  if (!tool) {
+    return {
+      statusCode: 404,
+      body: {
+        status: "failed",
+        replayId: createId("report"),
+        sourceRunId,
+        runId: input.runId,
+        reason: `Replay fixture ${toolName} is not registered.`,
+        safe: false,
+        fixtureOnly: true
+      }
+    };
+  }
+  const call = makeReplayToolCall(input.runId, input.downstreamServerId, toolName, sourceRunId);
+  const result = await input.session.executeToolCall(input.registry, call);
+  return {
+    statusCode: "failureType" in result ? 200 : 201,
+    body: {
+      status: "failureType" in result ? "failed" : "success",
+      replayId: createId("report"),
+      sourceRunId,
+      runId: call.runId,
+      freshCorrelation: {
+        traceId: call.traceId,
+        ...(call.parentId ? { parentId: call.parentId } : {}),
+        harnessId: call.harnessId,
+        adapterId: call.adapterId,
+        downstreamServerId: call.downstreamServerId,
+        toolCallId: call.toolCallId,
+        attemptId: call.attemptId,
+        policyDecisionId: call.policyDecisionId
+      },
+      fixtureOnly: true,
+      safe: true,
+      result: result as unknown as JsonValue
+    }
+  };
+}
+
+function makeReplayToolCall(runId: StableId, downstreamServerId: StableId, toolName: string, sourceRunId: string): ToolCall {
+  return {
+    runId,
+    traceId: createId("trace"),
+    parentId: sourceRunId as StableId,
+    harnessId: createId("harness"),
+    adapterId: createId("adapter"),
+    downstreamServerId,
+    toolCallId: createId("toolcall"),
+    attemptId: createId("attempt"),
+    policyDecisionId: createId("policy"),
+    toolName,
+    arguments: {},
+    deadlineMs: 1_000,
+    idempotency: "idempotent",
+    sourcePath: "non-mcp-direct"
+  };
+}
+
+function buildReplayPayload(runId: StableId, events: readonly CoreEvent[]): JsonObject {
+  const failedEvents = events.filter((event) => event.type === "tool.call.failed");
+  return {
+    runId,
+    generatedAt: new Date().toISOString(),
+    replayableRuns: [
+      {
+        sourceRunId: runId,
+        label: failedEvents.length > 0 ? "Latest failed ToolGuard run" : "Latest ToolGuard run",
+        failureCount: failedEvents.length,
+        safe: true,
+        fixtureOnly: true
+      }
+    ],
+    fixtures: [
+      {
+        id: "fixture.wrong-cwd",
+        label: "Wrong cwd failure reconstruction",
+        status: "safe",
+        safe: true,
+        fixtureOnly: true,
+        destructiveRisk: "none",
+        description: "Replays the deterministic cwd mismatch failure with fresh correlation IDs."
+      },
+      {
+        id: "fixture.prompt-injection-output",
+        label: "Prompt-injection sanitizer proof",
+        status: "safe",
+        safe: true,
+        fixtureOnly: true,
+        destructiveRisk: "none",
+        description: "Replays a safe fixture that proves suspicious output stays contained."
+      },
+      {
+        id: "real-world.rm-rf",
+        label: "Real-world destructive command",
+        status: "blocked",
+        safe: false,
+        fixtureOnly: false,
+        destructiveRisk: "high",
+        description: "Blocked by policy. Replay Lab never executes destructive real-world commands."
+      }
+    ],
+    latestReplayEvents: events
+      .filter((event) => event.parentId === runId)
+      .slice(-8) as unknown as JsonValue
+  };
+}
+
+async function buildReportsPayload(input: {
+  readonly runId: StableId;
+  readonly runDir: string;
+  readonly events: readonly CoreEvent[];
+}): Promise<JsonObject> {
+  const detail = await buildReportDetailPayload(input);
+  return {
+    runId: input.runId,
+    generatedAt: new Date().toISOString(),
+    reports: [detail]
+  };
+}
+
+async function buildReportDetailPayload(input: {
+  readonly runId: StableId;
+  readonly runDir: string;
+  readonly events: readonly CoreEvent[];
+}): Promise<JsonObject> {
+  const reportPath = path.join(input.runDir, "report.html");
+  const manifestPath = path.join(input.runDir, "manifest.json");
+  const artifactHashPath = path.join(input.runDir, "artifact-hashes.json");
+  const redactionSummaryPath = path.join(input.runDir, "redaction-summary.json");
+  const manifest = await readJsonFile(manifestPath);
+  const artifactHashes = await readJsonFile(artifactHashPath);
+  const redactionSummary = await readJsonFile(redactionSummaryPath);
+  const validation = await validateReportManifest({ runDir: input.runDir }).catch((error: unknown) => ({
+    valid: false,
+    errors: [error instanceof Error ? error.message : String(error)]
+  }));
+  const failureCards = input.events
+    .filter((event) => event.type === "tool.call.failed" && isFailureCard(event.data))
+    .map((event) => event.data as FailureCard);
+  const artifacts = input.events.flatMap((event) => (isEvidenceArtifact(event.data) ? [event.data] : []));
+  const narrative = failureCards.length
+    ? failureCards.map((failure) => `${failure.toolName}: ${failure.failureType}. ${failure.likelyRootCause}`).join("\n")
+    : "No failures recorded. Report exports still include events, hashes, and redaction proof.";
+  const remediation = failureCards.flatMap((failure) => failure.safeRecoveryOptions).join("\n");
+  return {
+    runId: input.runId,
+    generatedAt: new Date().toISOString(),
+    reportHtml: reportPath,
+    reportUrl: pathToFileURL(reportPath).href,
+    manifestJson: manifestPath,
+    manifestUrl: pathToFileURL(manifestPath).href,
+    artifactHashList: artifactHashPath,
+    artifactHashUrl: pathToFileURL(artifactHashPath).href,
+    redactionSummaryPath,
+    redactionSummaryUrl: pathToFileURL(redactionSummaryPath).href,
+    manifestValid: validation.valid,
+    validationErrors: [...validation.errors],
+    artifactCount: artifacts.length,
+    artifacts: artifacts as unknown as JsonValue,
+    artifactHashes: (artifactHashes ?? []) as JsonValue,
+    redactionSummary: (redactionSummary ?? { redactionCount: 0, reasons: [] }) as JsonValue,
+    narrative,
+    remediation: remediation || "No remediation required for successful fixture runs.",
+    exists: Boolean(manifest)
+  };
+}
+
+async function readJsonFile(filePath: string): Promise<JsonValue | undefined> {
+  try {
+    return JSON.parse(await readFile(filePath, "utf8")) as JsonValue;
+  } catch {
+    return undefined;
+  }
 }
 
 function writeSseEvent(response: http.ServerResponse, event: CoreEvent): void {

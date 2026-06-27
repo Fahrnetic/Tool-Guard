@@ -241,6 +241,9 @@ describe("toolplane run process wrapper", () => {
 
     const cases: readonly (readonly string[])[] = [
       ["sh", "-c", `printf overwritten > ${victim}`],
+      ["sh", "-c", `mv ${victim} ${path.join(root, "moved.txt")}`],
+      ["sh", "-c", `cp -f ${path.join(root, "source.txt")} ${victim}`],
+      ["sh", "-c", `cp -R ${path.join(root, "source-dir")} ${path.join(root, "dest-dir")}`],
       ["sh", "-c", `find ${root} -type f -delete`],
       ["truncate", "-s", "0", victim],
       ["git", "reset", "--hard"],
@@ -260,6 +263,41 @@ describe("toolplane run process wrapper", () => {
 
     expect(fixtureOnly.exitCode).toBe(0);
     expect(fixtureOnly.result?.safeSummary).toContain("fixture-only");
+    expect(await readFile(victim, "utf8")).toBe("still here");
+  });
+
+  it("allows shell move and copy destructive simulations in fixture-only mode", async () => {
+    const root = await makeTempRoot();
+    const victim = path.join(root, "victim.txt");
+    const source = path.join(root, "source.txt");
+    await writeFile(victim, "still here", "utf8");
+    await writeFile(source, "replacement", "utf8");
+
+    const simulatedMove = await runToolplaneCli([
+      "run",
+      "--fixture-only",
+      "--cwd",
+      root,
+      "--",
+      "sh",
+      "-c",
+      `mv ${victim} ${path.join(root, "moved.txt")}`
+    ]);
+    const simulatedCopy = await runToolplaneCli([
+      "run",
+      "--fixture-only",
+      "--cwd",
+      root,
+      "--",
+      "sh",
+      "-c",
+      `cp -f ${source} ${victim}`
+    ]);
+
+    expect(simulatedMove.exitCode).toBe(0);
+    expect(simulatedMove.result?.safeSummary).toContain("fixture-only");
+    expect(simulatedCopy.exitCode).toBe(0);
+    expect(simulatedCopy.result?.safeSummary).toContain("fixture-only");
     expect(await readFile(victim, "utf8")).toBe("still here");
   });
 

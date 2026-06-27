@@ -561,7 +561,10 @@ function assessDestructiveCommand(command: readonly string[]): DestructiveAssess
     return { destructive: true, reason: "Command can overwrite, discard, or delete workspace files." };
   }
   if (shellText && isDestructiveShellText(shellText)) {
-    return { destructive: true, reason: "Shell command text contains destructive filesystem, redirection, or git usage." };
+    return {
+      destructive: true,
+      reason: "Shell command text contains destructive filesystem, redirection, move/copy overwrite, or git usage."
+    };
   }
   return { destructive: false, reason: "No destructive pattern matched." };
 }
@@ -597,6 +600,8 @@ function isDestructiveGit(args: readonly string[]): boolean {
 function isDestructiveShellText(text: string): boolean {
   const destructivePatterns = [
     /\brm\s+[^;&|]*(-[A-Za-z]*[rf]|--recursive|--force)\b/,
+    /\bmv\b(?=[^;&|]*\s+\S+\s+\S+)/,
+    /\bcp\b(?=[^;&|]*(?:\s-[A-Za-z]*[fRr][A-Za-z]*\b|\s--(?:force|remove-destination|recursive)\b))(?=[^;&|]*\s+\S+\s+\S+)/,
     /\bfind\b[^;&|]*\s-delete\b/,
     /\btruncate\s+(-s|--size)\b/,
     /\bdd\b[^;&|]*\bof=/,

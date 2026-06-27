@@ -19,6 +19,13 @@ from toolguard_adapters import (
 )
 
 
+def has_optional_module(module_name: str) -> bool:
+    try:
+        return importlib.util.find_spec(module_name) is not None
+    except ModuleNotFoundError:
+        return False
+
+
 class SidecarHandler(BaseHTTPRequestHandler):
     responses: list[dict[str, Any]] = []
     requests: list[dict[str, Any]] = []
@@ -292,8 +299,18 @@ class PythonAdapterTests(unittest.TestCase):
         self.assertEqual(server.requests[0]["correlation"]["toolCallId"], "toolcall_crewai")
         self.assertEqual(server.requests[0]["arguments"], {"topic": "adapter"})
 
-    @unittest.skipUnless(importlib.util.find_spec("langgraph"), "optional smoke: install langgraph to run real API check")
-    def test_optional_langgraph_smoke_callable_surface(self) -> None:
+    @unittest.skipUnless(
+        has_optional_module("langgraph.graph"),
+        "optional smoke: install langgraph to run real LangGraph API flow",
+    )
+    def test_optional_langgraph_smoke_real_graph_flow(self) -> None:
+        from langgraph.graph import END, START, StateGraph
+        from typing import TypedDict
+
+        class SmokeState(TypedDict, total=False):
+            topic: str
+            result: str
+
         with FakeSidecar(
             [
                 {
@@ -307,12 +324,44 @@ class PythonAdapterTests(unittest.TestCase):
                     },
                 }
             ]
-        ):
+        ) as server:
             tool = LangGraphToolGuardTool("fixture.good", config=config())
-            self.assertEqual(tool.invoke({}), "langgraph-smoke")
 
-    @unittest.skipUnless(importlib.util.find_spec("crewai"), "optional smoke: install crewai to run real API check")
-    def test_optional_crewai_smoke_callable_surface(self) -> None:
+            def guarded_tool_node(state: SmokeState) -> SmokeState:
+                return {"result": tool.invoke({"topic": state["topic"]})}
+
+            graph = StateGraph(SmokeState)
+            graph.add_node("toolguard_call", guarded_tool_node)
+            graph.add_edge(START, "toolguard_call")
+            graph.add_edge("toolguard_call", END)
+            app = graph.compile()
+            result = app.invoke({"topic": "adapter"})
+
+        self.assertEqual(result["result"], "langgraph-smoke")
+        self.assertEqual(server.requests[0]["adapterName"], "toolguard-langgraph")
+        self.assertEqual(server.requests[0]["arguments"], {"topic": "adapter"})
+
+    @unittest.skipUnless(
+        has_optional_module("crewai.tools"),
+        "optional smoke: install crewai to run real CrewAI BaseTool API flow",
+    )
+    def test_optional_crewai_smoke_real_basetool_flow(self) -> None:
+        from crewai.tools import BaseTool
+        from pydantic import BaseModel, Field
+        from typing import Type
+
+        class ToolGuardSmokeInput(BaseModel):
+            topic: str = Field(default="adapter", description="Smoke-test topic routed through ToolGuard.")
+
+        class ToolGuardCrewAISmokeTool(BaseTool):
+            name: str = "ToolGuard fixture.good"
+            description: str = "Routes a CrewAI BaseTool call through the ToolGuard wrapper."
+            args_schema: Type[BaseModel] = ToolGuardSmokeInput
+
+            def _run(self, topic: str = "adapter") -> str:
+                tool = CrewAIToolGuardTool("fixture.good", config=config("toolguard-crewai"))
+                return tool.run(topic=topic)
+
         with FakeSidecar(
             [
                 {
@@ -326,9 +375,13 @@ class PythonAdapterTests(unittest.TestCase):
                     },
                 }
             ]
-        ):
-            tool = CrewAIToolGuardTool("fixture.good", config=config("toolguard-crewai"))
-            self.assertEqual(tool.run(), "crewai-smoke")
+        ) as server:
+            tool = ToolGuardCrewAISmokeTool()
+            result = tool.run(topic="adapter")
+
+        self.assertEqual(result, "crewai-smoke")
+        self.assertEqual(server.requests[0]["adapterName"], "toolguard-crewai")
+        self.assertEqual(server.requests[0]["arguments"], {"topic": "adapter"})
 
     def test_non_local_endpoint_is_rejected_before_network_use(self) -> None:
         client = ToolGuardSidecarClient(

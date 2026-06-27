@@ -229,6 +229,28 @@ export class CoreSession {
     return failure;
   }
 
+  async recordRawArtifact(
+    call: ToolCall,
+    input: {
+      readonly kind: EvidenceArtifact["kind"];
+      readonly fileName: string;
+      readonly content: JsonValue | string;
+      readonly redacted?: boolean;
+    }
+  ): Promise<EvidenceArtifact> {
+    const artifact = await this.#recorder.writeArtifact({
+      runId: call.runId,
+      traceId: call.traceId,
+      toolCallId: call.toolCallId,
+      kind: input.kind,
+      fileName: input.fileName,
+      content: input.content,
+      redacted: input.redacted ?? false
+    });
+    await this.#emitArtifactCreated(call, artifact);
+    return artifact;
+  }
+
   async #executeAttempt(
     tool: RegisteredTool,
     call: ToolCall,

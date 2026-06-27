@@ -1,9 +1,13 @@
 {
-  "name": "@toolplane/core",
+  "name": "@toolplane/cli",
   "version": "0.0.0",
   "private": true,
-  "description": "Protocol-independent ToolGuard core contracts, events, and evidence primitives.",
+  "description": "ToolGuard CLI process wrapper for safe shell, git, test, and coding-agent supervision.",
   "type": "module",
+  "bin": {
+    "toolplane": "./dist/bin/toolplane.js",
+    "toolguard": "./dist/bin/toolplane.js"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -17,12 +21,12 @@
   ],
   "scripts": {
     "build": "tsc --build tsconfig.json",
-    "demo:raw-failure": "pnpm build && node dist/demo.js raw-failure",
-    "demo:toolplane": "pnpm build && node dist/demo.js toolplane",
-    "dev": "pnpm build && node dist/server.js",
     "lint": "pnpm typecheck",
     "test": "vitest run",
     "typecheck": "tsc --noEmit --project tsconfig.json && tsc --noEmit --project tsconfig.test.json"
+  },
+  "dependencies": {
+    "@toolplane/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

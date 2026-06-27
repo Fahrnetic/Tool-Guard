@@ -122,6 +122,25 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
         return;
       }
 
+      if (url.pathname === "/api/events/ingest") {
+        if (request.method !== "POST") {
+          sendJson(response, 405, { error: "method_not_allowed" });
+          return;
+        }
+        const body = await readJsonBody(request, 512 * 1024);
+        if (!body.ok || !isCoreEventLike(body.payload)) {
+          sendJson(response, body.ok ? 400 : body.statusCode, {
+            error: body.ok ? "invalid_event" : body.message
+          });
+          return;
+        }
+        const event = body.payload as unknown as CoreEvent;
+        await session.recorder.appendEvent(event);
+        session.bus.publish(event);
+        sendJson(response, 202, { ok: true, eventId: event.eventId, type: event.type, runId: event.runId });
+        return;
+      }
+
       if (url.pathname === "/api/sidecar/v1/tool-calls") {
         if (request.method !== "POST") {
           sendJson(response, 405, { error: "method_not_allowed" });
@@ -244,6 +263,48 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
         server.close((error) => (error ? reject(error) : resolve()));
       })
   };
+}
+
+type JsonBodyResult =
+  | { readonly ok: true; readonly payload: Record<string, unknown> }
+  | { readonly ok: false; readonly statusCode: number; readonly message: string };
+
+async function readJsonBody(request: http.IncomingMessage, limitBytes: number): Promise<JsonBodyResult> {
+  const chunks: Buffer[] = [];
+  let byteLength = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+    byteLength += buffer.byteLength;
+    if (byteLength > limitBytes) {
+      return { ok: false, statusCode: 413, message: `Request body exceeded the ${limitBytes} byte limit.` };
+    }
+    chunks.push(buffer);
+  }
+  try {
+    const parsed: unknown = chunks.length > 0 ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {};
+    if (!isRecord(parsed)) {
+      return { ok: false, statusCode: 400, message: "Request body must be a JSON object." };
+    }
+    return { ok: true, payload: parsed };
+  } catch (error) {
+    return {
+      ok: false,
+      statusCode: 400,
+      message: `Request body was malformed JSON: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+function isCoreEventLike(value: Record<string, unknown>): boolean {
+  return (
+    typeof value.eventId === "string" &&
+    typeof value.type === "string" &&
+    typeof value.occurredAt === "string" &&
+    typeof value.sequence === "number" &&
+    typeof value.summary === "string" &&
+    typeof value.runId === "string" &&
+    typeof value.traceId === "string"
+  );
 }
 
 function makeApiToolCall(runId: StableId, downstreamServerId: StableId): ToolCall {

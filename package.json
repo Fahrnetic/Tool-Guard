@@ -17,9 +17,10 @@
     "typecheck": "pnpm -r typecheck"
   },
   "devDependencies": {
+    "@toolplane/cli": "workspace:*",
     "@types/node": "^24.10.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.15"
+    "vitest": "4.0.15"
   },
   "engines": {
     "node": ">=22.0.0"

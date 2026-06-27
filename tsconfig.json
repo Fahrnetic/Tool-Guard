@@ -3,6 +3,15 @@
   "references": [
     {
       "path": "./packages/core"
+    },
+    {
+      "path": "./packages/mcp-adapter"
+    },
+    {
+      "path": "./packages/python-adapters"
+    },
+    {
+      "path": "./packages/cli"
     }
   ]
 }

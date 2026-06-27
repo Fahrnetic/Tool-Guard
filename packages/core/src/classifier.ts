@@ -78,6 +78,36 @@ const RECOVERY: Record<FailureType, FailureClassification> = {
     safeRecoveryOptions: ["Retry after confirming the downstream process restarts cleanly.", "Run preflight again."],
     humanFix: "Inspect the crash artifact and repair the downstream initialization path."
   },
+  non_zero_exit: {
+    failureType: "non_zero_exit",
+    likelyRootCause: "The wrapped process exited with a non-zero status.",
+    retryable: false,
+    doNotRetrySameCall: true,
+    safeRecoveryOptions: [
+      "Inspect the separated stdout and stderr artifacts.",
+      "Fix the command, arguments, or project state before retrying."
+    ],
+    humanFix: "Review the command's exit status and stderr, then rerun only after correcting the underlying failure."
+  },
+  spawn_failure: {
+    failureType: "spawn_failure",
+    likelyRootCause: "The process could not be spawned, usually because the executable was missing or not executable.",
+    retryable: false,
+    doNotRetrySameCall: true,
+    safeRecoveryOptions: ["Check the executable path.", "Install the missing command or use an absolute executable path."],
+    humanFix: "Ensure the target executable exists on PATH and can be launched without a shell."
+  },
+  output_limit_exceeded: {
+    failureType: "output_limit_exceeded",
+    likelyRootCause: "The wrapped process produced more stdout or stderr than the configured model-safe output limit.",
+    retryable: false,
+    doNotRetrySameCall: true,
+    safeRecoveryOptions: [
+      "Rerun with a narrower command or larger fixture-only output limit.",
+      "Inspect raw artifacts instead of forwarding full output to the model."
+    ],
+    humanFix: "Reduce command verbosity or increase the configured output limit for trusted local inspection."
+  },
   prompt_injection_output: {
     failureType: "prompt_injection_output",
     likelyRootCause: "The downstream output contained instruction-like text that could manipulate an agent.",

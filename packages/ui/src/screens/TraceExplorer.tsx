@@ -1,15 +1,16 @@
-import { CorrelationGrid } from "../components/CorrelationGrid.js";
 import { StatePanel } from "../components/StatePanel.js";
 import { StatusChip } from "../components/StatusChip.js";
-import type { ResourceStatus, TracePayload } from "../lib/model.js";
+import { correlationKeys, type RawArtifactView, type ResourceStatus, type TracePayload } from "../lib/model.js";
 
 interface TraceExplorerProps {
   readonly payload?: TracePayload;
   readonly status: ResourceStatus;
   readonly error?: string;
+  readonly selectedId?: string;
+  readonly onSelectCorrelation?: (selection: { readonly id: string; readonly kind: string; readonly traceId?: string }) => void | Promise<void>;
 }
 
-export function TraceExplorer({ payload, status, error }: TraceExplorerProps) {
+export function TraceExplorer({ payload, status, error, selectedId, onSelectCorrelation }: TraceExplorerProps) {
   if (status === "loading") {
     return <StatePanel status="loading" title="Loading Trace Explorer" message="Resolving the latest trace from `/api/traces/latest`." />;
   }
@@ -47,8 +48,27 @@ export function TraceExplorer({ payload, status, error }: TraceExplorerProps) {
         <section className="rounded-2xl border border-border bg-bg-panel/90 p-5">
           <h3 className="text-lg font-semibold text-text">Correlation selectors</h3>
           <p className="mt-1 text-sm text-text-muted">Keyboard-focusable IDs keep full context visible.</p>
-          <div className="mt-4">
-            <CorrelationGrid correlation={payload.correlation} />
+          <div className="mt-4 grid gap-3" role="list" aria-label="Selectable correlation controls">
+            {buildCorrelationControls(payload).map((control) => {
+              const selected = selectedId === control.id;
+              return (
+                <button
+                  key={`${control.kind}:${control.id}`}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => void onSelectCorrelation?.({ id: control.id, kind: control.kind, traceId: payload.traceId })}
+                  className={`rounded-xl border p-3 text-left transition active:scale-[0.99] focus-visible:border-primary disabled:opacity-50 ${
+                    selected ? "border-primary bg-primary/15 shadow-lg shadow-primary/10" : "border-border bg-bg/55 hover:border-primary/45 hover:bg-primary/5"
+                  }`}
+                >
+                  <span className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-text-dim">{control.label}</span>
+                  <span className="mt-1 block break-all font-mono text-xs text-primary">{control.id}</span>
+                  <span className="mt-2 block text-xs text-text-muted">
+                    {selected ? "Selected, trace data refetched for this context." : "Select to keep this context pinned and refetch related trace data."}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </section>
 
@@ -96,6 +116,69 @@ export function TraceExplorer({ payload, status, error }: TraceExplorerProps) {
           </table>
         </div>
       </section>
+
+      <section className="rounded-2xl border border-border bg-bg-panel/90 p-5" aria-label="Trace raw output separation">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-text">Raw artifact inspection</h3>
+            <p className="mt-1 text-sm text-text-muted">Stdout and stderr stay in separate panes with redacted content, line breaks, and truncation metadata.</p>
+          </div>
+          <StatusChip label={`${payload.rawArtifacts.length} artifacts`} tone={payload.rawArtifacts.length > 0 ? "selected" : "neutral"} />
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <RawArtifactPane title="Raw stdout" artifacts={payload.rawStdout} empty="No raw stdout artifact exists for this trace." />
+          <RawArtifactPane title="Raw stderr" artifacts={payload.rawStderr} empty="No raw stderr artifact exists for this trace." />
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function buildCorrelationControls(payload: TracePayload): readonly { readonly kind: string; readonly label: string; readonly id: string }[] {
+  const controls = correlationKeys.flatMap((key) => {
+    const id = payload.correlation[key];
+    return id ? [{ kind: key.replace("Id", ""), label: key, id }] : [];
+  });
+  const nodeControls = payload.nodes.flatMap((node) => {
+    if (controls.some((control) => control.id === node.id)) {
+      return [];
+    }
+    return [{ kind: node.kind, label: `${node.kind}Id`, id: node.id }];
+  });
+  return [...controls, ...nodeControls];
+}
+
+function RawArtifactPane({ title, artifacts, empty }: { readonly title: string; readonly artifacts: readonly RawArtifactView[]; readonly empty: string }) {
+  return (
+    <section className="min-h-56 rounded-xl border border-border bg-bg p-4">
+      <h4 className="text-sm font-semibold text-text">{title}</h4>
+      {artifacts.length === 0 ? (
+        <p className="mt-3 text-sm text-text-muted">{empty}</p>
+      ) : (
+        <div className="mt-3 space-y-4">
+          {artifacts.map((artifact) => (
+            <article key={artifact.artifactId} className="rounded-lg border border-border/80 bg-bg-panel/60 p-3">
+              <div className="flex flex-wrap gap-2">
+                <StatusChip label={artifact.truncated ? "truncated at output limit" : "not truncated"} tone={artifact.truncated ? "degraded" : "selected"} />
+                <StatusChip label={artifact.redacted ? "redacted content" : "raw content"} tone={artifact.redacted ? "degraded" : "neutral"} />
+              </div>
+              <dl className="mt-3 grid gap-2 text-xs text-text-muted sm:grid-cols-2">
+                <div>
+                  <dt className="text-text-dim">artifactId</dt>
+                  <dd className="break-all font-mono text-primary">{artifact.artifactId}</dd>
+                </div>
+                <div>
+                  <dt className="text-text-dim">bytes</dt>
+                  <dd className="font-mono">{artifact.byteLength}{artifact.outputLimitBytes ? `, limit ${artifact.outputLimitBytes}` : ""}</dd>
+                </div>
+              </dl>
+              <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/70 bg-bg/80 p-3 text-xs leading-5 text-text-muted">
+                {artifact.contentUnavailable ? `Content unavailable: ${artifact.contentUnavailable}` : artifact.content}
+              </pre>
+            </article>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

@@ -111,13 +111,13 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
       }
 
       if (url.pathname === "/api/failures") {
-        sendJson(response, 200, buildFailuresPayload(runId, session.recorder.events));
+        sendJson(response, 200, await buildFailuresPayload(runId, session.recorder.events, session.recorder.runDir));
         return;
       }
 
       if (url.pathname.startsWith("/api/traces/")) {
         const requestedTraceId = decodeURIComponent(url.pathname.slice("/api/traces/".length));
-        sendJson(response, 200, buildTracePayload(runId, session.recorder.events, requestedTraceId));
+        sendJson(response, 200, await buildTracePayload(runId, session.recorder.events, requestedTraceId, session.recorder.runDir));
         return;
       }
 
@@ -922,17 +922,19 @@ function buildDownstreamServerHealthRows(input: {
   });
 }
 
-function buildFailuresPayload(runId: StableId, events: readonly CoreEvent[]): JsonObject {
+async function buildFailuresPayload(runId: StableId, events: readonly CoreEvent[], runDir: string): Promise<JsonObject> {
   const artifactEvents = events.filter((event) => event.type === "evidence.artifact.created");
   const artifacts = artifactEvents.flatMap((event) => (isEvidenceArtifact(event.data) ? [event.data] : []));
   const sanitizedEvents = events.filter((event) => event.type === "output.sanitized");
-  const failures = events
+  const failures = await Promise.all(events
     .filter((event) => event.type === "tool.call.failed" && isFailureCard(event.data))
-    .map((event) => {
+    .map(async (event) => {
       const card = event.data as FailureCard;
       const linkedArtifactIds = new Set(card.evidenceLinks.map((link) => link.artifactId));
-      const cardArtifacts = artifacts.filter(
-        (artifact) => linkedArtifactIds.has(artifact.artifactId) || artifact.toolCallId === event.toolCallId
+      const cardArtifacts = await enrichArtifacts(
+        runDir,
+        artifacts.filter((artifact) => linkedArtifactIds.has(artifact.artifactId) || artifact.toolCallId === event.toolCallId),
+        events
       );
       return {
         ...card,
@@ -945,7 +947,7 @@ function buildFailuresPayload(runId: StableId, events: readonly CoreEvent[]): Js
         rawArtifacts: cardArtifacts,
         sanitizedEvents: sanitizedEvents.filter((sanitized) => sanitized.toolCallId === event.toolCallId)
       };
-    });
+    }));
   return {
     runId,
     generatedAt: new Date().toISOString(),
@@ -953,16 +955,17 @@ function buildFailuresPayload(runId: StableId, events: readonly CoreEvent[]): Js
   };
 }
 
-function buildTracePayload(runId: StableId, events: readonly CoreEvent[], requestedTraceId: string): JsonObject {
+async function buildTracePayload(runId: StableId, events: readonly CoreEvent[], requestedTraceId: string, runDir: string): Promise<JsonObject> {
   const fallbackTraceId = events.find((event) => event.traceId)?.traceId ?? "trace:waiting";
   const traceId = requestedTraceId === "latest" ? fallbackTraceId : requestedTraceId;
   const traceEvents = events.filter((event) => event.traceId === traceId);
   const baseEvents = traceEvents.length > 0 ? traceEvents : events;
+  const artifacts = baseEvents.flatMap((event) => (isEvidenceArtifact(event.data) ? [event.data] : []));
+  const rawArtifacts = await enrichArtifacts(runDir, artifacts, events);
   const warnings =
     traceEvents.length === 0 && events.length > 0
       ? [`Trace ${traceId} was not found. Showing latest run events as partial context.`]
       : [];
-  const first = baseEvents[0];
   return {
     runId,
     traceId,
@@ -970,9 +973,80 @@ function buildTracePayload(runId: StableId, events: readonly CoreEvent[], reques
     status: events.length === 0 ? "empty" : warnings.length > 0 ? "degraded" : "ready",
     events: baseEvents as unknown as JsonValue,
     nodes: buildTraceNodes(baseEvents),
-    correlation: first ? correlationFromCoreEvent(first) : { runId, traceId },
+    correlation: mergedCorrelationFromEvents(baseEvents, runId, traceId),
+    rawStdout: rawArtifacts.filter((artifact) => artifact.kind === "raw-stdout") as unknown as JsonValue,
+    rawStderr: rawArtifacts.filter((artifact) => artifact.kind === "raw-stderr") as unknown as JsonValue,
+    rawArtifacts: rawArtifacts as unknown as JsonValue,
     warnings
   };
+}
+
+async function enrichArtifacts(runDir: string, artifacts: readonly EvidenceArtifact[], events: readonly CoreEvent[]): Promise<JsonObject[]> {
+  return await Promise.all(artifacts.map(async (artifact) => {
+    const outputLimit = outputLimitForArtifact(events, artifact.artifactId);
+    const artifactPath = path.resolve(runDir, artifact.relativePath);
+    const safeRunDir = path.resolve(runDir);
+    if (!artifactPath.startsWith(`${safeRunDir}${path.sep}`)) {
+      return {
+        ...artifact,
+        content: "",
+        truncated: Boolean(outputLimit),
+        ...(outputLimit ? { outputLimitBytes: outputLimit } : {}),
+        contentUnavailable: "Artifact path is outside the run directory."
+      };
+    }
+    try {
+      const content = await readFile(artifactPath, "utf8");
+      return {
+        ...artifact,
+        content,
+        truncated: Boolean(outputLimit),
+        ...(outputLimit ? { outputLimitBytes: outputLimit } : {})
+      };
+    } catch (error) {
+      return {
+        ...artifact,
+        content: "",
+        truncated: Boolean(outputLimit),
+        ...(outputLimit ? { outputLimitBytes: outputLimit } : {}),
+        contentUnavailable: error instanceof Error ? error.message : "Artifact content could not be read."
+      };
+    }
+  }));
+}
+
+function outputLimitForArtifact(events: readonly CoreEvent[], artifactId: StableId): number | undefined {
+  const event = events.find((candidate) => {
+    if (candidate.type !== "output.sanitized" || !isRecord(candidate.data)) {
+      return false;
+    }
+    return candidate.data.artifactId === artifactId && candidate.data.reason === "output_limit";
+  });
+  if (event && isRecord(event.data) && typeof event.data.outputLimitBytes === "number") {
+    return event.data.outputLimitBytes;
+  }
+  return undefined;
+}
+
+function mergedCorrelationFromEvents(events: readonly CoreEvent[], runId: StableId, traceId: string): JsonObject {
+  const correlation: Record<string, string> = { runId, traceId };
+  for (const event of events) {
+    for (const key of [
+      "parentId",
+      "harnessId",
+      "adapterId",
+      "downstreamServerId",
+      "toolCallId",
+      "attemptId",
+      "policyDecisionId",
+      "artifactId"
+    ] as const) {
+      if (!correlation[key] && typeof event[key] === "string") {
+        correlation[key] = event[key];
+      }
+    }
+  }
+  return correlation;
 }
 
 function buildTraceNodes(events: readonly CoreEvent[]): JsonObject[] {

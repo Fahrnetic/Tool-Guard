@@ -68,10 +68,17 @@ export interface FailureCardView extends FailureCard {
   readonly occurredAt: string;
   readonly summary: string;
   readonly correlation: CorrelationContext;
-  readonly rawStdout: readonly EvidenceArtifact[];
-  readonly rawStderr: readonly EvidenceArtifact[];
-  readonly rawArtifacts: readonly EvidenceArtifact[];
+  readonly rawStdout: readonly RawArtifactView[];
+  readonly rawStderr: readonly RawArtifactView[];
+  readonly rawArtifacts: readonly RawArtifactView[];
   readonly sanitizedEvents: readonly CoreEvent[];
+}
+
+export interface RawArtifactView extends EvidenceArtifact {
+  readonly content: string;
+  readonly truncated: boolean;
+  readonly outputLimitBytes?: number;
+  readonly contentUnavailable?: string;
 }
 
 export interface TracePayload {
@@ -82,6 +89,9 @@ export interface TracePayload {
   readonly events: readonly CoreEvent[];
   readonly nodes: readonly TraceNode[];
   readonly correlation: CorrelationContext;
+  readonly rawStdout: readonly RawArtifactView[];
+  readonly rawStderr: readonly RawArtifactView[];
+  readonly rawArtifacts: readonly RawArtifactView[];
   readonly warnings: readonly string[];
 }
 

@@ -1,7 +1,7 @@
 import { CorrelationGrid } from "../components/CorrelationGrid.js";
 import { StatePanel } from "../components/StatePanel.js";
 import { StatusChip } from "../components/StatusChip.js";
-import type { FailureInboxPayload, ResourceStatus } from "../lib/model.js";
+import type { FailureInboxPayload, RawArtifactView, ResourceStatus } from "../lib/model.js";
 
 interface FailureInboxProps {
   readonly payload?: FailureInboxPayload;
@@ -112,7 +112,15 @@ function RawPane({ title, body }: { readonly title: string; readonly body: strin
   );
 }
 
-function describeArtifacts(artifacts: readonly { readonly artifactId: string; readonly relativePath: string; readonly byteLength: number; readonly redacted: boolean }[], empty: string): string {
+function describeArtifacts(artifacts: readonly RawArtifactView[], empty: string): string {
   if (artifacts.length === 0) return empty;
-  return artifacts.map((artifact) => `${artifact.artifactId}\n${artifact.relativePath}\n${artifact.byteLength} bytes\nredacted=${artifact.redacted}`).join("\n\n");
+  return artifacts.map((artifact) => [
+    `${artifact.artifactId}`,
+    `${artifact.relativePath}`,
+    `${artifact.byteLength} bytes${artifact.outputLimitBytes ? `, output limit ${artifact.outputLimitBytes} bytes` : ""}`,
+    `redacted=${artifact.redacted}`,
+    `truncated=${artifact.truncated}`,
+    "",
+    artifact.contentUnavailable ? `Content unavailable: ${artifact.contentUnavailable}` : artifact.content
+  ].join("\n")).join("\n\n");
 }

@@ -257,6 +257,7 @@ export class CoreSession {
     data: {
       readonly reason: string;
       readonly artifactId?: StableId;
+      readonly outputLimitBytes?: number;
       readonly redactionCount?: number;
       readonly reasons?: string[];
       readonly streams?: string[];

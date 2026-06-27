@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell, type NavigationItem } from "./components/AppShell.js";
 import { fetchFailures, fetchHealth, fetchIntegrations, fetchLatestRun, fetchPolicies, fetchReplay, fetchReports, fetchTrace, streamCoreEvents } from "./lib/api.js";
 import type { CoreEvent } from "@toolplane/core";
@@ -55,6 +55,7 @@ export function App() {
   const [data, setData] = useState<DataState>({ status: "loading" });
   const [streamEvents, setStreamEvents] = useState<CoreEvent[]>([]);
   const [streamState, setStreamState] = useState<"loading" | "connected" | "degraded" | "error">("loading");
+  const [selectedCorrelationId, setSelectedCorrelationId] = useState<string | undefined>();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -117,6 +118,21 @@ export function App() {
     };
   }, []);
 
+  const refetchTraceForSelection = useCallback(async (selection: { readonly id: string; readonly kind: string; readonly traceId?: string }) => {
+    setSelectedCorrelationId(selection.id);
+    const traceId = selection.kind === "trace" ? selection.id : (selection.traceId ?? data.trace?.traceId ?? "latest");
+    try {
+      const trace = await fetchTrace(traceId);
+      setData((current) => ({ ...current, trace, status: current.status === "error" ? "degraded" : current.status }));
+    } catch (error) {
+      setData((current) => ({
+        ...current,
+        status: "degraded",
+        error: error instanceof Error ? error.message : "Trace refetch failed for selected correlation ID."
+      }));
+    }
+  }, [data.trace?.traceId]);
+
   useEffect(() => {
     return streamCoreEvents({
       onState: setStreamState,
@@ -155,7 +171,13 @@ export function App() {
       ) : active === "failures" ? (
         <FailureInbox {...(data.failures ? { payload: data.failures } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
       ) : active === "traces" ? (
-        <TraceExplorer {...(data.trace ? { payload: data.trace } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
+        <TraceExplorer
+          {...(data.trace ? { payload: data.trace } : {})}
+          status={data.status}
+          {...(data.error ? { error: data.error } : {})}
+          {...(selectedCorrelationId ? { selectedId: selectedCorrelationId } : {})}
+          onSelectCorrelation={refetchTraceForSelection}
+        />
       ) : active === "replay" ? (
         <ReplayLab {...(data.replay ? { payload: data.replay } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
       ) : active === "policy" ? (

@@ -4,14 +4,119 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   ToolRegistry,
+  CoreSession,
   createCoreApiServer,
   createId,
   SIDECAR_PROTOCOL_VERSION,
   type CoreEvent,
-  type FailureCard
+  type FailureCard,
+  type ToolCall
 } from "../src/index.js";
 
 describe("local sidecar API", () => {
+  it("serves redacted raw stdout and stderr content with truncation metadata in failure and trace payloads", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-raw-api-"));
+    const runId = createId("run");
+    const session = new CoreSession({ evidenceRoot: root, runId });
+    const call: ToolCall = {
+      runId,
+      traceId: createId("trace"),
+      parentId: createId("parent"),
+      harnessId: createId("harness"),
+      adapterId: createId("adapter"),
+      downstreamServerId: createId("server"),
+      toolCallId: createId("toolcall"),
+      attemptId: createId("attempt"),
+      policyDecisionId: createId("policy"),
+      toolName: "fixture.raw-streams",
+      arguments: {},
+      deadlineMs: 1000,
+      idempotency: "idempotent",
+      sourcePath: "non-mcp-direct"
+    };
+    const registry = new ToolRegistry();
+    registry.register({
+      toolName: "fixture.raw-streams",
+      title: "Raw stream fixture",
+      description: "Records stdout and stderr before failing.",
+      protocol: "fixture",
+      downstreamServerId: call.downstreamServerId,
+      inputSchema: { type: "object" },
+      destructiveRisk: "none",
+      execute: async ({ call: activeCall }) => {
+        const stdout = await session.recordRawArtifact(activeCall, {
+          kind: "raw-stdout",
+          fileName: `${activeCall.toolCallId}.stdout.txt`,
+          content: "stdout first line\nstdout second line redacted-token",
+          redacted: true
+        });
+        await session.emitOutputSanitized(activeCall, "Output limit enforced for test stdout.", {
+          reason: "output_limit",
+          outputLimitBytes: 32,
+          artifactId: stdout.artifactId
+        });
+        await session.recordRawArtifact(activeCall, {
+          kind: "raw-stderr",
+          fileName: `${activeCall.toolCallId}.stderr.txt`,
+          content: "stderr first line\nstderr second line",
+          redacted: true
+        });
+        throw new Error("fixture failed after streams");
+      }
+    });
+    const handle = createCoreApiServer({ port: 0, evidenceRoot: root, session, registry, seedDirectRun: false });
+    await handle.ready;
+    const address = handle.server.address();
+    if (typeof address !== "object" || !address) {
+      throw new Error("Expected test server address");
+    }
+    try {
+      await session.executeToolCall(registry, call);
+      const origin = `http://127.0.0.1:${address.port}`;
+
+      const failuresResponse = await fetch(`${origin}/api/failures`);
+      expect(failuresResponse.status).toBe(200);
+      const failures = (await failuresResponse.json()) as {
+        failures: {
+          rawStdout: { content: string; truncated: boolean; outputLimitBytes?: number }[];
+          rawStderr: { content: string; truncated: boolean }[];
+        }[];
+      };
+      expect(failures.failures[0]?.rawStdout[0]).toMatchObject({
+        content: "stdout first line\nstdout second line redacted-token",
+        truncated: true,
+        outputLimitBytes: 32
+      });
+      expect(failures.failures[0]?.rawStderr[0]).toMatchObject({
+        content: "stderr first line\nstderr second line",
+        truncated: false
+      });
+
+      const traceResponse = await fetch(`${origin}/api/traces/${encodeURIComponent(call.traceId)}`);
+      expect(traceResponse.status).toBe(200);
+      const trace = (await traceResponse.json()) as {
+        correlation: Record<string, string>;
+        rawStdout: { content: string; truncated: boolean }[];
+        rawStderr: { content: string; truncated: boolean }[];
+      };
+      expect(trace.correlation).toMatchObject({
+        runId,
+        traceId: call.traceId,
+        parentId: call.parentId,
+        harnessId: call.harnessId,
+        adapterId: call.adapterId,
+        downstreamServerId: call.downstreamServerId,
+        toolCallId: call.toolCallId,
+        attemptId: call.attemptId,
+        policyDecisionId: call.policyDecisionId
+      });
+      expect(trace.rawStdout[0]?.content).toContain("stdout first line\nstdout second line");
+      expect(trace.rawStderr[0]?.content).toContain("stderr first line\nstderr second line");
+    } finally {
+      await handle.close();
+    }
+  });
+
   it("serves distinct harness, adapter, downstream server, and downstream tool health rows", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "toolguard-health-"));
     const handle = createCoreApiServer({ port: 0, evidenceRoot: root });

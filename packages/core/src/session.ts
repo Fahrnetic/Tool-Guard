@@ -217,6 +217,18 @@ export class CoreSession {
     }
   }
 
+  async failToolCall(
+    call: ToolCall,
+    failureTypeOrClassification: FailureCard["failureType"] | FailureClassification,
+    rawDetails: readonly string[]
+  ): Promise<FailureCard> {
+    await this.#emit("run.started", call, "Run started");
+    await this.#emit("tool.call.started", call, `Tool call started: ${call.toolName}`);
+    const failure = await this.#recordFailure(call, failureTypeOrClassification, rawDetails);
+    await this.#emit("run.completed", call, "Run completed");
+    return failure;
+  }
+
   async #executeAttempt(
     tool: RegisteredTool,
     call: ToolCall,

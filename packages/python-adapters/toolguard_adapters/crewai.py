@@ -26,8 +26,8 @@ class CrewAIToolGuardTool:
             )
         )
 
-    def _run(self, **kwargs: Any) -> Any:
-        response = self._client.call_tool(self.name, dict(kwargs), correlation=Correlation())
+    def _run(self, correlation: Correlation | None = None, **kwargs: Any) -> Any:
+        response = self._client.call_tool(self.name, dict(kwargs), correlation=correlation or Correlation())
         if response.get("status") == "success":
             result = response.get("result", {})
             if isinstance(result, dict):
@@ -35,8 +35,8 @@ class CrewAIToolGuardTool:
             return result
         return response.get("failureCard", response)
 
-    def run(self, **kwargs: Any) -> Any:
-        return self._run(**kwargs)
+    def run(self, correlation: Correlation | None = None, **kwargs: Any) -> Any:
+        return self._run(correlation=correlation, **kwargs)
 
-    def __call__(self, **kwargs: Any) -> Any:
-        return self._run(**kwargs)
+    def __call__(self, correlation: Correlation | None = None, **kwargs: Any) -> Any:
+        return self._run(correlation=correlation, **kwargs)

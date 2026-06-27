@@ -6,9 +6,8 @@ import { ToolRegistry } from "./registry.js";
 import { registerChaosFixtures } from "./chaos-fixtures.js";
 import { validateReportManifest } from "./report.js";
 import { createId, type StableId } from "./ids.js";
-import { buildFailureCard, classifyFailure } from "./classifier.js";
 import type { CoreEvent } from "./events.js";
-import type { FailureType, JsonObject, JsonValue, ToolCall } from "./types.js";
+import type { JsonObject, JsonValue, ToolCall } from "./types.js";
 
 export const SIDECAR_PROTOCOL_VERSION = "toolguard.sidecar.v1";
 
@@ -129,13 +128,44 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
           return;
         }
 
-        const payload = await readJsonBody(request);
+        const body = await readSidecarJsonBody(request);
+        if (!body.ok) {
+          const call = makeSidecarFailureToolCall(undefined, runId, body.toolName);
+          const failureCard = await session.failToolCall(call, "sidecar_protocol_error", [body.message]);
+          sendJson(response, body.statusCode, {
+            protocolVersion: SIDECAR_PROTOCOL_VERSION,
+            status: "failure",
+            failureCard,
+            evidenceDir: session.recorder.runDir,
+            eventsPath: session.recorder.eventsPath
+          });
+          return;
+        }
+
+        const payload = body.payload;
+        const validation = validateSidecarPayload(payload);
+        if (!validation.valid) {
+          const call = makeSidecarFailureToolCall(payload, runId, validation.toolName);
+          const failureCard = await session.failToolCall(call, "sidecar_protocol_error", validation.errors);
+          sendJson(response, validation.statusCode, {
+            protocolVersion: SIDECAR_PROTOCOL_VERSION,
+            status: "failure",
+            failureCard,
+            evidenceDir: session.recorder.runDir,
+            eventsPath: session.recorder.eventsPath
+          });
+          return;
+        }
+
         const call = makeSidecarToolCall(payload, runId, registry);
         if (payload.protocolVersion !== SIDECAR_PROTOCOL_VERSION) {
+          const failureCard = await session.failToolCall(call, "sidecar_protocol_error", [
+            `Expected ${SIDECAR_PROTOCOL_VERSION}, received ${String(payload.protocolVersion)}`
+          ]);
           sendJson(response, 426, {
             protocolVersion: SIDECAR_PROTOCOL_VERSION,
             status: "failure",
-            failureCard: makeSidecarFailureCard(call, "sidecar_protocol_error"),
+            failureCard,
             evidenceDir: session.recorder.runDir,
             eventsPath: session.recorder.eventsPath
           });
@@ -236,7 +266,7 @@ function makeApiToolCall(runId: StableId, downstreamServerId: StableId): ToolCal
 }
 
 function makeSidecarToolCall(payload: SidecarToolCallRequest, runId: StableId, registry: ToolRegistry): ToolCall {
-  const toolName = stringFrom(payload.toolName, "fixture.good");
+  const toolName = stringFrom(payload.toolName, "sidecar.request");
   const tool = registry.get(toolName);
   return {
     runId: stableIdFrom(payload.correlation?.runId, runId),
@@ -261,12 +291,28 @@ function makeSidecarToolCall(payload: SidecarToolCallRequest, runId: StableId, r
   };
 }
 
-function makeSidecarFailureCard(call: ToolCall, failureType: FailureType) {
-  return buildFailureCard({
-    call,
-    classification: classifyFailure({ failureType }),
-    evidenceLinks: []
-  });
+function makeSidecarFailureToolCall(
+  payload: SidecarToolCallRequest | undefined,
+  runId: StableId,
+  toolName = "sidecar.request"
+): ToolCall {
+  return {
+    runId: stableIdFrom(payload?.correlation?.runId, runId),
+    traceId: stableIdFrom(payload?.correlation?.traceId, createId("trace")),
+    ...(payload?.correlation?.parentId ? { parentId: stableIdFrom(payload.correlation.parentId, createId("parent")) } : {}),
+    harnessId: stableIdFrom(payload?.harnessId ?? payload?.correlation?.harnessId, createId("harness")),
+    adapterId: stableIdFrom(payload?.adapterId ?? payload?.correlation?.adapterId, createId("adapter")),
+    downstreamServerId: stableIdFrom(payload?.downstreamServerId ?? payload?.correlation?.downstreamServerId, createId("server")),
+    toolCallId: stableIdFrom(payload?.correlation?.toolCallId, createId("toolcall")),
+    attemptId: stableIdFrom(payload?.correlation?.attemptId, createId("attempt")),
+    policyDecisionId: stableIdFrom(payload?.correlation?.policyDecisionId, createId("policy")),
+    toolName,
+    arguments: {},
+    deadlineMs: numberFrom(payload?.deadlineMs, 1_000),
+    idempotency:
+      payload?.idempotency === "non-idempotent" || payload?.idempotency === "unknown" ? payload.idempotency : "idempotent",
+    sourcePath: "framework-adapter"
+  };
 }
 
 interface SidecarToolCallRequest {
@@ -293,22 +339,73 @@ interface SidecarToolCallRequest {
   };
 }
 
-async function readJsonBody(request: http.IncomingMessage): Promise<SidecarToolCallRequest> {
+type SidecarJsonBodyResult =
+  | { readonly ok: true; readonly payload: SidecarToolCallRequest }
+  | { readonly ok: false; readonly statusCode: number; readonly message: string; readonly toolName?: string };
+
+async function readSidecarJsonBody(request: http.IncomingMessage): Promise<SidecarJsonBodyResult> {
   const chunks: Buffer[] = [];
   let byteLength = 0;
   for await (const chunk of request) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
     byteLength += buffer.byteLength;
     if (byteLength > 256 * 1024) {
-      throw new Error("request body too large");
+      return {
+        ok: false,
+        statusCode: 413,
+        message: "ToolGuard sidecar request body exceeded the 262144 byte limit."
+      };
     }
     chunks.push(buffer);
   }
   if (chunks.length === 0) {
-    return {};
+    return { ok: true, payload: {} };
   }
-  const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  return isRecord(parsed) ? (parsed as SidecarToolCallRequest) : {};
+  try {
+    const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    if (!isRecord(parsed)) {
+      return { ok: false, statusCode: 400, message: "ToolGuard sidecar request body must be a JSON object." };
+    }
+    return { ok: true, payload: parsed as SidecarToolCallRequest };
+  } catch (error) {
+    return {
+      ok: false,
+      statusCode: 400,
+      message: `ToolGuard sidecar request body was malformed JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    };
+  }
+}
+
+function validateSidecarPayload(payload: SidecarToolCallRequest): {
+  readonly valid: boolean;
+  readonly statusCode: number;
+  readonly errors: readonly string[];
+  readonly toolName?: string;
+} {
+  if (payload.protocolVersion !== SIDECAR_PROTOCOL_VERSION) {
+    return {
+      valid: true,
+      statusCode: 426,
+      errors: [],
+      toolName: typeof payload.toolName === "string" && payload.toolName.length > 0 ? payload.toolName : "sidecar.request"
+    };
+  }
+  const errors: string[] = [];
+  const toolName = typeof payload.toolName === "string" && payload.toolName.length > 0 ? payload.toolName : undefined;
+  if (!toolName) {
+    errors.push("Sidecar request field toolName must be a non-empty string.");
+  }
+  if (!isRecord(payload.arguments)) {
+    errors.push("Sidecar request field arguments must be a JSON object.");
+  }
+  return {
+    valid: errors.length === 0,
+    statusCode: 400,
+    errors,
+    toolName: toolName ?? "sidecar.request"
+  };
 }
 
 function jsonObjectFrom(value: unknown): JsonObject {

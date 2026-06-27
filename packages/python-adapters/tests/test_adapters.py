@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 import threading
 import time
 import unittest
@@ -219,6 +220,115 @@ class PythonAdapterTests(unittest.TestCase):
                 "policyDecisionId": "policy_python",
             },
         )
+
+    def test_langgraph_wrapper_accepts_caller_correlation(self) -> None:
+        with FakeSidecar(
+            [
+                {
+                    "protocolVersion": SIDECAR_PROTOCOL_VERSION,
+                    "status": "success",
+                    "result": {
+                        "toolName": "fixture.good",
+                        "output": "langgraph-correlated",
+                        "safeSummary": "Tool fixture.good completed successfully.",
+                        "artifactIds": ["artifact_success"],
+                    },
+                }
+            ]
+        ) as server:
+            correlation = Correlation(
+                run_id="run_langgraph",
+                trace_id="trace_langgraph",
+                parent_id="parent_langgraph",
+                harness_id="harness_langgraph",
+                adapter_id="adapter_langgraph",
+                tool_call_id="toolcall_langgraph",
+                attempt_id="attempt_langgraph",
+                policy_decision_id="policy_langgraph",
+            )
+            tool = LangGraphToolGuardTool("fixture.good", config=config())
+            result = tool.invoke({}, correlation=correlation)
+
+        self.assertEqual(result, "langgraph-correlated")
+        self.assertEqual(server.requests[0]["harnessId"], "harness_langgraph")
+        self.assertEqual(server.requests[0]["adapterId"], "adapter_langgraph")
+        self.assertEqual(server.requests[0]["correlation"]["runId"], "run_langgraph")
+        self.assertEqual(server.requests[0]["correlation"]["traceId"], "trace_langgraph")
+        self.assertEqual(server.requests[0]["correlation"]["parentId"], "parent_langgraph")
+        self.assertEqual(server.requests[0]["correlation"]["toolCallId"], "toolcall_langgraph")
+
+    def test_crewai_wrapper_accepts_caller_correlation(self) -> None:
+        with FakeSidecar(
+            [
+                {
+                    "protocolVersion": SIDECAR_PROTOCOL_VERSION,
+                    "status": "success",
+                    "result": {
+                        "toolName": "fixture.good",
+                        "output": "crewai-correlated",
+                        "safeSummary": "Tool fixture.good completed successfully.",
+                        "artifactIds": ["artifact_success"],
+                    },
+                }
+            ]
+        ) as server:
+            correlation = Correlation(
+                run_id="run_crewai",
+                trace_id="trace_crewai",
+                harness_id="harness_crewai",
+                adapter_id="adapter_crewai",
+                tool_call_id="toolcall_crewai",
+                attempt_id="attempt_crewai",
+                policy_decision_id="policy_crewai",
+            )
+            tool = CrewAIToolGuardTool("fixture.good", config=config("toolguard-crewai"))
+            result = tool.run(correlation=correlation, topic="adapter")
+
+        self.assertEqual(result, "crewai-correlated")
+        self.assertEqual(server.requests[0]["harnessId"], "harness_crewai")
+        self.assertEqual(server.requests[0]["adapterId"], "adapter_crewai")
+        self.assertEqual(server.requests[0]["correlation"]["runId"], "run_crewai")
+        self.assertEqual(server.requests[0]["correlation"]["traceId"], "trace_crewai")
+        self.assertEqual(server.requests[0]["correlation"]["toolCallId"], "toolcall_crewai")
+        self.assertEqual(server.requests[0]["arguments"], {"topic": "adapter"})
+
+    @unittest.skipUnless(importlib.util.find_spec("langgraph"), "optional smoke: install langgraph to run real API check")
+    def test_optional_langgraph_smoke_callable_surface(self) -> None:
+        with FakeSidecar(
+            [
+                {
+                    "protocolVersion": SIDECAR_PROTOCOL_VERSION,
+                    "status": "success",
+                    "result": {
+                        "toolName": "fixture.good",
+                        "output": "langgraph-smoke",
+                        "safeSummary": "Tool fixture.good completed successfully.",
+                        "artifactIds": ["artifact_success"],
+                    },
+                }
+            ]
+        ):
+            tool = LangGraphToolGuardTool("fixture.good", config=config())
+            self.assertEqual(tool.invoke({}), "langgraph-smoke")
+
+    @unittest.skipUnless(importlib.util.find_spec("crewai"), "optional smoke: install crewai to run real API check")
+    def test_optional_crewai_smoke_callable_surface(self) -> None:
+        with FakeSidecar(
+            [
+                {
+                    "protocolVersion": SIDECAR_PROTOCOL_VERSION,
+                    "status": "success",
+                    "result": {
+                        "toolName": "fixture.good",
+                        "output": "crewai-smoke",
+                        "safeSummary": "Tool fixture.good completed successfully.",
+                        "artifactIds": ["artifact_success"],
+                    },
+                }
+            ]
+        ):
+            tool = CrewAIToolGuardTool("fixture.good", config=config("toolguard-crewai"))
+            self.assertEqual(tool.run(), "crewai-smoke")
 
     def test_non_local_endpoint_is_rejected_before_network_use(self) -> None:
         client = ToolGuardSidecarClient(

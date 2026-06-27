@@ -3,3 +3,8 @@ name = "toolguard-adapters"
 version = "0.0.0"
 description = "Thin ToolGuard Python framework adapters for LangGraph and CrewAI."
 requires-python = ">=3.10"
+
+[project.optional-dependencies]
+langgraph-smoke = ["langgraph"]
+crewai-smoke = ["crewai"]
+smoke = ["langgraph", "crewai"]

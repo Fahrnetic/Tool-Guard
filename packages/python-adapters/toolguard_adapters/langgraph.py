@@ -26,10 +26,16 @@ class LangGraphToolGuardTool:
             )
         )
 
-    def invoke(self, input: dict[str, Any] | None = None, **kwargs: Any) -> Any:
+    def invoke(
+        self,
+        input: dict[str, Any] | None = None,
+        *,
+        correlation: Correlation | None = None,
+        **kwargs: Any,
+    ) -> Any:
         arguments = dict(input or {})
         arguments.update(kwargs)
-        response = self._client.call_tool(self.name, arguments, correlation=Correlation())
+        response = self._client.call_tool(self.name, arguments, correlation=correlation or Correlation())
         if response.get("status") == "success":
             result = response.get("result", {})
             if isinstance(result, dict):
@@ -37,5 +43,11 @@ class LangGraphToolGuardTool:
             return result
         return response.get("failureCard", response)
 
-    def __call__(self, input: dict[str, Any] | None = None, **kwargs: Any) -> Any:
-        return self.invoke(input, **kwargs)
+    def __call__(
+        self,
+        input: dict[str, Any] | None = None,
+        *,
+        correlation: Correlation | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        return self.invoke(input, correlation=correlation, **kwargs)

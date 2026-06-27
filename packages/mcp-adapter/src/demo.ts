@@ -125,7 +125,7 @@ export async function createMcpAdapterDemoApiServer(options: {
   const session = new CoreSession({
     evidenceRoot,
     runId: createId("run"),
-    retry: { maxRetries: 0 },
+    retry: { maxRetries: 1 },
     circuitBreaker: { failureThreshold: 2, openMs: 500 }
   });
   const coreRegistry = new ToolRegistry();

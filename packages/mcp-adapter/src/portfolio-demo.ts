@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 import { runToolplaneCli } from "@toolplane/cli";
 import {
+  ClassifiedToolError,
   createId,
   registerChaosFixtures,
   type CoreEvent,
@@ -288,12 +289,15 @@ export async function exercisePortfolioAcceptanceSurfaces(handle: McpAdapterDemo
   }
 
   const executed = await exerciseCoreChaosFixtures(api, REQUIRED_CHAOS_FIXTURES);
+  const recoveredCircuit = await exerciseRecoveringCircuit(api);
   const cli = await exerciseCliWrapper(session.recorder.runDir);
   const python = await exercisePythonAdapters();
   return [
     ...fixtureLines,
     "Core fixture execution:",
     ...executed,
+    "Recovering circuit probe:",
+    ...recoveredCircuit,
     "CLI wrapper:",
     ...cli,
     "Python framework adapters:",
@@ -336,6 +340,46 @@ async function exerciseCoreChaosFixtures(
     throw new Error("Repeated deterministic failures did not prove circuit fast-fail behavior.");
   }
   return lines;
+}
+
+async function exerciseRecoveringCircuit(api: McpAdapterDemoApiServerHandle["api"]): Promise<string[]> {
+  const downstreamServerId = createId("server");
+  const toolName = "fixture.recovering-circuit";
+  let unhealthy = true;
+  api.registry.register({
+    toolName,
+    title: "Recovering circuit fixture",
+    description: "Fails twice to open the circuit, then succeeds after the half-open recovery window.",
+    protocol: "fixture",
+    downstreamServerId,
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    destructiveRisk: "none",
+    execute: () => {
+      if (unhealthy) {
+        throw new ClassifiedToolError("process_crash", "Recovering circuit fixture is intentionally unhealthy.", [
+          "initial recovery probe failure"
+        ]);
+      }
+      return { ok: true, fixture: "recovering-circuit" };
+    }
+  });
+
+  const first = await api.session.executeToolCall(api.registry, makePortfolioCall(api.session.runId, downstreamServerId, toolName));
+  const second = await api.session.executeToolCall(api.registry, makePortfolioCall(api.session.runId, downstreamServerId, toolName));
+  const fastFail = await api.session.executeToolCall(api.registry, makePortfolioCall(api.session.runId, downstreamServerId, toolName));
+  await delay(550);
+  unhealthy = false;
+  const recovered = await api.session.executeToolCall(api.registry, makePortfolioCall(api.session.runId, downstreamServerId, toolName));
+  const events = api.session.recorder.events;
+  if (!events.some((event) => event.type === "circuit.closed")) {
+    throw new Error("Recovering circuit probe did not emit circuit.closed.");
+  }
+  return [
+    `  - first failure: ${"failureType" in first ? first.failureType : "success"}`,
+    `  - second failure: ${"failureType" in second ? second.failureType : "success"}`,
+    `  - fast fail: ${"failureType" in fastFail ? fastFail.failureType : "success"}`,
+    `  - recovery probe: ${"failureType" in recovered ? recovered.failureType : "success"}`
+  ];
 }
 
 async function exerciseCliWrapper(evidenceRoot: string): Promise<string[]> {
@@ -416,12 +460,18 @@ function makePortfolioCall(
 
 function requiredEventsSeen(events: readonly CoreEvent[]): readonly string[] {
   const required: readonly CoreEvent["type"][] = [
+    "run.started",
+    "run.completed",
     "adapter.connected",
+    "server.preflight.started",
     "server.preflight.completed",
+    "tool.call.started",
     "tool.call.completed",
     "tool.call.failed",
+    "tool.retry.scheduled",
     "output.sanitized",
     "circuit.opened",
+    "circuit.closed",
     "evidence.artifact.created",
     "report.exported"
   ];

@@ -12,7 +12,7 @@ interface TimelineProps {
 }
 
 export function Timeline({ events, status, streamState, error }: TimelineProps) {
-  const ordered = [...events].sort((a, b) => a.sequence - b.sequence || a.occurredAt.localeCompare(b.occurredAt));
+  const ordered = uniqueEvents(events).sort((a, b) => a.sequence - b.sequence || a.occurredAt.localeCompare(b.occurredAt));
   const observed = new Set(ordered.map((event) => event.type));
 
   return (
@@ -95,6 +95,16 @@ export function Timeline({ events, status, streamState, error }: TimelineProps) 
   );
 }
 
+function uniqueEvents(events: readonly CoreEvent[]): CoreEvent[] {
+  const byId = new Map<string, CoreEvent>();
+  for (const event of events) {
+    if (!byId.has(event.eventId)) {
+      byId.set(event.eventId, event);
+    }
+  }
+  return [...byId.values()];
+}
+
 function toneForEvent(type: string): "healthy" | "degraded" | "failed" | "neutral" | "selected" {
   if (type.includes("failed") || type === "circuit.opened") return "failed";
   if (type.includes("sanitized") || type.includes("retry")) return "degraded";
@@ -103,8 +113,8 @@ function toneForEvent(type: string): "healthy" | "degraded" | "failed" | "neutra
 }
 
 function sourceLayer(event: CoreEvent): string {
-  if (event.adapterId && event.harnessId) return "harness → adapter";
-  if (event.downstreamServerId) return "downstream";
   if (event.artifactId) return "evidence";
+  if (event.downstreamServerId) return "downstream";
+  if (event.adapterId && event.harnessId) return "harness → adapter";
   return "core";
 }

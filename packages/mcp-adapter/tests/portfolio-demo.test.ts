@@ -26,12 +26,18 @@ describe("portfolio demo orchestration", () => {
     );
     expect(result.requiredEventTypes).toEqual(
       expect.arrayContaining([
+        "run.started",
+        "run.completed",
         "adapter.connected",
+        "server.preflight.started",
         "server.preflight.completed",
+        "tool.call.started",
         "tool.call.completed",
         "tool.call.failed",
+        "tool.retry.scheduled",
         "output.sanitized",
         "circuit.opened",
+        "circuit.closed",
         "evidence.artifact.created",
         "report.exported"
       ])

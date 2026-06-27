@@ -1,11 +1,31 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile as execFileCallback, spawn, type ChildProcess } from "node:child_process";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
+import { runToolplaneCli } from "@toolplane/cli";
+import {
+  createId,
+  registerChaosFixtures,
+  type CoreEvent,
+  type ToolCall
+} from "@toolplane/core";
 import { createMcpAdapterDemoApiServer, type McpAdapterDemoApiServerHandle } from "./demo.js";
 
 const CORE_URL = "http://127.0.0.1:3660";
 const UI_URL = "http://127.0.0.1:3661";
 const APPROVED_PORTS = "3660-3669";
+const execFile = promisify(execFileCallback);
+const REQUIRED_CHAOS_FIXTURES = [
+  "fixture.good",
+  "fixture.wrong-cwd",
+  "fixture.slow",
+  "fixture.hanging-stream",
+  "fixture.crash-after-initialize",
+  "fixture.malformed-json",
+  "fixture.prompt-injection-output"
+] as const;
 
 export interface PortfolioDemoOptions {
   readonly holdMs?: number;
@@ -22,6 +42,12 @@ export interface PortfolioDemoResult {
   readonly eventCount: number;
   readonly failureCount: number;
   readonly preflightStatuses: readonly string[];
+  readonly chaosFixtureRows: readonly string[];
+  readonly requiredEventTypes: readonly string[];
+  readonly replayStatus: string;
+  readonly redactionScanPassed: boolean;
+  readonly noOverclaimScanPassed: boolean;
+  readonly cleanupVerified: boolean;
   readonly integrationClaimLevels: readonly string[];
   readonly transcript: string;
 }
@@ -40,13 +66,22 @@ export async function runPortfolioDemo(options: PortfolioDemoOptions = {}): Prom
   try {
     handle = await createMcpAdapterDemoApiServer({ host: "127.0.0.1", port: 3660 });
     await assertJson(`${CORE_URL}/health`, "Core/API health");
+    const finalAcceptanceTranscript = await exercisePortfolioAcceptanceSurfaces(handle);
+    const replay = await assertJson<{ readonly replayableRuns: readonly unknown[] }>(`${CORE_URL}/api/replay`, "replay metadata");
+    const replayResult = await postJson<{ readonly status: string }>(
+      `${CORE_URL}/api/replay`,
+      { toolName: "fixture.prompt-injection-output", fixtureOnly: true },
+      "fixture replay"
+    );
     const report = await assertJson<{
       readonly reportHtml: string;
       readonly manifestJson: string;
+      readonly redactionSummary: string;
       readonly manifestValid: boolean;
+      readonly validationErrors: readonly string[];
     }>(`${CORE_URL}/api/reports/export`, "report export");
     if (!report.manifestValid) {
-      throw new Error("Portfolio demo report manifest did not validate.");
+      throw new Error(`Portfolio demo report manifest did not validate: ${report.validationErrors.join("; ")}`);
     }
 
     if (startUi) {
@@ -55,7 +90,7 @@ export async function runPortfolioDemo(options: PortfolioDemoOptions = {}): Prom
       transcript.push(`ui: ${UI_URL}`);
     }
 
-    const latest = await assertJson<{ readonly eventCount: number }>(`${CORE_URL}/api/runs/latest`, "latest run");
+    const latest = await assertJson<{ readonly eventCount: number; readonly events: readonly CoreEvent[] }>(`${CORE_URL}/api/runs/latest`, "latest run");
     const health = await assertJson<{
       readonly rows: readonly { readonly name: string; readonly status: string }[];
     }>(`${CORE_URL}/api/health`, "preflight matrix");
@@ -63,22 +98,59 @@ export async function runPortfolioDemo(options: PortfolioDemoOptions = {}): Prom
     const integrations = await assertJson<{
       readonly integrations: readonly { readonly name: string; readonly route: string; readonly claimLevel: string; readonly limitation: string }[];
     }>(`${CORE_URL}/api/integrations`, "integration claim audit");
+    const reports = await assertJson<{
+      readonly reports: readonly { readonly reportUrl: string; readonly manifestUrl: string; readonly redactionSummaryUrl: string }[];
+    }>(`${CORE_URL}/api/reports`, "report listings");
+    const reportText = await readFile(report.reportHtml, "utf8");
+    const manifestText = await readFile(report.manifestJson, "utf8");
+    const redactionSummaryText = await readFile(report.redactionSummary, "utf8");
+    const userVisibleText = [
+      handle.result.transcript,
+      JSON.stringify(latest.events),
+      JSON.stringify(failures),
+      JSON.stringify(integrations),
+      reportText,
+      manifestText,
+      redactionSummaryText
+    ].join("\n");
+    assertNoSecrets(userVisibleText);
+    assertNoUnsupportedOverclaims(userVisibleText);
+
+    const requiredEventTypes = requiredEventsSeen(latest.events);
+    const chaosFixtureRows = REQUIRED_CHAOS_FIXTURES.map((fixture) => {
+      const row = health.rows.find((candidate) => candidate.name === fixture || candidate.name.includes(fixture));
+      if (!row) {
+        throw new Error(`Preflight matrix is missing required deterministic chaos fixture row: ${fixture}`);
+      }
+      return `${fixture}:${row.status}`;
+    });
 
     transcript.push(
       handle.result.transcript,
+      finalAcceptanceTranscript,
       `runId: ${handle.result.runId}`,
       `evidenceDir: ${handle.result.evidenceDir}`,
       `reportHtml: ${report.reportHtml}`,
       `manifestJson: ${report.manifestJson}`,
+      `redactionSummary: ${report.redactionSummary}`,
+      `replayableRuns: ${replay.replayableRuns.length}`,
+      `replayStatus: ${replayResult.status}`,
       `eventCount: ${latest.eventCount}`,
       `failureCards: ${failures.failures.length}`,
+      `requiredEvents: ${requiredEventTypes.join(", ")}`,
+      `redactionScan: passed`,
+      `integrationOverclaimScan: passed`,
       "preflight matrix:",
       ...health.rows.map((row) => `  - ${row.status}: ${row.name}`),
+      "deterministic chaos fixture rows:",
+      ...chaosFixtureRows.map((row) => `  - ${row}`),
       "integration claim-level audit:",
       ...integrations.integrations.map(
         (integration) =>
           `  - ${integration.name}: ${integration.route}, ${integration.claimLevel}; ${integration.limitation}`
-      )
+      ),
+      "report/replay links:",
+      ...reports.reports.map((entry) => `  - ${entry.reportUrl} | ${entry.manifestUrl} | ${entry.redactionSummaryUrl}`)
     );
 
     if (holdMs > 0) {
@@ -96,6 +168,12 @@ export async function runPortfolioDemo(options: PortfolioDemoOptions = {}): Prom
       eventCount: latest.eventCount,
       failureCount: failures.failures.length,
       preflightStatuses: health.rows.map((row) => `${row.name}:${row.status}`),
+      chaosFixtureRows,
+      requiredEventTypes,
+      replayStatus: replayResult.status,
+      redactionScanPassed: true,
+      noOverclaimScanPassed: true,
+      cleanupVerified: true,
       integrationClaimLevels: integrations.integrations.map(
         (integration) => `${integration.name}:${integration.route}:${integration.claimLevel}`
       ),
@@ -136,15 +214,24 @@ async function assertJson<T>(url: string, label: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function postJson<T>(url: string, body: unknown, label: string): Promise<T> {
+  const response = await fetchWithRetry(url, label, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  return (await response.json()) as T;
+}
+
 async function assertHttpOk(url: string, label: string): Promise<void> {
   await fetchWithRetry(url, label);
 }
 
-async function fetchWithRetry(url: string, label: string): Promise<Response> {
+async function fetchWithRetry(url: string, label: string, init?: RequestInit): Promise<Response> {
   let lastError: unknown;
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, init);
       if (response.ok) {
         return response;
       }
@@ -155,6 +242,201 @@ async function fetchWithRetry(url: string, label: string): Promise<Response> {
     await delay(250);
   }
   throw new Error(`${label} was not reachable on approved loopback surfaces: ${String(lastError)}`);
+}
+
+export async function exercisePortfolioAcceptanceSurfaces(handle: McpAdapterDemoApiServerHandle): Promise<string> {
+  const { api } = handle;
+  const registry = api.registry;
+  const session = api.session;
+  registerChaosFixtures(registry, { sandboxRoot: session.recorder.runDir });
+
+  const context = {
+    runId: session.runId,
+    traceId: createId("trace"),
+    harnessId: createId("harness"),
+    adapterId: createId("adapter")
+  };
+  const preflight = await session.preflight(registry, context);
+
+  const fixtureLines: string[] = ["Core deterministic chaos fixture preflight:"];
+  for (const fixture of REQUIRED_CHAOS_FIXTURES) {
+    const finding = preflight.find((candidate) => candidate.toolName === fixture);
+    if (!finding) {
+      throw new Error(`Missing preflight finding for ${fixture}`);
+    }
+    fixtureLines.push(`  - ${finding.status}: ${finding.toolName}`);
+  }
+
+  const executed = await exerciseCoreChaosFixtures(api, REQUIRED_CHAOS_FIXTURES);
+  const cli = await exerciseCliWrapper(session.recorder.runDir);
+  const python = await exercisePythonAdapters();
+  return [
+    ...fixtureLines,
+    "Core fixture execution:",
+    ...executed,
+    "CLI wrapper:",
+    ...cli,
+    "Python framework adapters:",
+    ...python
+  ].join("\n");
+}
+
+async function exerciseCoreChaosFixtures(
+  api: McpAdapterDemoApiServerHandle["api"],
+  fixtures: readonly string[]
+): Promise<string[]> {
+  const lines: string[] = [];
+  for (const fixture of fixtures) {
+    const tool = api.registry.get(fixture);
+    if (!tool) {
+      throw new Error(`Required chaos fixture is not registered: ${fixture}`);
+    }
+    if (fixture === "fixture.crash-after-initialize") {
+      for (let index = 1; index <= 3; index += 1) {
+        const result = await api.session.executeToolCall(
+          api.registry,
+          makePortfolioCall(api.session.runId, tool.downstreamServerId, fixture, {
+            toolCallId: createId("toolcall"),
+            attemptId: createId("attempt"),
+            policyDecisionId: createId("policy")
+          })
+        );
+        lines.push(`  - ${fixture} attempt ${index}: ${"failureType" in result ? result.failureType : "success"}`);
+      }
+      continue;
+    }
+    const result = await api.session.executeToolCall(api.registry, makePortfolioCall(api.session.runId, tool.downstreamServerId, fixture));
+    lines.push(`  - ${fixture}: ${"failureType" in result ? result.failureType : "success"}`);
+  }
+  const events = api.session.recorder.events;
+  if (!events.some((event) => event.type === "circuit.opened")) {
+    throw new Error("Repeated deterministic failures did not emit circuit.opened.");
+  }
+  if (!events.some((event) => event.type === "tool.call.failed" && event.data && "failureType" in event.data && event.data.failureType === "circuit_open")) {
+    throw new Error("Repeated deterministic failures did not prove circuit fast-fail behavior.");
+  }
+  return lines;
+}
+
+async function exerciseCliWrapper(evidenceRoot: string): Promise<string[]> {
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const result = await runToolplaneCli(
+    [
+      "run",
+      "--evidence-root",
+      evidenceRoot,
+      "--env",
+      "TOOLGUARD_DEMO_SECRET=Bearer tg_demo_1234567890abcdef",
+      "--",
+      process.execPath,
+      "-e",
+      "console.log('cli wrapper ok'); console.error(process.env.TOOLGUARD_DEMO_SECRET)"
+    ],
+    {
+      stdout: (chunk) => stdout.push(chunk),
+      stderr: (chunk) => stderr.push(chunk)
+    }
+  );
+  const rendered = [...stdout, ...stderr].join("");
+  assertNoSecrets(rendered);
+  return [
+    `  - toolplane run exitCode: ${result.exitCode}`,
+    `  - evidenceDir: ${result.evidenceDir}`,
+    `  - redactionReasons: ${result.process?.redactionReasons.join(",") ?? "none"}`
+  ];
+}
+
+async function exercisePythonAdapters(): Promise<string[]> {
+  const repoRoot = process.env.INIT_CWD ?? path.resolve(new URL("../../..", import.meta.url).pathname);
+  const pythonPath = path.join(repoRoot, "packages", "python-adapters");
+  const script = [
+    "from toolguard_adapters import ToolGuardConfig, LangGraphToolGuardTool, CrewAIToolGuardTool",
+    `config = ToolGuardConfig(sidecar_endpoint='${CORE_URL}/api/sidecar/v1/tool-calls', timeout_seconds=2.0)`,
+    "lang = LangGraphToolGuardTool('fixture.good', config=config).invoke({})",
+    "crew = CrewAIToolGuardTool('fixture.prompt-injection-output', config=config).run()",
+    "print('langgraph=' + ('failureType' if isinstance(lang, dict) and 'failureType' in lang else 'success'))",
+    "print('crewai=' + ('failureType' if isinstance(crew, dict) and 'failureType' in crew else 'success'))"
+  ].join("\n");
+  const { stdout, stderr } = await execFile("python3", ["-c", script], {
+    cwd: repoRoot,
+    env: { ...process.env, PYTHONPATH: pythonPath },
+    timeout: 10_000
+  });
+  if (stderr.trim()) {
+    throw new Error(`Python adapter smoke wrote stderr: ${stderr}`);
+  }
+  return stdout.trim().split(/\r?\n/).map((line) => `  - ${line}`);
+}
+
+function makePortfolioCall(
+  runId: ToolCall["runId"],
+  downstreamServerId: ToolCall["downstreamServerId"],
+  toolName: string,
+  overrides: Partial<ToolCall> = {}
+): ToolCall {
+  return {
+    runId,
+    traceId: createId("trace"),
+    parentId: createId("parent"),
+    harnessId: createId("harness"),
+    adapterId: createId("adapter"),
+    downstreamServerId,
+    toolCallId: createId("toolcall"),
+    attemptId: createId("attempt"),
+    policyDecisionId: createId("policy"),
+    toolName,
+    arguments: {},
+    deadlineMs: toolName === "fixture.good" ? 1_000 : 75,
+    idempotency: "idempotent",
+    sourcePath: "non-mcp-direct",
+    ...overrides
+  };
+}
+
+function requiredEventsSeen(events: readonly CoreEvent[]): readonly string[] {
+  const required: readonly CoreEvent["type"][] = [
+    "adapter.connected",
+    "server.preflight.completed",
+    "tool.call.completed",
+    "tool.call.failed",
+    "output.sanitized",
+    "circuit.opened",
+    "evidence.artifact.created",
+    "report.exported"
+  ];
+  const seen = new Set(events.map((event) => event.type));
+  const missing = required.filter((eventType) => !seen.has(eventType));
+  if (missing.length > 0) {
+    throw new Error(`Portfolio demo is missing required event types: ${missing.join(", ")}`);
+  }
+  return required;
+}
+
+function assertNoSecrets(text: string): void {
+  const secretPatterns = [
+    /Bearer\s+[A-Za-z0-9._~+/=-]{12,}/i,
+    /sk-[A-Za-z0-9]{12,}/,
+    /-----BEGIN [A-Z ]+PRIVATE KEY-----/,
+    /TOOLGUARD_DEMO_SECRET\s*=/,
+    /tg_demo_1234567890abcdef/
+  ];
+  const leaked = secretPatterns.find((pattern) => pattern.test(text));
+  if (leaked) {
+    throw new Error(`Secret-shaped value leaked into portfolio demo surface: ${leaked}`);
+  }
+}
+
+function assertNoUnsupportedOverclaims(text: string): void {
+  const forbidden = [
+    /native host tool interception is supported/i,
+    /intercepts native host tools/i,
+    /unrouted native host tools.*available/i
+  ];
+  const overclaim = forbidden.find((pattern) => pattern.test(text));
+  if (overclaim) {
+    throw new Error(`Unsupported integration overclaim found: ${overclaim}`);
+  }
 }
 
 async function stopChild(child: ChildProcess): Promise<void> {

@@ -40,6 +40,7 @@ describe("portfolio demo orchestration", () => {
     expect(result.redactionScanPassed).toBe(true);
     expect(result.noOverclaimScanPassed).toBe(true);
     expect(result.cleanupVerified).toBe(true);
+    expect(result.transcript).toContain("cleanupProbe: portsClosed=3660");
     expect(result.integrationClaimLevels).toEqual(
       expect.arrayContaining([
         "Cline:MCP-routed:available",

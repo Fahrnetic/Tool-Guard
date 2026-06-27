@@ -47,7 +47,7 @@ describe("local sidecar API", () => {
         const stdout = await session.recordRawArtifact(activeCall, {
           kind: "raw-stdout",
           fileName: `${activeCall.toolCallId}.stdout.txt`,
-          content: "stdout first line\nstdout second line redacted-token",
+          content: "stdout first line\nAuthorization: Bearer stdout_secret_token_1234567890\nstdout second line",
           redacted: true
         });
         await session.emitOutputSanitized(activeCall, "Output limit enforced for test stdout.", {
@@ -58,7 +58,7 @@ describe("local sidecar API", () => {
         await session.recordRawArtifact(activeCall, {
           kind: "raw-stderr",
           fileName: `${activeCall.toolCallId}.stderr.txt`,
-          content: "stderr first line\nstderr second line",
+          content: "stderr first line\napi_key=stderrsecretvalue1234567890\nstderr second line",
           redacted: true
         });
         throw new Error("fixture failed after streams");
@@ -74,30 +74,38 @@ describe("local sidecar API", () => {
       await session.executeToolCall(registry, call);
       const origin = `http://127.0.0.1:${address.port}`;
 
-      const failuresResponse = await fetch(`${origin}/api/failures`);
+      const failuresResponse = await fetch(`${origin}/api/failures`, { headers: { host: "attacker.example:9999" } });
       expect(failuresResponse.status).toBe(200);
       const failures = (await failuresResponse.json()) as {
         failures: {
-          rawStdout: { content: string; truncated: boolean; outputLimitBytes?: number }[];
-          rawStderr: { content: string; truncated: boolean }[];
+          evidenceLinks: { href: string }[];
+          rawStdout: { content: string; truncated: boolean; outputLimitBytes?: number; redacted: boolean }[];
+          rawStderr: { content: string; truncated: boolean; redacted: boolean }[];
         }[];
       };
       expect(failures.failures[0]?.rawStdout[0]).toMatchObject({
-        content: "stdout first line\nstdout second line redacted-token",
         truncated: true,
-        outputLimitBytes: 32
+        outputLimitBytes: 32,
+        redacted: true
       });
+      expect(failures.failures[0]?.rawStdout[0]?.content).toContain("stdout first line\n");
+      expect(failures.failures[0]?.rawStdout[0]?.content).toContain("[REDACTED:bearer-token:");
+      expect(failures.failures[0]?.rawStdout[0]?.content).not.toContain("stdout_secret_token_1234567890");
       expect(failures.failures[0]?.rawStderr[0]).toMatchObject({
-        content: "stderr first line\nstderr second line",
-        truncated: false
+        truncated: false,
+        redacted: true
       });
+      expect(failures.failures[0]?.rawStderr[0]?.content).toContain("[REDACTED:api-key-assignment:");
+      expect(failures.failures[0]?.rawStderr[0]?.content).not.toContain("stderrsecretvalue1234567890");
+      expect(failures.failures[0]?.evidenceLinks.every((link) => link.href.startsWith(origin))).toBe(true);
+      expect(JSON.stringify(failures)).not.toContain("attacker.example");
 
       const traceResponse = await fetch(`${origin}/api/traces/${encodeURIComponent(call.traceId)}`);
       expect(traceResponse.status).toBe(200);
       const trace = (await traceResponse.json()) as {
         correlation: Record<string, string>;
-        rawStdout: { content: string; truncated: boolean }[];
-        rawStderr: { content: string; truncated: boolean }[];
+        rawStdout: { artifactId: string; content: string; truncated: boolean; redacted: boolean }[];
+        rawStderr: { content: string; truncated: boolean; redacted: boolean }[];
       };
       expect(trace.correlation).toMatchObject({
         runId,
@@ -110,8 +118,20 @@ describe("local sidecar API", () => {
         attemptId: call.attemptId,
         policyDecisionId: call.policyDecisionId
       });
-      expect(trace.rawStdout[0]?.content).toContain("stdout first line\nstdout second line");
-      expect(trace.rawStderr[0]?.content).toContain("stderr first line\nstderr second line");
+      expect(trace.rawStdout[0]?.content).toContain("stdout first line\n");
+      expect(trace.rawStdout[0]?.content).toContain("[REDACTED:bearer-token:");
+      expect(trace.rawStdout[0]?.content).not.toContain("stdout_secret_token_1234567890");
+      expect(trace.rawStderr[0]?.content).toContain("[REDACTED:api-key-assignment:");
+      expect(trace.rawStderr[0]?.content).not.toContain("stderrsecretvalue1234567890");
+      expect(JSON.stringify(trace)).not.toContain("stderrsecretvalue1234567890");
+
+      const artifactHref = `${origin}/api/reports/${runId}/artifacts/${trace.rawStdout[0]?.artifactId}`;
+      const artifactResponse = await fetch(artifactHref ?? "");
+      expect(artifactResponse.status).toBe(200);
+      expect(artifactResponse.headers.get("x-toolguard-redacted")).toBe("true");
+      const artifactBody = await artifactResponse.text();
+      expect(artifactBody).not.toContain("stdout_secret_token_1234567890");
+      expect(artifactBody).not.toContain("stderrsecretvalue1234567890");
     } finally {
       await handle.close();
     }

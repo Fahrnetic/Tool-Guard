@@ -1,4 +1,5 @@
 import { execFile as execFileCallback, spawn, type ChildProcess } from "node:child_process";
+import { createConnection } from "node:net";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -57,6 +58,7 @@ export async function runPortfolioDemo(options: PortfolioDemoOptions = {}): Prom
   const holdMs = options.holdMs ?? 1_500;
   let handle: McpAdapterDemoApiServerHandle | undefined;
   let ui: ChildProcess | undefined;
+  let result: Omit<PortfolioDemoResult, "cleanupVerified" | "transcript"> & { readonly transcriptLines: readonly string[] } | undefined;
   const transcript: string[] = [
     "ToolGuard portfolio demo",
     `approvedPorts: ${APPROVED_PORTS}`,
@@ -158,7 +160,7 @@ export async function runPortfolioDemo(options: PortfolioDemoOptions = {}): Prom
       await delay(holdMs);
     }
 
-    return {
+    result = {
       runId: handle.result.runId,
       evidenceDir: handle.result.evidenceDir,
       coreUrl: CORE_URL,
@@ -173,11 +175,10 @@ export async function runPortfolioDemo(options: PortfolioDemoOptions = {}): Prom
       replayStatus: replayResult.status,
       redactionScanPassed: true,
       noOverclaimScanPassed: true,
-      cleanupVerified: true,
       integrationClaimLevels: integrations.integrations.map(
         (integration) => `${integration.name}:${integration.route}:${integration.claimLevel}`
       ),
-      transcript: transcript.join("\n")
+      transcriptLines: transcript
     };
   } finally {
     if (ui) {
@@ -187,6 +188,25 @@ export async function runPortfolioDemo(options: PortfolioDemoOptions = {}): Prom
       await handle.close();
     }
   }
+  if (!result) {
+    throw new Error("Portfolio demo did not produce a result before cleanup.");
+  }
+  const cleanupProbe = await verifyOwnedCleanup({
+    ports: startUi ? [3660, 3661] : [3660],
+    pids: ui?.pid ? [ui.pid] : []
+  });
+  if (!cleanupProbe.verified) {
+    throw new Error(`ToolGuard-owned cleanup probe failed: ${cleanupProbe.failures.join("; ")}`);
+  }
+  const transcriptWithCleanup = [
+    ...result.transcriptLines,
+    `cleanupProbe: portsClosed=${cleanupProbe.closedPorts.join(",") || "none"} pidsExited=${cleanupProbe.exitedPids.join(",") || "none"}`
+  ];
+  return {
+    ...result,
+    cleanupVerified: true,
+    transcript: transcriptWithCleanup.join("\n")
+  };
 }
 
 function startUiDevServer(): ChildProcess {
@@ -451,6 +471,61 @@ async function stopChild(child: ChildProcess): Promise<void> {
   if (child.exitCode === null && child.signalCode === null) {
     child.kill("SIGKILL");
     await exited;
+  }
+}
+
+async function verifyOwnedCleanup(input: {
+  readonly ports: readonly number[];
+  readonly pids: readonly number[];
+}): Promise<{ readonly verified: boolean; readonly closedPorts: readonly number[]; readonly exitedPids: readonly number[]; readonly failures: readonly string[] }> {
+  await delay(150);
+  const failures: string[] = [];
+  const closedPorts: number[] = [];
+  for (const port of input.ports) {
+    if (await isPortClosed(port)) {
+      closedPorts.push(port);
+    } else {
+      failures.push(`127.0.0.1:${port} is still accepting connections`);
+    }
+  }
+
+  const exitedPids: number[] = [];
+  for (const pid of input.pids) {
+    if (isPidExited(pid)) {
+      exitedPids.push(pid);
+    } else {
+      failures.push(`owned child process ${pid} is still alive`);
+    }
+  }
+
+  return {
+    verified: failures.length === 0,
+    closedPorts,
+    exitedPids,
+    failures
+  };
+}
+
+async function isPortClosed(port: number): Promise<boolean> {
+  return await new Promise<boolean>((resolve) => {
+    const socket = createConnection({ host: "127.0.0.1", port });
+    const done = (closed: boolean): void => {
+      socket.removeAllListeners();
+      socket.destroy();
+      resolve(closed);
+    };
+    socket.once("connect", () => done(false));
+    socket.once("error", () => done(true));
+    socket.setTimeout(500, () => done(true));
+  });
+}
+
+function isPidExited(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch {
+    return true;
   }
 }
 

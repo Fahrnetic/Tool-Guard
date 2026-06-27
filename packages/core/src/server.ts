@@ -6,6 +6,7 @@ import { CoreSession } from "./session.js";
 import { ToolRegistry } from "./registry.js";
 import { registerChaosFixtures } from "./chaos-fixtures.js";
 import { validateReportManifest } from "./report.js";
+import { redactStringWithSummary } from "./redaction.js";
 import { createId, type StableId } from "./ids.js";
 import type { CoreEvent } from "./events.js";
 import type { EvidenceArtifact, FailureCard, JsonObject, JsonValue, PolicyDecision, ToolCall } from "./types.js";
@@ -111,7 +112,7 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
       }
 
       if (url.pathname === "/api/failures") {
-        sendJson(response, 200, await buildFailuresPayload(runId, session.recorder.events, session.recorder.runDir, requestBaseUrl(request, host, port, server)));
+        sendJson(response, 200, await buildFailuresPayload(runId, session.recorder.events, session.recorder.runDir, configuredBaseUrl(host, port, server)));
         return;
       }
 
@@ -171,7 +172,7 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
       if (url.pathname === "/api/reports/export") {
         const report = await session.exportReport();
         const validation = await validateReportManifest({ runDir: session.recorder.runDir });
-        const baseUrl = requestBaseUrl(request, host, port, server);
+        const baseUrl = configuredBaseUrl(host, port, server);
         sendJson(response, 200, {
           runId,
           reportHtml: report.reportPath,
@@ -189,7 +190,7 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
       }
 
       if (url.pathname === "/api/reports") {
-        sendJson(response, 200, await buildReportsPayload({ runId, runDir: session.recorder.runDir, events: session.recorder.events, baseUrl: requestBaseUrl(request, host, port, server) }));
+        sendJson(response, 200, await buildReportsPayload({ runId, runDir: session.recorder.runDir, events: session.recorder.events, baseUrl: configuredBaseUrl(host, port, server) }));
         return;
       }
 
@@ -220,7 +221,7 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
           sendJson(response, 404, { error: "report_run_not_found", runId: requestedRunId });
           return;
         }
-        sendJson(response, 200, await buildReportDetailPayload({ runId, runDir: session.recorder.runDir, events: session.recorder.events, baseUrl: requestBaseUrl(request, host, port, server) }));
+        sendJson(response, 200, await buildReportDetailPayload({ runId, runDir: session.recorder.runDir, events: session.recorder.events, baseUrl: configuredBaseUrl(host, port, server) }));
         return;
       }
 
@@ -596,15 +597,21 @@ function sendJson(response: http.ServerResponse, statusCode: number, body: unkno
   response.end(`${JSON.stringify(body, null, 2)}\n`);
 }
 
-function requestBaseUrl(request: http.IncomingMessage, host: string, port: number, server: http.Server): string {
-  const headerHost = request.headers.host;
-  if (headerHost) {
-    return `http://${headerHost}`;
-  }
+function configuredBaseUrl(host: string, port: number, server: http.Server): string {
   const address = server.address();
   const actualPort = typeof address === "object" && address ? address.port : port;
-  const loopbackHost = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
+  const loopbackHost = normalizeLoopbackHost(host);
   return `http://${loopbackHost}:${actualPort}`;
+}
+
+function normalizeLoopbackHost(host: string): string {
+  if (host === "localhost" || host === "127.0.0.1") {
+    return host;
+  }
+  if (host === "::1" || host === "[::1]") {
+    return "[::1]";
+  }
+  return "127.0.0.1";
 }
 
 type ReportFileName = "report.html" | "manifest.json" | "artifact-hashes.json" | "redaction-summary.json";
@@ -652,7 +659,7 @@ async function serveArtifactFile(input: {
     sendJson(input.response, 404, { error: "artifact_not_found", runId: requestedRunId, artifactId: requestedArtifactId });
     return;
   }
-  await serveRunFile(input.response, input.runDir, artifact.relativePath, contentTypeForArtifact(artifact));
+  await serveSafeArtifactFile(input.response, input.runDir, artifact);
 }
 
 async function serveRunFile(response: http.ServerResponse, runDir: string, relativePath: string, contentType: string): Promise<void> {
@@ -672,6 +679,28 @@ async function serveRunFile(response: http.ServerResponse, runDir: string, relat
     response.end(content);
   } catch (error) {
     sendJson(response, 404, { error: "file_not_found", message: error instanceof Error ? error.message : "Could not read run file." });
+  }
+}
+
+async function serveSafeArtifactFile(response: http.ServerResponse, runDir: string, artifact: EvidenceArtifact): Promise<void> {
+  const safeRunDir = path.resolve(runDir);
+  const filePath = path.resolve(runDir, artifact.relativePath);
+  if (filePath !== safeRunDir && !filePath.startsWith(`${safeRunDir}${path.sep}`)) {
+    sendJson(response, 403, { error: "path_outside_run_directory" });
+    return;
+  }
+  try {
+    const content = await readFile(filePath, "utf8");
+    const redacted = redactStringWithSummary(content);
+    response.writeHead(200, {
+      "content-type": contentTypeForArtifact(artifact),
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+      "x-toolguard-redacted": String(redacted.count > 0 || artifact.redacted)
+    });
+    response.end(redacted.value);
+  } catch (error) {
+    sendJson(response, 404, { error: "file_not_found", message: error instanceof Error ? error.message : "Could not read run artifact." });
   }
 }
 
@@ -1118,11 +1147,15 @@ async function enrichArtifacts(runDir: string, artifacts: readonly EvidenceArtif
       };
     }
     try {
-      const content = await readFile(artifactPath, "utf8");
+      const rawContent = await readFile(artifactPath, "utf8");
+      const redacted = redactStringWithSummary(rawContent);
       return {
         ...artifact,
-        content,
+        content: redacted.value,
         truncated: Boolean(outputLimit),
+        redacted: artifact.redacted || redacted.count > 0,
+        redactionReasons: [...redacted.reasons],
+        redactionCount: redacted.count,
         ...(outputLimit ? { outputLimitBytes: outputLimit } : {})
       };
     } catch (error) {
@@ -1142,12 +1175,20 @@ function outputLimitForArtifact(events: readonly CoreEvent[], artifactId: Stable
     if (candidate.type !== "output.sanitized" || !isRecord(candidate.data)) {
       return false;
     }
-    return candidate.data.artifactId === artifactId && candidate.data.reason === "output_limit";
+    const data = sanitizedEventData(candidate.data);
+    return data.artifactId === artifactId && data.reason === "output_limit";
   });
-  if (event && isRecord(event.data) && typeof event.data.outputLimitBytes === "number") {
-    return event.data.outputLimitBytes;
+  if (event && isRecord(event.data)) {
+    const data = sanitizedEventData(event.data);
+    if (typeof data.outputLimitBytes === "number") {
+      return data.outputLimitBytes;
+    }
   }
   return undefined;
+}
+
+function sanitizedEventData(data: Record<string, unknown>): Record<string, unknown> {
+  return isRecord(data.data) ? data.data : data;
 }
 
 function mergedCorrelationFromEvents(events: readonly CoreEvent[], runId: StableId, traceId: string): JsonObject {

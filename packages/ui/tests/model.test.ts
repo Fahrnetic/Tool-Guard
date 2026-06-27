@@ -39,6 +39,16 @@ describe("summarizeToolOps", () => {
           runId: "run_test",
           traceId: "trace_test",
           data: { reportHtml: "/runs/test/report.html", manifestJson: "/runs/test/manifest.json" }
+        },
+        {
+          eventId: "event_3",
+          type: "report.exported",
+          occurredAt: "2026-06-26T00:00:02.000Z",
+          sequence: 3,
+          summary: "Static report exported again",
+          runId: "run_test",
+          traceId: "trace_test",
+          data: { reportHtml: "/runs/test/report.html", manifestJson: "/runs/test/manifest.json" }
         }
       ]
     };
@@ -67,7 +77,7 @@ describe("summarizeToolOps", () => {
     expect(summary.downstreamToolCount).toBe(7);
     expect(summary.preflightLabel).toBe("3 healthy, 4 degraded, 0 failed");
     expect(summary.failureCount).toBe(2);
-    expect(summary.reportLinks).toContain("/runs/test/report.html");
+    expect(summary.reportLinks).toEqual(["/runs/test/report.html"]);
     expect(summary.correlationIds).toEqual(["run_test", "trace_test", "toolcall_test", "policy_test"]);
   });
 });

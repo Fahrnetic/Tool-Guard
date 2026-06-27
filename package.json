@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r build",
-    "demo": "pnpm demo:toolplane",
+    "demo": "pnpm --filter @toolplane/mcp-adapter demo:portfolio",
     "demo:mcp": "pnpm --filter @toolplane/mcp-adapter demo",
     "demo:raw-failure": "pnpm --filter @toolplane/core demo:raw-failure",
     "demo:toolplane": "pnpm --filter @toolplane/core demo:toolplane",

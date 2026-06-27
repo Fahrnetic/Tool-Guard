@@ -282,12 +282,12 @@ export interface ToolOpsSummary {
 
 export function summarizeToolOps(run: LatestRunPayload | undefined, health: HealthPayload | undefined): ToolOpsSummary {
   const events = run?.events ?? [];
-  const reportLinks = events
+  const reportLinks = [...new Set(events
     .filter((event) => event.type === "report.exported")
     .flatMap((event) => {
       const data = event.data;
       return data && "reportHtml" in data && typeof data.reportHtml === "string" ? [data.reportHtml] : [];
-    });
+    }))];
   const correlationIds = [
     run?.runId,
     events.find((event) => event.traceId)?.traceId,

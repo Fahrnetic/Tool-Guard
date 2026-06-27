@@ -18,6 +18,7 @@
   "scripts": {
     "build": "tsc --build tsconfig.json",
     "demo": "pnpm build && node dist/demo.js",
+    "demo:portfolio": "pnpm --filter @toolplane/core build && pnpm build && node dist/portfolio-demo.js",
     "lint": "pnpm typecheck",
     "test": "vitest run",
     "typecheck": "tsc --noEmit --project tsconfig.json && tsc --noEmit --project tsconfig.test.json"

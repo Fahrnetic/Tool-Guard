@@ -1,0 +1,13 @@
+{
+  "name": "@toolplane/python-adapters",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Thin ToolGuard Python framework adapters for LangGraph and CrewAI.",
+  "type": "module",
+  "scripts": {
+    "build": "python3 -m compileall -q toolguard_adapters tests",
+    "lint": "python3 -m compileall -q toolguard_adapters tests",
+    "test": "python3 -m unittest discover -s tests -p 'test_*.py'",
+    "typecheck": "python3 -m compileall -q toolguard_adapters tests"
+  }
+}

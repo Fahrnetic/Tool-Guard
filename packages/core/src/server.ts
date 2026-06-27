@@ -6,8 +6,11 @@ import { ToolRegistry } from "./registry.js";
 import { registerChaosFixtures } from "./chaos-fixtures.js";
 import { validateReportManifest } from "./report.js";
 import { createId, type StableId } from "./ids.js";
+import { buildFailureCard, classifyFailure } from "./classifier.js";
 import type { CoreEvent } from "./events.js";
-import type { ToolCall } from "./types.js";
+import type { FailureType, JsonObject, JsonValue, ToolCall } from "./types.js";
+
+export const SIDECAR_PROTOCOL_VERSION = "toolguard.sidecar.v1";
 
 export interface CoreApiServerOptions {
   readonly host?: string;
@@ -34,9 +37,10 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
   const runId = session.runId;
   const registry = options.registry ?? new ToolRegistry();
   const seedDirectRun = options.seedDirectRun ?? options.session === undefined;
+  const registerDefaultTools = options.registry === undefined;
 
   const downstreamServerId = createId("server");
-  if (seedDirectRun) {
+  if (registerDefaultTools) {
     registerChaosFixtures(registry, { sandboxRoot: evidenceRoot });
     registry.register({
       toolName: "fixture.echo",
@@ -119,6 +123,59 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
         return;
       }
 
+      if (url.pathname === "/api/sidecar/v1/tool-calls") {
+        if (request.method !== "POST") {
+          sendJson(response, 405, { error: "method_not_allowed" });
+          return;
+        }
+
+        const payload = await readJsonBody(request);
+        const call = makeSidecarToolCall(payload, runId, registry);
+        if (payload.protocolVersion !== SIDECAR_PROTOCOL_VERSION) {
+          sendJson(response, 426, {
+            protocolVersion: SIDECAR_PROTOCOL_VERSION,
+            status: "failure",
+            failureCard: makeSidecarFailureCard(call, "sidecar_protocol_error"),
+            evidenceDir: session.recorder.runDir,
+            eventsPath: session.recorder.eventsPath
+          });
+          return;
+        }
+
+        await session.emitAdapterConnected(
+          {
+            runId: call.runId,
+            traceId: call.traceId,
+            ...(call.parentId ? { parentId: call.parentId } : {}),
+            harnessId: call.harnessId,
+            adapterId: call.adapterId,
+            downstreamServerId: call.downstreamServerId
+          },
+          `Python framework adapter connected: ${stringFrom(payload.adapterName, "unknown")}`
+        );
+        const result = await session.executeToolCall(registry, call);
+        sendJson(response, 200, {
+          protocolVersion: SIDECAR_PROTOCOL_VERSION,
+          status: "failureType" in result ? "failure" : "success",
+          correlation: {
+            runId: call.runId,
+            traceId: call.traceId,
+            parentId: call.parentId,
+            harnessId: call.harnessId,
+            adapterId: call.adapterId,
+            downstreamServerId: call.downstreamServerId,
+            toolCallId: call.toolCallId,
+            attemptId: call.attemptId,
+            policyDecisionId: call.policyDecisionId
+          },
+          result: "failureType" in result ? undefined : result,
+          failureCard: "failureType" in result ? result : undefined,
+          evidenceDir: session.recorder.runDir,
+          eventsPath: session.recorder.eventsPath
+        });
+        return;
+      }
+
       sendJson(response, 404, { error: "not_found" });
     } catch (error) {
       sendJson(response, 500, { error: error instanceof Error ? error.message : "unknown_error" });
@@ -176,6 +233,102 @@ function makeApiToolCall(runId: StableId, downstreamServerId: StableId): ToolCal
     idempotency: "idempotent",
     sourcePath: "non-mcp-direct"
   };
+}
+
+function makeSidecarToolCall(payload: SidecarToolCallRequest, runId: StableId, registry: ToolRegistry): ToolCall {
+  const toolName = stringFrom(payload.toolName, "fixture.good");
+  const tool = registry.get(toolName);
+  return {
+    runId: stableIdFrom(payload.correlation?.runId, runId),
+    traceId: stableIdFrom(payload.correlation?.traceId, createId("trace")),
+    ...(payload.correlation?.parentId ? { parentId: stableIdFrom(payload.correlation.parentId, createId("parent")) } : {}),
+    harnessId: stableIdFrom(payload.harnessId ?? payload.correlation?.harnessId, createId("harness")),
+    adapterId: stableIdFrom(payload.adapterId ?? payload.correlation?.adapterId, createId("adapter")),
+    downstreamServerId: stableIdFrom(
+      payload.downstreamServerId ?? payload.correlation?.downstreamServerId,
+      tool?.downstreamServerId ?? createId("server")
+    ),
+    toolCallId: stableIdFrom(payload.correlation?.toolCallId, createId("toolcall")),
+    attemptId: stableIdFrom(payload.correlation?.attemptId, createId("attempt")),
+    policyDecisionId: stableIdFrom(payload.correlation?.policyDecisionId, createId("policy")),
+    toolName,
+    ...(typeof payload.originalToolName === "string" ? { originalToolName: payload.originalToolName } : {}),
+    arguments: jsonObjectFrom(payload.arguments),
+    deadlineMs: numberFrom(payload.deadlineMs, 1_000),
+    idempotency:
+      payload.idempotency === "non-idempotent" || payload.idempotency === "unknown" ? payload.idempotency : "idempotent",
+    sourcePath: "framework-adapter"
+  };
+}
+
+function makeSidecarFailureCard(call: ToolCall, failureType: FailureType) {
+  return buildFailureCard({
+    call,
+    classification: classifyFailure({ failureType }),
+    evidenceLinks: []
+  });
+}
+
+interface SidecarToolCallRequest {
+  readonly protocolVersion?: unknown;
+  readonly toolName?: unknown;
+  readonly originalToolName?: unknown;
+  readonly arguments?: unknown;
+  readonly deadlineMs?: unknown;
+  readonly idempotency?: unknown;
+  readonly harnessId?: unknown;
+  readonly adapterId?: unknown;
+  readonly adapterName?: unknown;
+  readonly downstreamServerId?: unknown;
+  readonly correlation?: {
+    readonly runId?: unknown;
+    readonly traceId?: unknown;
+    readonly parentId?: unknown;
+    readonly harnessId?: unknown;
+    readonly adapterId?: unknown;
+    readonly downstreamServerId?: unknown;
+    readonly toolCallId?: unknown;
+    readonly attemptId?: unknown;
+    readonly policyDecisionId?: unknown;
+  };
+}
+
+async function readJsonBody(request: http.IncomingMessage): Promise<SidecarToolCallRequest> {
+  const chunks: Buffer[] = [];
+  let byteLength = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+    byteLength += buffer.byteLength;
+    if (byteLength > 256 * 1024) {
+      throw new Error("request body too large");
+    }
+    chunks.push(buffer);
+  }
+  if (chunks.length === 0) {
+    return {};
+  }
+  const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  return isRecord(parsed) ? (parsed as SidecarToolCallRequest) : {};
+}
+
+function jsonObjectFrom(value: unknown): JsonObject {
+  return isRecord(value) ? (value as JsonObject) : {};
+}
+
+function stringFrom(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+function stableIdFrom(value: unknown, fallback: StableId): StableId {
+  return stringFrom(value, fallback) as StableId;
+}
+
+function numberFrom(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function isRecord(value: unknown): value is Record<string, JsonValue | unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function sendJson(response: http.ServerResponse, statusCode: number, body: unknown): void {

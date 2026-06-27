@@ -1,0 +1,5 @@
+[project]
+name = "toolguard-adapters"
+version = "0.0.0"
+description = "Thin ToolGuard Python framework adapters for LangGraph and CrewAI."
+requires-python = ">=3.10"

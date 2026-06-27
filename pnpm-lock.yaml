@@ -52,6 +52,8 @@ importers:
         specifier: ^4.0.15
         version: 4.1.9(@types/node@24.13.2)(vite@8.1.0(@types/node@24.13.2))
 
+  packages/python-adapters: {}
+
 packages:
 
   '@emnapi/core@1.11.1':

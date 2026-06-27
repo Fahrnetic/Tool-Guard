@@ -121,6 +121,28 @@ const RECOVERY: Record<FailureType, FailureClassification> = {
     safeRecoveryOptions: ["Change the call to satisfy policy.", "Inspect the policy decision evidence."],
     humanFix: "Adjust policy only after confirming the call is safe."
   },
+  sidecar_unavailable: {
+    failureType: "sidecar_unavailable",
+    likelyRootCause: "The local ToolGuard sidecar endpoint was unavailable or rejected the connection.",
+    retryable: true,
+    doNotRetrySameCall: true,
+    safeRecoveryOptions: [
+      "Start the local ToolGuard Core sidecar on the configured loopback endpoint.",
+      "Verify the adapter timeout and sidecar URL configuration."
+    ],
+    humanFix: "Start or repair the local ToolGuard Core API before retrying framework tool calls."
+  },
+  sidecar_protocol_error: {
+    failureType: "sidecar_protocol_error",
+    likelyRootCause: "The local ToolGuard sidecar response did not match the expected versioned protocol.",
+    retryable: false,
+    doNotRetrySameCall: true,
+    safeRecoveryOptions: [
+      "Check the adapter and sidecar protocol versions.",
+      "Inspect sidecar response evidence before retrying."
+    ],
+    humanFix: "Upgrade the Python adapter and ToolGuard Core sidecar together so their protocol versions match."
+  },
   unknown: {
     failureType: "unknown",
     likelyRootCause: "Tool execution failed without a more specific classified signal.",

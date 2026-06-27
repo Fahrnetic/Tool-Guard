@@ -4,7 +4,12 @@ export { EventBus, type CoreEvent, type CoreEventType, type CorrelationFields } 
 export { EvidenceRecorder, type EvidenceRecorderOptions } from "./evidence.js";
 export { ToolRegistry, validateJsonSchema, type ArgumentValidationResult } from "./registry.js";
 export { CoreSession, type CoreSessionOptions } from "./session.js";
-export { createCoreApiServer, type CoreApiServerHandle, type CoreApiServerOptions } from "./server.js";
+export {
+  SIDECAR_PROTOCOL_VERSION,
+  createCoreApiServer,
+  type CoreApiServerHandle,
+  type CoreApiServerOptions
+} from "./server.js";
 export { exportStaticReport, validateReportManifest, type StaticReportResult, type ManifestValidationResult } from "./report.js";
 export {
   redactJsonValue,

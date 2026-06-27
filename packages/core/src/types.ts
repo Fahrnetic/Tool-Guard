@@ -97,6 +97,8 @@ export type FailureType =
   | "destructive_action_blocked"
   | "circuit_open"
   | "policy_blocked"
+  | "sidecar_unavailable"
+  | "sidecar_protocol_error"
   | "unknown";
 
 export interface FailureCard {

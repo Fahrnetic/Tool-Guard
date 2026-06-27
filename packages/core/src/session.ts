@@ -251,6 +251,23 @@ export class CoreSession {
     return artifact;
   }
 
+  async emitOutputSanitized(
+    call: ToolCall,
+    summary: string,
+    data: {
+      readonly reason: string;
+      readonly artifactId?: StableId;
+      readonly redactionCount?: number;
+      readonly reasons?: string[];
+      readonly streams?: string[];
+    }
+  ): Promise<CoreEvent> {
+    return await this.#emit("output.sanitized", call, summary, {
+      ...(data.artifactId ? { artifactId: data.artifactId } : {}),
+      data: data as JsonValue as NonNullable<CoreEvent["data"]>
+    });
+  }
+
   async #executeAttempt(
     tool: RegisteredTool,
     call: ToolCall,

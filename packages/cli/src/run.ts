@@ -7,7 +7,7 @@ import {
   CoreSession,
   ToolRegistry,
   createId,
-  redactString,
+  redactStringWithSummary,
   type FailureCard,
   type FailureType,
   type JsonObject,
@@ -48,6 +48,9 @@ export interface ProcessExecutionSummary extends JsonObject {
   readonly stderr: string;
   readonly stdoutTruncated: boolean;
   readonly stderrTruncated: boolean;
+  readonly stdoutRedactionCount: number;
+  readonly stderrRedactionCount: number;
+  readonly redactionReasons: string[];
   readonly exitCode: number | null;
   readonly signal: string | null;
   readonly elapsedMs: number;
@@ -146,16 +149,40 @@ export async function runToolplaneCli(
 
       const summary = await executeProcess(parsed, signal);
       lastProcessSummary = summary;
-      await session.recordRawArtifact(activeCall, {
+      const stdoutArtifact = await session.recordRawArtifact(activeCall, {
         kind: "raw-stdout",
         fileName: `${activeCall.toolCallId}.stdout.txt`,
-        content: summary.stdout
+        content: summary.stdout,
+        redacted: summary.stdoutRedactionCount > 0
       });
-      await session.recordRawArtifact(activeCall, {
+      const stderrArtifact = await session.recordRawArtifact(activeCall, {
         kind: "raw-stderr",
         fileName: `${activeCall.toolCallId}.stderr.txt`,
-        content: summary.stderr
+        content: summary.stderr,
+        redacted: summary.stderrRedactionCount > 0
       });
+      const redactionCount = summary.stdoutRedactionCount + summary.stderrRedactionCount;
+      if (redactionCount > 0) {
+        await session.emitOutputSanitized(activeCall, "CLI process stream output was redacted for model safety.", {
+          reason: "secret_redaction",
+          artifactId: stdoutArtifact.artifactId,
+          redactionCount,
+          reasons: summary.redactionReasons,
+          streams: [
+            ...(summary.stdoutRedactionCount > 0 ? ["stdout"] : []),
+            ...(summary.stderrRedactionCount > 0 ? ["stderr"] : [])
+          ]
+        });
+        if (summary.stderrRedactionCount > 0) {
+          await session.emitOutputSanitized(activeCall, "CLI stderr stream output was redacted for model safety.", {
+            reason: "secret_redaction",
+            artifactId: stderrArtifact.artifactId,
+            redactionCount: summary.stderrRedactionCount,
+            reasons: summary.redactionReasons,
+            streams: ["stderr"]
+          });
+        }
+      }
 
       const failureType = classifyProcessSummary(summary);
       if (failureType) {
@@ -310,6 +337,7 @@ async function executeProcess(parsed: ParsedRunOptions, signal: AbortSignal): Pr
     const child = spawn(command, args, {
       cwd: parsed.cwd,
       env,
+      detached: process.platform !== "win32",
       shell: false,
       stdio: ["pipe", "pipe", "pipe"]
     });
@@ -372,15 +400,20 @@ async function executeProcess(parsed: ParsedRunOptions, signal: AbortSignal): Pr
         stderr = next;
       }
     };
+    const terminateChildTree = (reason: "timeout" | "cancellation"): void => {
+      if (reason === "timeout") {
+        timedOut = true;
+      } else {
+        cancelled = true;
+      }
+      signalProcessTree(child.pid, "SIGTERM");
+      forceKillTimer = setTimeout(() => signalProcessTree(child.pid, "SIGKILL"), 250);
+    };
     const abortChild = (): void => {
-      cancelled = true;
-      child.kill("SIGTERM");
-      forceKillTimer = setTimeout(() => child.kill("SIGKILL"), 250);
+      terminateChildTree("cancellation");
     };
     const timeout = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGTERM");
-      forceKillTimer = setTimeout(() => child.kill("SIGKILL"), 250);
+      terminateChildTree("timeout");
     }, parsed.timeoutMs);
 
     child.once("error", (error) => {
@@ -389,15 +422,20 @@ async function executeProcess(parsed: ParsedRunOptions, signal: AbortSignal): Pr
     child.stdout?.on("data", (chunk: Buffer) => appendOutput("stdout", chunk));
     child.stderr?.on("data", (chunk: Buffer) => appendOutput("stderr", chunk));
     child.once("close", (exitCode, exitSignal) => {
+      const stdoutRedaction = redactStringWithSummary(stdout);
+      const stderrRedaction = redactStringWithSummary(stderr);
       finish({
         command,
         argv: args,
         cwd: parsed.cwd,
         envKeys: Object.keys(parsed.env).sort(),
-        stdout: redactString(stdout),
-        stderr: redactString(stderr),
+        stdout: stdoutRedaction.value,
+        stderr: stderrRedaction.value,
         stdoutTruncated,
         stderrTruncated,
+        stdoutRedactionCount: stdoutRedaction.count,
+        stderrRedactionCount: stderrRedaction.count,
+        redactionReasons: [...new Set([...stdoutRedaction.reasons, ...stderrRedaction.reasons])],
         exitCode,
         signal: exitSignal,
         elapsedMs: Date.now() - startedAt,
@@ -417,6 +455,25 @@ async function executeProcess(parsed: ParsedRunOptions, signal: AbortSignal): Pr
       child.stdin?.end();
     }
   });
+}
+
+function signalProcessTree(pid: number | undefined, signal: NodeJS.Signals): void {
+  if (!pid) {
+    return;
+  }
+  try {
+    if (process.platform === "win32") {
+      process.kill(pid, signal);
+      return;
+    }
+    process.kill(-pid, signal);
+  } catch {
+    try {
+      process.kill(pid, signal);
+    } catch {
+      // The process may have already exited between timeout/cancellation and signal delivery.
+    }
+  }
 }
 
 function makeProcessToolCall(runId: StableId, parsed: ParsedRunOptions): ToolCall {
@@ -480,23 +537,77 @@ function assessDestructiveCommand(command: readonly string[]): DestructiveAssess
   const executable = path.basename(command[0] ?? "");
   const args = command.slice(1);
   const joined = command.join(" ");
+  const shellText = shellCommandText(executable, args);
 
-  if (["rm", "rmdir", "unlink", "shred"].includes(executable)) {
+  if (["rm", "rmdir", "unlink", "shred", "truncate"].includes(executable)) {
     return { destructive: true, reason: `${executable} can remove filesystem paths.` };
+  }
+  if (["dd", "mkfs", "mount", "umount"].includes(executable)) {
+    return { destructive: true, reason: `${executable} can modify disks, filesystems, or mounted data.` };
   }
   if (executable === "mv" && args.length >= 2) {
     return { destructive: true, reason: "mv can overwrite or move user-owned files." };
   }
-  if (executable === "git" && args.some((arg) => ["clean", "reset", "push"].includes(arg))) {
+  if (executable === "cp" && args.length >= 2 && (args.some((arg) => arg === "-f" || arg.includes("f")) || args.length > 2)) {
+    return { destructive: true, reason: "cp can overwrite user-owned files." };
+  }
+  if (["chmod", "chown", "chgrp"].includes(executable) && args.some((arg) => /^-.*R/.test(arg) || arg === "--recursive")) {
+    return { destructive: true, reason: `${executable} recursive changes can damage workspace permissions or ownership.` };
+  }
+  if (executable === "git" && isDestructiveGit(args)) {
     return { destructive: true, reason: `git ${args.join(" ")} may discard work or modify remotes.` };
   }
   if ((executable === "git" && ["checkout", "switch", "restore"].includes(args[0] ?? "")) || joined.includes("rm -rf")) {
     return { destructive: true, reason: "Command can overwrite, discard, or delete workspace files." };
   }
-  if (["sh", "bash", "zsh"].includes(executable) && /\brm\s+(-[A-Za-z]*r|-[A-Za-z]*f|--recursive|--force)/.test(joined)) {
-    return { destructive: true, reason: "Shell command text contains destructive rm usage." };
+  if (shellText && isDestructiveShellText(shellText)) {
+    return { destructive: true, reason: "Shell command text contains destructive filesystem, redirection, or git usage." };
   }
   return { destructive: false, reason: "No destructive pattern matched." };
+}
+
+function shellCommandText(executable: string, args: readonly string[]): string | undefined {
+  if (!["sh", "bash", "zsh"].includes(executable)) {
+    return undefined;
+  }
+  const commandFlagIndex = args.findIndex((arg) => arg === "-c" || arg.endsWith("c"));
+  if (commandFlagIndex >= 0 && args[commandFlagIndex + 1]) {
+    return args[commandFlagIndex + 1];
+  }
+  return args.join(" ");
+}
+
+function isDestructiveGit(args: readonly string[]): boolean {
+  const subcommand = args[0] ?? "";
+  if (subcommand === "clean") {
+    return args.some((arg) => arg.includes("f") || arg === "--force" || arg === "-d");
+  }
+  if (subcommand === "reset") {
+    return args.some((arg) => ["--hard", "--merge", "--keep"].includes(arg));
+  }
+  if (subcommand === "push") {
+    return args.some((arg) => arg === "--force" || arg === "--force-with-lease" || arg === "-f");
+  }
+  if (["checkout", "switch", "restore"].includes(subcommand)) {
+    return args.some((arg) => arg === "-f" || arg === "--force" || arg === "--hard" || arg === "--discard-changes");
+  }
+  return false;
+}
+
+function isDestructiveShellText(text: string): boolean {
+  const destructivePatterns = [
+    /\brm\s+[^;&|]*(-[A-Za-z]*[rf]|--recursive|--force)\b/,
+    /\bfind\b[^;&|]*\s-delete\b/,
+    /\btruncate\s+(-s|--size)\b/,
+    /\bdd\b[^;&|]*\bof=/,
+    /\bmkfs(?:\.[A-Za-z0-9_-]+)?\b/,
+    /\b(?:chmod|chown|chgrp)\s+(?:-[A-Za-z]*R|--recursive)\b/,
+    /\bgit\s+clean\b[^;&|]*(?:-[A-Za-z]*f|--force)\b/,
+    /\bgit\s+reset\b[^;&|]*--hard\b/,
+    /\bgit\s+push\b[^;&|]*(?:-f|--force|--force-with-lease)\b/,
+    /(^|[^<])>\s*[^>|&\s][^;&|]*/
+  ];
+  return destructivePatterns.some((pattern) => pattern.test(text));
 }
 
 function idempotencyFor(command: readonly string[]): ToolCall["idempotency"] {

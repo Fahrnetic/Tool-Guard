@@ -9,6 +9,54 @@ async function makeTempRoot(prefix = "toolguard-cli-"): Promise<string> {
   return await mkdtemp(path.join(tmpdir(), prefix));
 }
 
+async function delay(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function readPidFile(filePath: string, timeoutMs = 1_000): Promise<number> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const value = Number((await readFile(filePath, "utf8")).trim());
+      if (Number.isInteger(value) && value > 0) {
+        return value;
+      }
+    } catch {
+      // Keep polling until the child fixture writes its pid.
+    }
+    await delay(20);
+  }
+  throw new Error(`Timed out waiting for pid file ${filePath}`);
+}
+
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function writeGrandchildFixture(root: string, fileName: string): Promise<string> {
+  const script = path.join(root, fileName);
+  await writeFile(
+    script,
+    [
+      "import { spawn } from 'node:child_process';",
+      "const pidFile = process.argv[2];",
+      "const grandchild = spawn(process.execPath, [",
+      "  '-e',",
+      "  `require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(() => {}, 1000);`",
+      "], { stdio: 'ignore' });",
+      "grandchild.unref();",
+      "setInterval(() => {}, 1000);"
+    ].join("\n"),
+    "utf8"
+  );
+  return script;
+}
+
 describe("toolplane run process wrapper", () => {
   it("preserves argv boundaries after -- without shell interpretation", async () => {
     const root = await makeTempRoot();
@@ -69,6 +117,53 @@ describe("toolplane run process wrapper", () => {
     expect(result.exitCode).toBe(124);
     expect(result.process?.timedOut).toBe(true);
     expect(result.failureCard?.failureType).toBe("timeout");
+  });
+
+  it("terminates a spawned grandchild process on timeout", async () => {
+    const root = await makeTempRoot();
+    const pidFile = path.join(root, "grandchild.pid");
+    const script = await writeGrandchildFixture(root, "grandchild-timeout.mjs");
+
+    const pending = runToolplaneCli(["run", "--timeout-ms", "500", "--", process.execPath, script, pidFile]);
+    const grandchildPid = await readPidFile(pidFile);
+    const result = await pending;
+    await delay(350);
+
+    try {
+      expect(result.exitCode).toBe(124);
+      expect(result.process?.timedOut).toBe(true);
+      expect(processExists(grandchildPid)).toBe(false);
+    } finally {
+      if (processExists(grandchildPid)) {
+        process.kill(grandchildPid, "SIGKILL");
+      }
+    }
+  });
+
+  it("terminates a spawned grandchild process on cancellation", async () => {
+    const root = await makeTempRoot();
+    const pidFile = path.join(root, "grandchild-cancel.pid");
+    const script = await writeGrandchildFixture(root, "grandchild-cancel.mjs");
+    const controller = new AbortController();
+
+    const pending = runToolplaneCli(
+      ["run", "--timeout-ms", "5000", "--", process.execPath, script, pidFile],
+      { signal: controller.signal }
+    );
+    const grandchildPid = await readPidFile(pidFile);
+    controller.abort();
+    const result = await pending;
+    await delay(350);
+
+    try {
+      expect(result.exitCode).toBe(130);
+      expect(result.process?.cancelled).toBe(true);
+      expect(processExists(grandchildPid)).toBe(false);
+    } finally {
+      if (processExists(grandchildPid)) {
+        process.kill(grandchildPid, "SIGKILL");
+      }
+    }
   });
 
   it("handles cwd, env redaction, stdin, and output limits safely", async () => {
@@ -139,6 +234,35 @@ describe("toolplane run process wrapper", () => {
     expect(await readFile(victim, "utf8")).toBe("still here");
   });
 
+  it("blocks high-risk non-rm shell, filesystem, redirection, and git patterns outside fixture-only mode", async () => {
+    const root = await makeTempRoot();
+    const victim = path.join(root, "victim.txt");
+    await writeFile(victim, "still here", "utf8");
+
+    const cases: readonly (readonly string[])[] = [
+      ["sh", "-c", `printf overwritten > ${victim}`],
+      ["sh", "-c", `find ${root} -type f -delete`],
+      ["truncate", "-s", "0", victim],
+      ["git", "reset", "--hard"],
+      ["git", "clean", "-fd"],
+      ["git", "push", "--force", "origin", "master"]
+    ];
+
+    for (const command of cases) {
+      const blocked = await runToolplaneCli(["run", "--cwd", root, "--", ...command]);
+      expect(blocked.exitCode).toBe(2);
+      expect(blocked.process).toBeUndefined();
+      expect(blocked.failureCard?.failureType).toBe("destructive_action_blocked");
+      expect(await readFile(victim, "utf8")).toBe("still here");
+    }
+
+    const fixtureOnly = await runToolplaneCli(["run", "--fixture-only", "--cwd", root, "--", "sh", "-c", `printf overwritten > ${victim}`]);
+
+    expect(fixtureOnly.exitCode).toBe(0);
+    expect(fixtureOnly.result?.safeSummary).toContain("fixture-only");
+    expect(await readFile(victim, "utf8")).toBe("still here");
+  });
+
   it("treats toolguard alias argv equivalently", async () => {
     const root = await makeTempRoot();
     const script = path.join(root, "ok.mjs");
@@ -158,7 +282,7 @@ describe("toolplane run process wrapper", () => {
     await handle.ready;
     try {
       const script = path.join(root, "stream.mjs");
-      await writeFile(script, "console.log('streamed')\n", "utf8");
+      await writeFile(script, "const key = ['to', 'ken'].join('') + '='; console.log(key + 'a'.repeat(36))\n", "utf8");
 
       const result = await runToolplaneCli([
         "run",
@@ -175,8 +299,34 @@ describe("toolplane run process wrapper", () => {
       expect(eventTypes).toContain("adapter.connected");
       expect(eventTypes).toContain("tool.call.started");
       expect(eventTypes).toContain("tool.call.completed");
+      expect(eventTypes).toContain("output.sanitized");
     } finally {
       await handle.close();
     }
+  });
+
+  it("emits output.sanitized events when CLI stream redaction occurs", async () => {
+    const root = await makeTempRoot();
+    const script = path.join(root, "secret.mjs");
+    await writeFile(
+      script,
+      [
+        "const key = ['to', 'ken'].join('') + '=';",
+        "const scheme = ['Be', 'arer'].join('');",
+        "console.log(key + 'a'.repeat(36));",
+        "console.error(scheme + ' ' + 'b'.repeat(32));"
+      ].join("\n"),
+      "utf8"
+    );
+
+    const result = await runToolplaneCli(["run", "--evidence-root", root, "--", process.execPath, script]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.process?.stdout).toContain("[REDACTED:");
+    expect(result.process?.stderr).toContain("[REDACTED:");
+    const events = (await readFile(result.eventsPath, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+    const sanitizedEvents = events.filter((event) => event.type === "output.sanitized");
+    expect(sanitizedEvents.length).toBeGreaterThanOrEqual(1);
+    expect(sanitizedEvents[0].data.reason).toBe("secret_redaction");
   });
 });

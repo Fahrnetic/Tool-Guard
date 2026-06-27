@@ -201,6 +201,12 @@ export function getRawFailureDetails(error: unknown): readonly string[] {
 
 export function detectSuspiciousOutput(value: JsonValue): FailureClassification | undefined {
   const serialized = JSON.stringify(value);
+  const withoutRedactionPlaceholders = serialized
+    .replace(/\[REDACTED:[^\]]+\]/g, "[REDACTED]")
+    .replace(
+      /\b(?:bearer-token|api-key-assignment|openai-style-key|pem-private-key|token-shaped-value|sensitive-key)\b/g,
+      "redaction-reason"
+    );
   if (
     /ignore\s+(all\s+)?previous\s+instructions/i.test(serialized) ||
     /reveal\s+(the\s+)?system\s+prompt/i.test(serialized) ||
@@ -210,10 +216,10 @@ export function detectSuspiciousOutput(value: JsonValue): FailureClassification 
   }
 
   if (
-    /Bearer\s+[A-Za-z0-9._~+/-]{12,}/.test(serialized) ||
-    /\bsk-[A-Za-z0-9_-]{20,}\b/.test(serialized) ||
-    /\b(api[_-]?key|token|secret|password)\s*[:=]/i.test(serialized) ||
-    /-----BEGIN [A-Z ]+PRIVATE KEY-----/.test(serialized)
+    /Bearer\s+[A-Za-z0-9._~+/-]{12,}/.test(withoutRedactionPlaceholders) ||
+    /\bsk-[A-Za-z0-9_-]{20,}\b/.test(withoutRedactionPlaceholders) ||
+    /\b(api[_-]?key|token|secret|password)\s*[:=]/i.test(withoutRedactionPlaceholders) ||
+    /-----BEGIN [A-Z ]+PRIVATE KEY-----/.test(withoutRedactionPlaceholders)
   ) {
     return RECOVERY.secret_leak_risk;
   }

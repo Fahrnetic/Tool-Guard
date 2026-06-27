@@ -23,7 +23,11 @@ export function HealthMatrix({ health, status, error }: HealthMatrixProps) {
   const [globalFilter, setGlobalFilter] = useState("");
   const columns = useMemo<ColumnDef<HealthRow>[]>(
     () => [
-      { accessorKey: "layer", header: "Layer" },
+      {
+        accessorKey: "layer",
+        header: "Layer",
+        cell: ({ row }) => <LayerBadge layer={row.original.layer} />
+      },
       { accessorKey: "name", header: "Server / tool" },
       {
         accessorKey: "status",
@@ -90,9 +94,14 @@ export function HealthMatrix({ health, status, error }: HealthMatrixProps) {
           <StatusChip label="Tool Server Health Matrix" tone="selected" />
           <h2 className="mt-3 text-2xl font-semibold text-text">Harness, adapter, and downstream health</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
-            Sort columns with Enter or Space, filter status and failure fields, and move row focus with Tab. Sticky headers
-            preserve context while scanning dense data.
+            Core `/api/health` emits separate harness, adapter, downstream server, and downstream tool rows. Sort columns
+            with Enter or Space, filter status and failure fields, and move row focus with Tab.
           </p>
+          <div className="mt-4 flex flex-wrap gap-2" aria-label="Health matrix layers rendered distinctly">
+            {["harness", "adapter", "downstream server", "downstream tool"].map((layer) => (
+              <LayerBadge key={layer} layer={layer} />
+            ))}
+          </div>
         </div>
         <label className="block min-w-72 text-sm font-medium text-text-muted">
           Filter status, failure, layer, or remediation
@@ -139,7 +148,7 @@ export function HealthMatrix({ health, status, error }: HealthMatrixProps) {
                   key={row.id}
                   tabIndex={0}
                   className="group outline-none transition hover:bg-primary/5 focus-visible:bg-primary/10"
-                  aria-label={`${row.original.layer} ${row.original.name} status ${row.original.status}, failure type ${row.original.failureType}, circuit ${row.original.circuitState}`}
+                  aria-label={healthRowAccessibleLabel(row.original)}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td key={cell.id} className="border-b border-border/70 px-4 py-3 align-top text-text-muted group-focus-visible:text-text">
@@ -154,6 +163,42 @@ export function HealthMatrix({ health, status, error }: HealthMatrixProps) {
       </div>
     </section>
   );
+}
+
+function LayerBadge({ layer }: { readonly layer: string }) {
+  return (
+    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${layerClasses(layer)}`}>
+      {layer}
+    </span>
+  );
+}
+
+function layerClasses(layer: string): string {
+  switch (layer) {
+    case "harness":
+      return "border-primary/50 bg-primary/10 text-primary";
+    case "adapter":
+      return "border-info/50 bg-info/10 text-info";
+    case "downstream server":
+      return "border-warning/50 bg-warning/10 text-warning";
+    case "downstream tool":
+      return "border-success/50 bg-success/10 text-success";
+    default:
+      return "border-border bg-bg-panel text-text-muted";
+  }
+}
+
+export function healthRowAccessibleLabel(row: HealthRow): string {
+  return [
+    `${row.layer} ${row.name}`,
+    `status ${row.status}`,
+    `preflight ${row.preflight}`,
+    `latency ${row.latencyMs} milliseconds`,
+    `failure type ${row.failureType}`,
+    row.retryable ? "retryable with policy" : "not retryable for same call",
+    `circuit ${row.circuitState}`,
+    `remediation ${row.remediation}`
+  ].join(", ");
 }
 
 function toneFor(status: string): "healthy" | "degraded" | "failed" | "neutral" {

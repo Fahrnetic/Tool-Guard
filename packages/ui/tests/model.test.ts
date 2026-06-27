@@ -6,6 +6,7 @@ import {
   type HealthPayload,
   type LatestRunPayload
 } from "../src/lib/model.js";
+import { healthRowAccessibleLabel } from "../src/screens/HealthMatrix.js";
 
 describe("summarizeToolOps", () => {
   it("uses Core health API data for overview counts and labels", () => {
@@ -133,5 +134,33 @@ describe("correlation helpers", () => {
       "evidence.artifact.created",
       "report.exported"
     ]);
+  });
+});
+
+describe("Health Matrix row accessibility", () => {
+  it("labels layer, status, latency, failure, retry, circuit, and remediation fields", () => {
+    const label = healthRowAccessibleLabel({
+      id: "server_downstream_1",
+      layer: "downstream server",
+      name: "server_fixture",
+      status: "degraded",
+      preflight: "degraded",
+      latencyMs: 96,
+      failureType: "preflight_degraded",
+      retryable: true,
+      circuitState: "open",
+      remediation: "Inspect server-level connectivity before retrying tools.",
+      runId: "run_test",
+      downstreamServerId: "server_fixture"
+    });
+
+    expect(label).toContain("downstream server server_fixture");
+    expect(label).toContain("status degraded");
+    expect(label).toContain("preflight degraded");
+    expect(label).toContain("latency 96 milliseconds");
+    expect(label).toContain("failure type preflight_degraded");
+    expect(label).toContain("retryable with policy");
+    expect(label).toContain("circuit open");
+    expect(label).toContain("remediation Inspect server-level connectivity before retrying tools.");
   });
 });

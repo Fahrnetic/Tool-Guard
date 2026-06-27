@@ -12,6 +12,53 @@ import {
 } from "../src/index.js";
 
 describe("local sidecar API", () => {
+  it("serves distinct harness, adapter, downstream server, and downstream tool health rows", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-health-"));
+    const handle = createCoreApiServer({ port: 0, evidenceRoot: root });
+    await handle.ready;
+    const address = handle.server.address();
+    if (typeof address !== "object" || !address) {
+      throw new Error("Expected test server address");
+    }
+    try {
+      const response = await fetch(`http://127.0.0.1:${address.port}/api/health`);
+      expect(response.status).toBe(200);
+      const payload = (await response.json()) as {
+        summary: { downstreamServers: number; downstreamTools: number };
+        rows: {
+          layer: string;
+          status: string;
+          preflight: string;
+          latencyMs: number;
+          failureType: string;
+          retryable: boolean;
+          circuitState: string;
+          remediation: string;
+          downstreamServerId?: string;
+        }[];
+      };
+
+      expect(payload.rows.map((row) => row.layer)).toEqual(
+        expect.arrayContaining(["harness", "adapter", "downstream server", "downstream tool"])
+      );
+      expect(payload.summary.downstreamServers).toBeGreaterThan(0);
+      expect(payload.summary.downstreamTools).toBeGreaterThan(0);
+      expect(payload.rows.filter((row) => row.layer === "downstream server").length).toBe(payload.summary.downstreamServers);
+      expect(payload.rows.filter((row) => row.layer === "downstream tool").length).toBe(payload.summary.downstreamTools);
+      expect(payload.rows.every((row) => typeof row.preflight === "string" && row.preflight.length > 0)).toBe(true);
+      expect(payload.rows.every((row) => typeof row.latencyMs === "number")).toBe(true);
+      expect(payload.rows.every((row) => typeof row.failureType === "string" && row.failureType.length > 0)).toBe(true);
+      expect(payload.rows.every((row) => typeof row.retryable === "boolean")).toBe(true);
+      expect(payload.rows.every((row) => typeof row.circuitState === "string" && row.circuitState.length > 0)).toBe(true);
+      expect(payload.rows.every((row) => typeof row.remediation === "string" && row.remediation.length > 0)).toBe(true);
+      expect(new Set(payload.rows.filter((row) => row.layer === "downstream server").map((row) => row.downstreamServerId))).toEqual(
+        new Set(payload.rows.filter((row) => row.layer === "downstream tool").map((row) => row.downstreamServerId))
+      );
+    } finally {
+      await handle.close();
+    }
+  });
+
   it("routes framework adapter tool calls through Core with correlation and report evidence", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "toolguard-sidecar-"));
     const handle = createCoreApiServer({ port: 3665, evidenceRoot: root, seedDirectRun: false });

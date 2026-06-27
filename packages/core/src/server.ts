@@ -795,6 +795,38 @@ function buildHealthPayload(runId: StableId, events: readonly CoreEvent[]): Json
     latestFailureByTarget.set(`${event.downstreamServerId ?? "server:unknown"}:${event.summary}`, event);
   }
 
+  const downstreamServerRows = buildDownstreamServerHealthRows({
+    findingRows,
+    failureEvents,
+    circuitOpenEvents,
+    runId
+  });
+
+  const downstreamToolRows = findingRows.map((finding, index) => {
+    const status = stringValue(finding.status, "degraded");
+    const toolName = stringValue(finding.toolName, `tool-${index + 1}`);
+    const downstreamServerId = stringValue(finding.downstreamServerId, "server:unknown");
+    const failure = [...latestFailureByTarget.values()].find((event) => event.downstreamServerId === downstreamServerId);
+    const failureCard = failure?.data && "failureType" in failure.data ? failure.data : undefined;
+    return {
+      id: `tool:${downstreamServerId}:${toolName}`,
+      layer: "downstream tool",
+      name: toolName,
+      status,
+      preflight: status,
+      latencyMs: status === "healthy" ? 18 : status === "degraded" ? 94 : 0,
+      failureType: failureCard && "failureType" in failureCard ? failureCard.failureType : status === "healthy" ? "none" : "preflight_degraded",
+      retryable: failureCard && "retryable" in failureCard ? failureCard.retryable : status !== "healthy",
+      circuitState: circuitOpenEvents.some((event) => event.downstreamServerId === downstreamServerId) ? "open" : "closed",
+      remediation: stringValue(
+        finding.remediation,
+        status === "healthy" ? "No action required." : stringValue(finding.summary, "Inspect downstream fixture health.")
+      ),
+      runId,
+      downstreamServerId
+    };
+  });
+
   const rows: JsonObject[] = [
     {
       id: "harness:direct",
@@ -822,30 +854,8 @@ function buildHealthPayload(runId: StableId, events: readonly CoreEvent[]): Json
       remediation: "Core API is serving loopback observability endpoints.",
       runId
     },
-    ...findingRows.map((finding, index) => {
-      const status = stringValue(finding.status, "degraded");
-      const toolName = stringValue(finding.toolName, `tool-${index + 1}`);
-      const downstreamServerId = stringValue(finding.downstreamServerId, "server:unknown");
-      const failure = [...latestFailureByTarget.values()].find((event) => event.downstreamServerId === downstreamServerId);
-      const failureCard = failure?.data && "failureType" in failure.data ? failure.data : undefined;
-      return {
-        id: `tool:${toolName}`,
-        layer: "downstream tool",
-        name: toolName,
-        status,
-        preflight: status,
-        latencyMs: status === "healthy" ? 18 : status === "degraded" ? 94 : 0,
-        failureType: failureCard && "failureType" in failureCard ? failureCard.failureType : status === "healthy" ? "none" : "preflight_degraded",
-        retryable: failureCard && "retryable" in failureCard ? failureCard.retryable : status !== "healthy",
-        circuitState: circuitOpenEvents.some((event) => event.downstreamServerId === downstreamServerId) ? "open" : "closed",
-        remediation: stringValue(
-          finding.remediation,
-          status === "healthy" ? "No action required." : stringValue(finding.summary, "Inspect downstream fixture health.")
-        ),
-        runId,
-        downstreamServerId
-      };
-    })
+    ...downstreamServerRows,
+    ...downstreamToolRows
   ];
 
   return {
@@ -867,6 +877,49 @@ function buildHealthPayload(runId: StableId, events: readonly CoreEvent[]): Json
     },
     rows
   };
+}
+
+function buildDownstreamServerHealthRows(input: {
+  readonly findingRows: readonly Record<string, unknown>[];
+  readonly failureEvents: readonly CoreEvent[];
+  readonly circuitOpenEvents: readonly CoreEvent[];
+  readonly runId: StableId;
+}): JsonObject[] {
+  const grouped = new Map<string, Record<string, unknown>[]>();
+  for (const finding of input.findingRows) {
+    const downstreamServerId = stringValue(finding.downstreamServerId, "server:unknown");
+    grouped.set(downstreamServerId, [...(grouped.get(downstreamServerId) ?? []), finding]);
+  }
+
+  return [...grouped.entries()].map(([downstreamServerId, serverFindings]) => {
+    const statuses = serverFindings.map((finding) => stringValue(finding.status, "degraded"));
+    const status = statuses.includes("failed") ? "failed" : statuses.includes("degraded") ? "degraded" : "healthy";
+    const latestFailure = [...input.failureEvents].reverse().find((event) => event.downstreamServerId === downstreamServerId);
+    const failureType = failureCardField(latestFailure?.data, "failureType", status === "healthy" ? "none" : "preflight_degraded");
+    const retryable = failureCardField(latestFailure?.data, "retryable", status !== "healthy");
+    const toolCount = serverFindings.length;
+    const degradedCount = statuses.filter((entry) => entry === "degraded").length;
+    const failedCount = statuses.filter((entry) => entry === "failed").length;
+    const remediation =
+      status === "healthy"
+        ? `All ${toolCount} downstream tools passed preflight.`
+        : `${failedCount} failed and ${degradedCount} degraded tool preflight checks. Inspect server-level connectivity before retrying tools.`;
+
+    return {
+      id: `server:${downstreamServerId}`,
+      layer: "downstream server",
+      name: downstreamServerId,
+      status,
+      preflight: status,
+      latencyMs: status === "healthy" ? 22 : status === "degraded" ? 96 : 0,
+      failureType,
+      retryable,
+      circuitState: input.circuitOpenEvents.some((event) => event.downstreamServerId === downstreamServerId) ? "open" : "closed",
+      remediation,
+      runId: input.runId,
+      downstreamServerId
+    };
+  });
 }
 
 function buildFailuresPayload(runId: StableId, events: readonly CoreEvent[]): JsonObject {

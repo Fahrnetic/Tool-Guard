@@ -11,7 +11,9 @@ import {
   validateReportManifest,
   type CoreEvent,
   type FailureCard,
+  type RegisteredTool,
   type SideEffectLedgerEntry,
+  type SideEffectTargetType,
   type ToolCall
 } from "../src/index.js";
 
@@ -61,6 +63,58 @@ async function fixtureSession(
 }
 
 describe("side-effect ledger, blast radius, and retry-loop intelligence", () => {
+  it("uses only the architecture-required side-effect target taxonomy", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-target-taxonomy-"));
+    const runId = createId("run");
+    const session = new CoreSession({ evidenceRoot: root, runId });
+    const registry = new ToolRegistry();
+    const expectedTargetTypes = [
+      "filesystem",
+      "process",
+      "git",
+      "network-loopback",
+      "mcp-tool",
+      "python-framework-tool",
+      "report-artifact",
+      "ui-action"
+    ] satisfies readonly SideEffectTargetType[];
+
+    const baseTool = {
+      title: "Target taxonomy fixture",
+      description: "Records a successful side-effect target classification.",
+      downstreamServerId: createId("server"),
+      inputSchema: { type: "object" as const, properties: {}, additionalProperties: false },
+      destructiveRisk: "none" as const,
+      execute: () => ({ ok: true })
+    };
+    const tools: RegisteredTool[] = [
+      { ...baseTool, toolName: "target.filesystem", protocol: "fixture" },
+      { ...baseTool, toolName: "target.process", protocol: "process" },
+      { ...baseTool, toolName: "git.status", protocol: "process" },
+      { ...baseTool, toolName: "target.http", protocol: "http" },
+      { ...baseTool, toolName: "target.mcp", protocol: "mcp" },
+      { ...baseTool, toolName: "target.python", protocol: "in-process" },
+      { ...baseTool, toolName: "report.export", protocol: "in-process" },
+      { ...baseTool, toolName: "target.browser", protocol: "browser" }
+    ];
+
+    for (const tool of tools) {
+      registry.register(tool);
+      await session.executeToolCall(
+        registry,
+        makeCall({
+          runId,
+          toolName: tool.toolName,
+          downstreamServerId: tool.downstreamServerId,
+          sourcePath: tool.toolName === "target.python" ? "framework-adapter" : "non-mcp-direct"
+        })
+      );
+    }
+
+    const ledger = await readJsonl<SideEffectLedgerEntry>(session.recorder.ledgerPath);
+    expect(ledger.map((row) => row.targetType)).toEqual(expectedTargetTypes);
+  });
+
   it("records ledger rows and events for completed, blocked, retried, and failed calls", async () => {
     const { runId, session, registry } = await fixtureSession({ maxRetries: 1 });
 

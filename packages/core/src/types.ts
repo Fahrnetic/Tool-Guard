@@ -150,16 +150,14 @@ export interface PolicyDecision {
 export type SideEffectState = "none" | "planned" | "blocked" | "simulated" | "completed" | "partial" | "unknown";
 export type SideEffectReversibility = "reversible" | "fixture-only" | "manual-review" | "irreversible-risk";
 export type SideEffectTargetType =
-  | "none"
-  | "fixture"
-  | "workspace"
   | "filesystem"
   | "process"
-  | "network"
-  | "mcp-server"
-  | "browser"
-  | "system"
-  | "unknown";
+  | "git"
+  | "network-loopback"
+  | "mcp-tool"
+  | "python-framework-tool"
+  | "report-artifact"
+  | "ui-action";
 
 export type BlastRadiusLabel = "contained" | "limited" | "workspace-risk" | "system-risk";
 

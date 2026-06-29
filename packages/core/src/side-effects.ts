@@ -36,16 +36,14 @@ export function scoreBlastRadius(input: {
   };
 
   const targetScore: Record<SideEffectTargetType, number> = {
-    none: 0,
-    fixture: 5,
-    workspace: 30,
     filesystem: 35,
     process: 25,
-    network: 35,
-    "mcp-server": 25,
-    browser: 20,
-    system: 60,
-    unknown: 20
+    git: 45,
+    "network-loopback": 30,
+    "mcp-tool": 25,
+    "python-framework-tool": 25,
+    "report-artifact": 20,
+    "ui-action": 20
   };
   add("target-type", targetScore[input.targetType], `Target classified as ${input.targetType}.`);
 
@@ -150,7 +148,7 @@ export function inferSideEffect(input: {
   if (input.outcome === "completed") {
     return {
       targetType,
-      effectState: fixtureOnly && destructiveRisk !== "none" ? "simulated" : targetType === "none" ? "none" : "completed",
+      effectState: fixtureOnly && destructiveRisk !== "none" ? "simulated" : "completed",
       reversibility,
       operation: "call-completed",
       summary:
@@ -221,14 +219,37 @@ function inferTargetType(
   destructiveRisk: RegisteredTool["destructiveRisk"],
   call: ToolCall
 ): SideEffectTargetType {
-  if (call.arguments.fixtureOnly === true || protocol === "fixture" || call.toolName.startsWith("fixture.")) return "fixture";
-  if (destructiveRisk === "high") return "workspace";
+  const toolName = call.toolName.toLowerCase();
+  const originalToolName = call.originalToolName?.toLowerCase() ?? "";
+  const downstreamServerId = call.downstreamServerId.toLowerCase();
+  const nameParts = [toolName, originalToolName, downstreamServerId];
+
+  if (isReportArtifactTarget(nameParts)) return "report-artifact";
+  if (isGitTarget(nameParts)) return "git";
+  if (call.sourcePath === "framework-adapter") return "python-framework-tool";
+  if (call.sourcePath === "cli-wrapper") return "process";
+  if (destructiveRisk === "high") return "filesystem";
   if (protocol === "process") return "process";
-  if (protocol === "http") return "network";
-  if (protocol === "mcp") return "mcp-server";
-  if (protocol === "browser") return "browser";
-  if (protocol === "in-process") return "none";
-  return "unknown";
+  if (protocol === "http") return "network-loopback";
+  if (protocol === "mcp") return "mcp-tool";
+  if (protocol === "browser") return "ui-action";
+  if (protocol === "fixture") return "filesystem";
+  return "process";
+}
+
+function isGitTarget(parts: readonly string[]): boolean {
+  return parts.some((part) => part === "git" || part.startsWith("git.") || part.includes("/git/") || part.includes(" git "));
+}
+
+function isReportArtifactTarget(parts: readonly string[]): boolean {
+  return parts.some(
+    (part) =>
+      part === "report" ||
+      part.startsWith("report.") ||
+      part.includes("report-artifact") ||
+      part.includes("artifact") ||
+      part.includes("manifest")
+  );
 }
 
 function stableStringify(value: JsonObject): string {

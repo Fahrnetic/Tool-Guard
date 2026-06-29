@@ -7,7 +7,7 @@ import { ToolRegistry } from "./registry.js";
 import { registerChaosFixtures } from "./chaos-fixtures.js";
 import { validateReportManifest } from "./report.js";
 import { redactStringWithSummary } from "./redaction.js";
-import { generateAndPersistNarrative, generateAndPersistTopology } from "./topology.js";
+import { buildRunNarrative, buildRunTopology, generateAndPersistNarrative, generateAndPersistTopology } from "./topology.js";
 import { createId, type StableId } from "./ids.js";
 import type { CoreEvent } from "./events.js";
 import type { EvidenceArtifact, FailureCard, JsonObject, JsonValue, PolicyDecision, ToolCall } from "./types.js";
@@ -114,7 +114,15 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
 
       if (url.pathname.startsWith("/api/topology/")) {
         const requestedRunId = decodeURIComponent(url.pathname.slice("/api/topology/".length));
-        if (requestedRunId !== runId && requestedRunId !== "latest") {
+        if (requestedRunId === "demo-empty") {
+          sendJson(response, 200, buildEmptyTopologyPayload());
+          return;
+        }
+        if (requestedRunId === "demo-loading") {
+          await delay(1_600);
+          sendJson(response, 200, buildRunTopology({ runId, events: session.recorder.events, ledger: session.recorder.ledger }));
+          return;
+        } else if (requestedRunId !== runId && requestedRunId !== "latest") {
           sendJson(response, 404, { error: "topology_run_not_found", runId: requestedRunId });
           return;
         }
@@ -138,7 +146,16 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
 
       if (url.pathname.startsWith("/api/narrative/")) {
         const requestedRunId = decodeURIComponent(url.pathname.slice("/api/narrative/".length));
-        if (requestedRunId !== runId && requestedRunId !== "latest") {
+        if (requestedRunId === "demo-empty") {
+          sendJson(response, 200, buildEmptyNarrativePayload());
+          return;
+        }
+        if (requestedRunId === "demo-loading") {
+          await delay(1_600);
+          const topology = buildRunTopology({ runId, events: session.recorder.events, ledger: session.recorder.ledger });
+          sendJson(response, 200, buildRunNarrative({ runId, events: session.recorder.events, ledger: session.recorder.ledger, topology }));
+          return;
+        } else if (requestedRunId !== runId && requestedRunId !== "latest") {
           sendJson(response, 404, { error: "narrative_run_not_found", runId: requestedRunId });
           return;
         }
@@ -649,6 +666,59 @@ function isRecord(value: unknown): value is Record<string, JsonValue | unknown> 
 function sendJson(response: http.ServerResponse, statusCode: number, body: unknown): void {
   response.writeHead(statusCode, { "content-type": "application/json" });
   response.end(`${JSON.stringify(body, null, 2)}\n`);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function buildEmptyTopologyPayload(): JsonObject {
+  return {
+    runId: "demo-empty",
+    generatedFrom: {
+      eventCount: 0,
+      ledgerCount: 0,
+      lastEventSequence: 0
+    },
+    summary: {
+      nodes: 0,
+      edges: 0,
+      failures: 0,
+      blocked: 0,
+      sideEffects: 0,
+      artifacts: 0,
+      reports: 0
+    },
+    nodes: [],
+    edges: []
+  };
+}
+
+function buildEmptyNarrativePayload(): JsonObject {
+  return {
+    runId: "demo-empty",
+    generatedFrom: {
+      eventCount: 0,
+      ledgerCount: 0,
+      lastEventSequence: 0
+    },
+    text: [
+      "Root cause: No topology data has been recorded for this deterministic empty fixture run.",
+      "Blast radius: None. No downstream calls, policy decisions, side effects, or artifacts exist.",
+      "Side effects: None observed or simulated.",
+      "Recovery status: Waiting for a ToolGuard run that emits topology evidence.",
+      "Next safe action: Run a demo fixture when you want a populated topology, or keep this state to validate empty-state handling."
+    ].join("\n"),
+    sections: {
+      rootCause: "No topology data has been recorded for this deterministic empty fixture run.",
+      blastRadius: "None. No downstream calls, policy decisions, side effects, or artifacts exist.",
+      sideEffects: "None observed or simulated.",
+      recoveryStatus: "Waiting for a ToolGuard run that emits topology evidence.",
+      nextSafeAction: "Run a demo fixture when you want a populated topology, or keep this state to validate empty-state handling."
+    }
+  };
 }
 
 function configuredBaseUrl(host: string, port: number, server: http.Server): string {

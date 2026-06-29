@@ -64,73 +64,84 @@ export function App() {
   const [streamState, setStreamState] = useState<"loading" | "connected" | "degraded" | "error">("loading");
   const [selectedCorrelationId, setSelectedCorrelationId] = useState<string | undefined>();
   const [topologySelection, setTopologySelection] = useState<TopologySelection | undefined>();
+  const [topologyRunId, setTopologyRunId] = useState("latest");
 
   useEffect(() => {
-    const controller = new AbortController();
+    let disposed = false;
+    const controllers = new Set<AbortController>();
     async function load() {
+      const controller = new AbortController();
+      controllers.add(controller);
       setData({ status: "loading" });
-      const [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, reportsResult] = await Promise.allSettled([
-        fetchLatestRun(controller.signal),
-        fetchHealth(controller.signal),
-        fetchTopology("latest", controller.signal),
-        fetchNarrative("latest", controller.signal),
-        fetchFailures(controller.signal),
-        fetchTrace("latest", controller.signal),
-        fetchPolicies(controller.signal),
-        fetchIntegrations(controller.signal),
-        fetchReplay(controller.signal),
-        fetchReports(controller.signal)
-      ]);
-      if (controller.signal.aborted) {
-        return;
+      try {
+        const [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, reportsResult] = await Promise.allSettled([
+          fetchLatestRun(controller.signal),
+          fetchHealth(controller.signal),
+          fetchTopology(topologyRunId, controller.signal),
+          fetchNarrative(topologyRunId, controller.signal),
+          fetchFailures(controller.signal),
+          fetchTrace("latest", controller.signal),
+          fetchPolicies(controller.signal),
+          fetchIntegrations(controller.signal),
+          fetchReplay(controller.signal),
+          fetchReports(controller.signal)
+        ]);
+        if (disposed || controller.signal.aborted) {
+          return;
+        }
+        const run = runResult.status === "fulfilled" ? runResult.value : undefined;
+        const health = healthResult.status === "fulfilled" ? healthResult.value : undefined;
+        const topology = topologyResult.status === "fulfilled" ? topologyResult.value : undefined;
+        const narrative = narrativeResult.status === "fulfilled" ? narrativeResult.value : undefined;
+        const failures = failureResult.status === "fulfilled" ? failureResult.value : undefined;
+        const trace = traceResult.status === "fulfilled" ? traceResult.value : undefined;
+        const policies = policyResult.status === "fulfilled" ? policyResult.value : undefined;
+        const integrations = integrationResult.status === "fulfilled" ? integrationResult.value : undefined;
+        const replay = replayResult.status === "fulfilled" ? replayResult.value : undefined;
+        const reports = reportsResult.status === "fulfilled" ? reportsResult.value : undefined;
+        if (!run && !health) {
+          const reason = runResult.status === "rejected" ? String(runResult.reason) : "Unknown Core API error";
+          setData({ status: "error", error: reason });
+          return;
+        }
+        if (run && run.eventCount === 0) {
+          setData({ run, ...(health ? { health } : {}), ...(topology ? { topology } : {}), ...(narrative ? { narrative } : {}), ...(failures ? { failures } : {}), ...(trace ? { trace } : {}), ...(policies ? { policies } : {}), ...(integrations ? { integrations } : {}), ...(replay ? { replay } : {}), ...(reports ? { reports } : {}), status: "empty" });
+          return;
+        }
+        const degradedError =
+          [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, reportsResult].some((result) => result.status === "rejected")
+            ? "One Core endpoint returned an error."
+            : undefined;
+        setData({
+          ...(run ? { run } : {}),
+          ...(health ? { health } : {}),
+          ...(topology ? { topology } : {}),
+          ...(narrative ? { narrative } : {}),
+          ...(failures ? { failures } : {}),
+          ...(trace ? { trace } : {}),
+          ...(policies ? { policies } : {}),
+          ...(integrations ? { integrations } : {}),
+          ...(replay ? { replay } : {}),
+          ...(reports ? { reports } : {}),
+          status: [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, reportsResult].every((result) => result.status === "fulfilled") ? "ready" : "degraded",
+          ...(degradedError ? { error: degradedError } : {})
+        });
+      } finally {
+        controllers.delete(controller);
       }
-      const run = runResult.status === "fulfilled" ? runResult.value : undefined;
-      const health = healthResult.status === "fulfilled" ? healthResult.value : undefined;
-      const topology = topologyResult.status === "fulfilled" ? topologyResult.value : undefined;
-      const narrative = narrativeResult.status === "fulfilled" ? narrativeResult.value : undefined;
-      const failures = failureResult.status === "fulfilled" ? failureResult.value : undefined;
-      const trace = traceResult.status === "fulfilled" ? traceResult.value : undefined;
-      const policies = policyResult.status === "fulfilled" ? policyResult.value : undefined;
-      const integrations = integrationResult.status === "fulfilled" ? integrationResult.value : undefined;
-      const replay = replayResult.status === "fulfilled" ? replayResult.value : undefined;
-      const reports = reportsResult.status === "fulfilled" ? reportsResult.value : undefined;
-      if (!run && !health) {
-        const reason = runResult.status === "rejected" ? String(runResult.reason) : "Unknown Core API error";
-        setData({ status: "error", error: reason });
-        return;
-      }
-      if (run && run.eventCount === 0) {
-        setData({ run, ...(health ? { health } : {}), ...(topology ? { topology } : {}), ...(narrative ? { narrative } : {}), ...(failures ? { failures } : {}), ...(trace ? { trace } : {}), ...(policies ? { policies } : {}), ...(integrations ? { integrations } : {}), ...(replay ? { replay } : {}), ...(reports ? { reports } : {}), status: "empty" });
-        return;
-      }
-      const degradedError =
-        [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, reportsResult].some((result) => result.status === "rejected")
-          ? "One Core endpoint returned an error."
-          : undefined;
-      setData({
-        ...(run ? { run } : {}),
-        ...(health ? { health } : {}),
-        ...(topology ? { topology } : {}),
-        ...(narrative ? { narrative } : {}),
-        ...(failures ? { failures } : {}),
-        ...(trace ? { trace } : {}),
-        ...(policies ? { policies } : {}),
-        ...(integrations ? { integrations } : {}),
-        ...(replay ? { replay } : {}),
-        ...(reports ? { reports } : {}),
-        status: [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, reportsResult].every((result) => result.status === "fulfilled") ? "ready" : "degraded",
-        ...(degradedError ? { error: degradedError } : {})
-      });
     }
     void load();
     const timer = window.setInterval(() => {
       void load();
     }, 5_000);
     return () => {
-      controller.abort();
+      disposed = true;
+      for (const controller of controllers) {
+        controller.abort();
+      }
       window.clearInterval(timer);
     };
-  }, []);
+  }, [topologyRunId]);
 
   const refetchTraceForSelection = useCallback(async (selection: { readonly id: string; readonly kind: string; readonly traceId?: string }) => {
     setSelectedCorrelationId(selection.id);
@@ -190,7 +201,9 @@ export function App() {
           {...(data.health ? { health: data.health } : {})}
           {...(data.reports ? { reports: data.reports } : {})}
           status={data.status}
+          selectedRunId={topologyRunId}
           {...(data.error ? { error: data.error } : {})}
+          onSelectRunId={setTopologyRunId}
           onSelectCorrelation={refetchTraceForSelection}
           onSelectNode={setTopologySelection}
         />

@@ -26,7 +26,9 @@ interface FailureTopologyMapProps {
   readonly health?: HealthPayload;
   readonly reports?: ReportsPayload;
   readonly status: ResourceStatus;
+  readonly selectedRunId?: string;
   readonly error?: string;
+  readonly onSelectRunId?: (runId: string) => void;
   readonly onSelectCorrelation?: (selection: { readonly id: string; readonly kind: string; readonly traceId?: string }) => void | Promise<void>;
   readonly onSelectNode?: (selection: TopologySelection) => void;
 }
@@ -64,7 +66,9 @@ export function FailureTopologyMap({
   health,
   reports,
   status,
+  selectedRunId = "latest",
   error,
+  onSelectRunId,
   onSelectCorrelation,
   onSelectNode
 }: FailureTopologyMapProps) {
@@ -92,13 +96,13 @@ export function FailureTopologyMap({
   }
 
   if (status === "loading") {
-    return <TopologyLoadingState />;
+    return <TopologyLoadingState selectedRunId={selectedRunId} onSelectRunId={onSelectRunId} />;
   }
   if (status === "error") {
     return <StatePanel status="error" title="Failure Topology unavailable" message={error ?? "Core did not return topology or narrative data."} action="Confirm Core is serving `/api/topology/latest` and `/api/narrative/latest`." />;
   }
   if (!topology || topology.nodes.length === 0) {
-    return <TopologyEmptyState />;
+    return <TopologyEmptyState selectedRunId={selectedRunId} onSelectRunId={onSelectRunId} />;
   }
 
   const missingTypes = nodeTypes.filter((type) => !topology.nodes.some((node) => node.type === type));
@@ -122,6 +126,7 @@ export function FailureTopologyMap({
               Failure Cards, trace events, policy decisions, ledger references, health rows, and evidence artifacts below.
             </p>
           </div>
+          <TopologyFixtureChooser selectedRunId={selectedRunId} onSelectRunId={onSelectRunId} />
           <div className="grid gap-2 rounded-2xl border border-border bg-bg-panel p-4 text-xs text-text-muted sm:grid-cols-2">
             <Metric label="runId" value={topology.runId} mono />
             <Metric label="source events" value={String(topology.generatedFrom.eventCount)} />
@@ -217,10 +222,15 @@ export function FailureTopologyMap({
   );
 }
 
-function TopologyLoadingState() {
+function TopologyLoadingState({ selectedRunId, onSelectRunId }: { readonly selectedRunId: string; readonly onSelectRunId: ((runId: string) => void) | undefined }) {
   return (
     <section className="space-y-5">
-      <StatePanel status="loading" title="Loading Failure Topology" message="Fetching `/api/topology/latest` and `/api/narrative/latest` from Core." />
+      <div className="rounded-3xl border border-border bg-bg-elevated/80 p-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <StatePanel status="loading" title="Loading Failure Topology" message={`Fetching \`/api/topology/${selectedRunId}\` and \`/api/narrative/${selectedRunId}\` from Core.`} />
+          <TopologyFixtureChooser selectedRunId={selectedRunId} onSelectRunId={onSelectRunId} />
+        </div>
+      </div>
       <div className="grid gap-4 lg:grid-cols-3" aria-hidden="true">
         {[0, 1, 2, 3, 4, 5].map((item) => (
           <div key={item} className="h-32 animate-pulse rounded-2xl border border-border bg-bg-panel/70" />
@@ -230,14 +240,81 @@ function TopologyLoadingState() {
   );
 }
 
-function TopologyEmptyState() {
+function TopologyEmptyState({ selectedRunId, onSelectRunId }: { readonly selectedRunId: string; readonly onSelectRunId: ((runId: string) => void) | undefined }) {
   return (
-    <StatePanel
-      status="empty"
-      title="No topology data yet"
-      message="Core is reachable, but this run has no topology nodes or side-effect ledger references yet."
-      action="Run a ToolGuard demo or fixture to emit events, ledger rows, and evidence artifacts."
-    />
+    <section className="space-y-5">
+      <div className="rounded-3xl border border-border bg-bg-elevated/80 p-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <StatePanel
+            status="empty"
+            title="No topology data in selected fixture run"
+            message="The deterministic empty topology fixture is loaded. Core is reachable, but this run intentionally has no nodes, edges, side effects, policy decisions, or artifacts."
+            action="Switch back to the live run for populated Core topology data, or use this fixture to validate the designed empty state."
+          />
+          <TopologyFixtureChooser selectedRunId={selectedRunId} onSelectRunId={onSelectRunId} />
+        </div>
+      </div>
+      <div className="grid gap-4 md:grid-cols-3">
+        <EmptyTopologyHint title="What would appear here" body="Harness, adapter, downstream tool, policy, attempt, side-effect, artifact, and report nodes render after Core records a run." />
+        <EmptyTopologyHint title="Why this state exists" body="Validation can select a real UI fixture instead of replacing Core responses with route mocks." />
+        <EmptyTopologyHint title="Next safe action" body="Run a ToolGuard demo fixture or return to Live Core topology when you want populated evidence." />
+      </div>
+    </section>
+  );
+}
+
+function TopologyFixtureChooser({ selectedRunId, onSelectRunId }: { readonly selectedRunId: string; readonly onSelectRunId: ((runId: string) => void) | undefined }) {
+  const options = [
+    {
+      id: "latest",
+      label: "Live Core topology",
+      description: "Uses current Core-backed run data."
+    },
+    {
+      id: "demo-empty",
+      label: "Empty fixture run",
+      description: "No topology nodes, with meaningful empty-state copy."
+    },
+    {
+      id: "demo-loading",
+      label: "Loading skeleton demo",
+      description: "Delays Core topology long enough for validation capture."
+    }
+  ] as const;
+
+  return (
+    <section className="min-w-72 rounded-2xl border border-border bg-bg-panel p-4" aria-label="Topology fixture selector">
+      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-dim">Topology demo states</p>
+      <div className="mt-3 grid gap-2" role="radiogroup" aria-label="Select topology run state">
+        {options.map((option) => {
+          const selected = selectedRunId === option.id;
+          return (
+            <button
+              key={option.id}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              onClick={() => onSelectRunId?.(option.id)}
+              className={`rounded-xl border p-3 text-left transition active:scale-[0.99] focus-visible:border-primary ${
+                selected ? "border-primary bg-primary/10 shadow-lg shadow-primary/10" : "border-border bg-bg/55 hover:border-primary/45"
+              }`}
+            >
+              <span className="text-sm font-semibold text-text">{option.label}</span>
+              <span className="mt-1 block text-xs leading-5 text-text-muted">{option.description}</span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function EmptyTopologyHint({ title, body }: { readonly title: string; readonly body: string }) {
+  return (
+    <article className="rounded-2xl border border-border bg-bg-panel/90 p-5">
+      <h3 className="text-sm font-semibold text-text">{title}</h3>
+      <p className="mt-2 text-sm leading-6 text-text-muted">{body}</p>
+    </article>
   );
 }
 

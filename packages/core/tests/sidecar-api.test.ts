@@ -110,6 +110,41 @@ describe("local sidecar API", () => {
     }
   });
 
+  it("exposes deterministic empty and delayed topology demo runs for real UI validation", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-topology-demo-states-"));
+    const handle = createCoreApiServer({ port: 0, evidenceRoot: root, seedDirectRun: false });
+    await handle.ready;
+    const address = handle.server.address();
+    if (typeof address !== "object" || !address) {
+      throw new Error("Expected test server address");
+    }
+    try {
+      const origin = `http://127.0.0.1:${address.port}`;
+      const emptyTopologyResponse = await fetch(`${origin}/api/topology/demo-empty`);
+      const emptyNarrativeResponse = await fetch(`${origin}/api/narrative/demo-empty`);
+      const started = Date.now();
+      const loadingTopologyResponse = await fetch(`${origin}/api/topology/demo-loading`);
+      const elapsedMs = Date.now() - started;
+
+      expect(emptyTopologyResponse.status).toBe(200);
+      expect(emptyNarrativeResponse.status).toBe(200);
+      expect(loadingTopologyResponse.status).toBe(200);
+      const emptyTopology = (await emptyTopologyResponse.json()) as { runId: string; nodes: unknown[]; edges: unknown[]; summary: { nodes: number } };
+      const emptyNarrative = (await emptyNarrativeResponse.json()) as { runId: string; text: string };
+      const loadingTopology = (await loadingTopologyResponse.json()) as { runId: string };
+
+      expect(emptyTopology.runId).toBe("demo-empty");
+      expect(emptyTopology.nodes).toEqual([]);
+      expect(emptyTopology.edges).toEqual([]);
+      expect(emptyTopology.summary.nodes).toBe(0);
+      expect(emptyNarrative.text).toContain("deterministic empty fixture run");
+      expect(loadingTopology.runId).toBe(handle.session.runId);
+      expect(elapsedMs).toBeGreaterThanOrEqual(1_400);
+    } finally {
+      await handle.close();
+    }
+  });
+
   it("serves redacted raw stdout and stderr content with truncation metadata in failure and trace payloads", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "toolguard-raw-api-"));
     const runId = createId("run");

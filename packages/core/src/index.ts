@@ -12,6 +12,14 @@ export {
 } from "./server.js";
 export { exportStaticReport, validateReportManifest, type StaticReportResult, type ManifestValidationResult } from "./report.js";
 export {
+  exportEvidenceBundle,
+  validateEvidenceBundleManifest,
+  type EvidenceBundleArtifactHash,
+  type EvidenceBundleManifest,
+  type EvidenceBundleReplaySafety,
+  type EvidenceBundleResult
+} from "./bundle.js";
+export {
   redactJsonValue,
   redactJsonValueWithSummary,
   redactString,

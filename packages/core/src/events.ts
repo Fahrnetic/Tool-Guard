@@ -34,7 +34,8 @@ export type CoreEventType =
   | "topology.generated"
   | "narrative.generated"
   | "policy.simulated"
-  | "integration.verified";
+  | "integration.verified"
+  | "bundle.exported";
 
 export interface CorrelationFields {
   readonly runId: StableId;

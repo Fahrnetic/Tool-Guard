@@ -17,6 +17,7 @@ import type {
   FailureCard,
   FailureType,
   IntegrationVerificationReceipt,
+  JsonObject,
   JsonValue,
   PolicyDecision,
   PolicySimulationResult,
@@ -331,6 +332,25 @@ export class CoreSession {
       `Integration verified for ${receipt.routeType}`,
       artifactId ? { data: receipt, artifactId } : { data: receipt }
     );
+  }
+
+  async emitBundleExported(data: JsonObject): Promise<CoreEvent> {
+    const last = this.#recorder.events.at(-1);
+    const context = last
+      ? {
+          runId: last.runId,
+          traceId: last.traceId,
+          ...(last.parentId ? { parentId: last.parentId } : {}),
+          ...(last.harnessId ? { harnessId: last.harnessId } : {}),
+          ...(last.adapterId ? { adapterId: last.adapterId } : {}),
+          ...(last.downstreamServerId ? { downstreamServerId: last.downstreamServerId } : {}),
+          ...(last.toolCallId ? { toolCallId: last.toolCallId } : {}),
+          ...(last.attemptId ? { attemptId: last.attemptId } : {}),
+          ...(last.policyDecisionId ? { policyDecisionId: last.policyDecisionId } : {}),
+          ...(last.artifactId ? { artifactId: last.artifactId } : {})
+        }
+      : { runId: this.#runId, traceId: createId("trace") };
+    return await this.#emitContext("bundle.exported", context, "Evidence bundle exported", { data });
   }
 
   async #executeAttempt(

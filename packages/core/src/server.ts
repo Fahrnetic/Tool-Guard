@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { CoreSession } from "./session.js";
 import { ToolRegistry } from "./registry.js";
 import { registerChaosFixtures } from "./chaos-fixtures.js";
+import { exportEvidenceBundle } from "./bundle.js";
 import { validateReportManifest } from "./report.js";
 import { redactStringWithSummary } from "./redaction.js";
 import { buildRunNarrative, buildRunTopology, generateAndPersistNarrative, generateAndPersistTopology } from "./topology.js";
@@ -339,6 +340,39 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
           redactionSummaryUrl: reportFileUrl(baseUrl, runId, "redaction-summary.json"),
           manifestValid: validation.valid,
           validationErrors: validation.errors
+        });
+        return;
+      }
+
+      if (url.pathname === "/api/bundle/export") {
+        if (request.method !== "POST") {
+          sendJson(response, 405, { error: "method_not_allowed" });
+          return;
+        }
+        const body = await readJsonBody(request, 64 * 1024);
+        if (!body.ok) {
+          sendJson(response, body.statusCode, { error: body.message });
+          return;
+        }
+        const replaySafety = isRecord(body.payload) && isRecord(body.payload.replaySafety) ? body.payload.replaySafety : {};
+        const bundle = await exportEvidenceBundle({
+          session,
+          replaySafety: {
+            fixtureOnly: replaySafety.fixtureOnly === true,
+            safeLoopback: replaySafety.safeLoopback === true
+          }
+        });
+        sendJson(response, 200, {
+          runId,
+          bundleDir: bundle.bundleDir,
+          manifestJson: bundle.manifestPath,
+          manifestValidation: bundle.validationPath,
+          manifestValid: bundle.validation.valid,
+          validationErrors: bundle.validation.errors,
+          replayInstructions: bundle.manifest.replay.instructionsFile
+            ? path.join(bundle.bundleDir, bundle.manifest.replay.instructionsFile)
+            : undefined,
+          files: bundle.manifest.files
         });
         return;
       }

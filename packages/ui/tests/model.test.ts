@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   correlationFromEvent,
   requiredCoreEventTypes,
+  selectionIdsForNode,
+  selectionMatchesValues,
   summarizeToolOps,
   type HealthPayload,
   type LatestRunPayload
@@ -132,8 +134,39 @@ describe("correlation helpers", () => {
       "circuit.closed",
       "output.sanitized",
       "evidence.artifact.created",
-      "report.exported"
+      "report.exported",
+      "topology.generated",
+      "narrative.generated"
     ]);
+  });
+});
+
+describe("topology selection helpers", () => {
+  it("matches linked views through event, ledger, artifact, and correlation IDs", () => {
+    const node = {
+      id: "node_attempt",
+      type: "attempt",
+      label: "Attempt attempt_test",
+      status: "failed",
+      summary: "Attempt failed",
+      correlation: {
+        runId: "run_test",
+        traceId: "trace_test",
+        toolCallId: "toolcall_test",
+        attemptId: "attempt_test",
+        policyDecisionId: "policy_test"
+      },
+      eventIds: ["event_failed"],
+      ledgerIds: ["ledger_side_effect"],
+      artifactIds: ["artifact_stderr"]
+    } as const;
+    const selection = { node, selectedIds: selectionIdsForNode(node) };
+
+    expect(selectionMatchesValues(selection, ["event_failed"])).toBe(true);
+    expect(selectionMatchesValues(selection, ["ledger_side_effect"])).toBe(true);
+    expect(selectionMatchesValues(selection, ["artifact_stderr"])).toBe(true);
+    expect(selectionMatchesValues(selection, ["policy_test"])).toBe(true);
+    expect(selectionMatchesValues(selection, ["unrelated"])).toBe(false);
   });
 });
 

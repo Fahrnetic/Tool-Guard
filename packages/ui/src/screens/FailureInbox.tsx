@@ -1,15 +1,16 @@
 import { CorrelationGrid } from "../components/CorrelationGrid.js";
 import { StatePanel } from "../components/StatePanel.js";
 import { StatusChip } from "../components/StatusChip.js";
-import type { FailureInboxPayload, RawArtifactView, ResourceStatus } from "../lib/model.js";
+import { selectionMatchesValues, type FailureInboxPayload, type RawArtifactView, type ResourceStatus, type TopologySelection } from "../lib/model.js";
 
 interface FailureInboxProps {
   readonly payload?: FailureInboxPayload;
   readonly status: ResourceStatus;
   readonly error?: string;
+  readonly topologySelection?: TopologySelection;
 }
 
-export function FailureInbox({ payload, status, error }: FailureInboxProps) {
+export function FailureInbox({ payload, status, error, topologySelection }: FailureInboxProps) {
   if (status === "loading") {
     return <StatePanel status="loading" title="Loading Failure Inbox" message="Fetching model-safe Failure Cards from `/api/failures`." />;
   }
@@ -38,8 +39,17 @@ export function FailureInbox({ payload, status, error }: FailureInboxProps) {
         </p>
       </div>
 
-      {payload.failures.map((failure) => (
-        <article key={failure.eventId} className="rounded-2xl border border-border bg-bg-panel/90 p-5 shadow-2xl shadow-black/20">
+      {payload.failures.map((failure) => {
+        const highlighted = selectionMatchesValues(topologySelection, [
+          failure.eventId,
+          failure.correlation.traceId,
+          failure.correlation.toolCallId,
+          failure.correlation.attemptId,
+          failure.correlation.policyDecisionId,
+          ...failure.evidenceLinks.map((link) => link.artifactId)
+        ]);
+        return (
+        <article key={failure.eventId} className={`rounded-2xl border p-5 shadow-2xl shadow-black/20 ${highlighted ? "border-primary bg-primary/10" : "border-border bg-bg-panel/90"}`}>
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <div className="flex flex-wrap gap-2">
@@ -89,7 +99,8 @@ export function FailureInbox({ payload, status, error }: FailureInboxProps) {
             <CorrelationGrid correlation={failure.correlation} />
           </div>
         </article>
-      ))}
+        );
+      })}
     </section>
   );
 }

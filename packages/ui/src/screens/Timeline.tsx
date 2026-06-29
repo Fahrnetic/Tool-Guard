@@ -2,16 +2,17 @@ import type { CoreEvent } from "@toolplane/core";
 import { CorrelationGrid } from "../components/CorrelationGrid.js";
 import { StatePanel } from "../components/StatePanel.js";
 import { StatusChip } from "../components/StatusChip.js";
-import { correlationFromEvent, requiredCoreEventTypes, type ResourceStatus } from "../lib/model.js";
+import { correlationFromEvent, requiredCoreEventTypes, selectionMatchesValues, type ResourceStatus, type TopologySelection } from "../lib/model.js";
 
 interface TimelineProps {
   readonly events: readonly CoreEvent[];
   readonly status: ResourceStatus;
   readonly streamState: "loading" | "connected" | "degraded" | "error";
   readonly error?: string;
+  readonly topologySelection?: TopologySelection;
 }
 
-export function Timeline({ events, status, streamState, error }: TimelineProps) {
+export function Timeline({ events, status, streamState, error, topologySelection }: TimelineProps) {
   const ordered = uniqueEvents(events).sort((a, b) => a.sequence - b.sequence || a.occurredAt.localeCompare(b.occurredAt));
   const observed = new Set(ordered.map((event) => event.type));
 
@@ -71,8 +72,10 @@ export function Timeline({ events, status, streamState, error }: TimelineProps) 
       </section>
 
       <ol className="space-y-3" aria-label="Chronological Core event stream">
-        {ordered.map((event) => (
-          <li key={event.eventId} className="rounded-2xl border border-border bg-bg-panel/90 p-4 transition hover:border-primary/45">
+        {ordered.map((event) => {
+          const highlighted = selectionMatchesValues(topologySelection, [event.eventId, event.traceId, event.toolCallId, event.attemptId, event.policyDecisionId, event.artifactId]);
+          return (
+          <li key={event.eventId} className={`rounded-2xl border p-4 transition hover:border-primary/45 ${highlighted ? "border-primary bg-primary/10" : "border-border bg-bg-panel/90"}`}>
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -89,7 +92,8 @@ export function Timeline({ events, status, streamState, error }: TimelineProps) 
               <CorrelationGrid correlation={correlationFromEvent(event)} compact />
             </div>
           </li>
-        ))}
+        );
+        })}
       </ol>
     </section>
   );

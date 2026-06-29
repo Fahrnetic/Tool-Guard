@@ -29,7 +29,7 @@ describe("Live Run Timeline", () => {
     expect(html).toContain("Source layer: harness → adapter");
     expect(html).toContain("Source layer: downstream");
     expect(html).toContain("Source layer: evidence");
-    expect(html).toContain(">14</span> unique events rendered");
+    expect(html).toContain(`>${requiredCoreEventTypes.length}</span> unique events rendered`);
     expect(html.match(/event_adapter_connected/g)).toHaveLength(1);
     expect(html.indexOf(">run.started<")).toBeLessThan(html.indexOf(">adapter.connected<"));
     expect(html.indexOf(">adapter.connected<")).toBeLessThan(html.indexOf(">report.exported<"));

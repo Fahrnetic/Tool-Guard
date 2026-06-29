@@ -1,9 +1,10 @@
-import type { CoreEvent } from "@toolplane/core";
+import type { CoreEvent, RunNarrative, RunTopology, TopologyNode } from "@toolplane/core";
 import type { EvidenceArtifact, EvidenceLink, FailureCard, PolicyDecision } from "@toolplane/core";
 
 export type ScreenId =
   | "overview"
   | "timeline"
+  | "topology"
   | "health"
   | "failures"
   | "traces"
@@ -21,6 +22,10 @@ export interface LatestRunPayload {
   readonly eventCount: number;
   readonly events: readonly CoreEvent[];
 }
+
+export type TopologyPayload = RunTopology;
+
+export type NarrativePayload = RunNarrative;
 
 export interface HealthPayload {
   readonly runId: string;
@@ -254,6 +259,11 @@ export interface CorrelationContext {
   readonly artifactId?: string;
 }
 
+export interface TopologySelection {
+  readonly node: TopologyNode;
+  readonly selectedIds: readonly string[];
+}
+
 export const correlationKeys = [
   "runId",
   "traceId",
@@ -281,7 +291,9 @@ export const requiredCoreEventTypes = [
   "circuit.closed",
   "output.sanitized",
   "evidence.artifact.created",
-  "report.exported"
+  "report.exported",
+  "topology.generated",
+  "narrative.generated"
 ] as const;
 
 export interface ToolOpsSummary {
@@ -330,6 +342,22 @@ export function summarizeToolOps(run: LatestRunPayload | undefined, health: Heal
     reportLinks,
     correlationIds
   };
+}
+
+export function selectionIdsForNode(node: TopologyNode): readonly string[] {
+  return [
+    node.id,
+    ...node.eventIds,
+    ...node.ledgerIds,
+    ...node.artifactIds,
+    ...Object.values(node.correlation).flatMap((value) => (typeof value === "string" ? [value] : []))
+  ].filter(Boolean);
+}
+
+export function selectionMatchesValues(selection: TopologySelection | undefined, values: readonly (string | undefined)[]): boolean {
+  if (!selection) return false;
+  const selected = new Set(selection.selectedIds);
+  return values.some((value) => Boolean(value && selected.has(value)));
 }
 
 function uniqueCount(events: readonly CoreEvent[], key: keyof CoreEvent): number {

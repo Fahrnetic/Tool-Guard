@@ -2,15 +2,16 @@ import { useState } from "react";
 import { StatePanel } from "../components/StatePanel.js";
 import { StatusChip } from "../components/StatusChip.js";
 import { exportReport, fetchReports } from "../lib/api.js";
-import type { ReportView, ReportsPayload, ResourceStatus } from "../lib/model.js";
+import { selectionMatchesValues, type ReportView, type ReportsPayload, type ResourceStatus, type TopologySelection } from "../lib/model.js";
 
 interface EvidenceReportViewerProps {
   readonly payload?: ReportsPayload;
   readonly status: ResourceStatus;
   readonly error?: string;
+  readonly topologySelection?: TopologySelection;
 }
 
-export function EvidenceReportViewer({ payload, status, error }: EvidenceReportViewerProps) {
+export function EvidenceReportViewer({ payload, status, error, topologySelection }: EvidenceReportViewerProps) {
   const [reports, setReports] = useState<ReportsPayload | undefined>(payload);
   const [exportState, setExportState] = useState<"idle" | "pending" | "success" | "failure">("idle");
   const [exportMessage, setExportMessage] = useState<string | undefined>();
@@ -83,12 +84,12 @@ export function EvidenceReportViewer({ payload, status, error }: EvidenceReportV
         />
       ) : null}
 
-      {report ? <ReportCard report={report} /> : null}
+      {report ? <ReportCard report={report} {...(topologySelection ? { topologySelection } : {})} /> : null}
     </section>
   );
 }
 
-function ReportCard({ report }: { readonly report: ReportView }) {
+function ReportCard({ report, topologySelection }: { readonly report: ReportView; readonly topologySelection?: TopologySelection }) {
   return (
     <article className="space-y-5 rounded-2xl border border-border bg-bg-panel/90 p-5 shadow-2xl shadow-black/20">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -144,8 +145,9 @@ function ReportCard({ report }: { readonly report: ReportView }) {
             <tbody>
               {report.artifacts.map((artifact) => {
                 const hash = report.artifactHashes.find((item) => item.artifactId === artifact.artifactId);
+                const highlighted = selectionMatchesValues(topologySelection, [artifact.artifactId, artifact.relativePath, hash?.artifactId]);
                 return (
-                  <tr key={artifact.artifactId} className="hover:bg-primary/5">
+                  <tr key={artifact.artifactId} className={`hover:bg-primary/5 ${highlighted ? "bg-primary/10" : ""}`}>
                     <td className="border-b border-border/70 px-3 py-2 font-mono text-xs">
                       <a href={artifact.artifactUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                         {artifact.artifactId}

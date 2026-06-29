@@ -4,11 +4,13 @@ import type {
   HealthPayload,
   IntegrationsPayload,
   LatestRunPayload,
+  NarrativePayload,
   PolicyPayload,
   ReplayPayload,
   ReplayResponse,
   ReportExportResponse,
   ReportsPayload,
+  TopologyPayload,
   TracePayload
 } from "./model.js";
 
@@ -28,6 +30,14 @@ export async function fetchFailures(signal?: AbortSignal): Promise<FailureInboxP
 
 export async function fetchTrace(traceId = "latest", signal?: AbortSignal): Promise<TracePayload> {
   return await fetchJson<TracePayload>(`/api/traces/${encodeURIComponent(traceId)}`, signal);
+}
+
+export async function fetchTopology(runId = "latest", signal?: AbortSignal): Promise<TopologyPayload> {
+  return await fetchJson<TopologyPayload>(`/api/topology/${encodeURIComponent(runId)}`, signal);
+}
+
+export async function fetchNarrative(runId = "latest", signal?: AbortSignal): Promise<NarrativePayload> {
+  return await fetchJson<NarrativePayload>(`/api/narrative/${encodeURIComponent(runId)}`, signal);
 }
 
 export async function fetchPolicies(signal?: AbortSignal): Promise<PolicyPayload> {
@@ -94,7 +104,9 @@ export function streamCoreEvents(input: {
     "circuit.closed",
     "output.sanitized",
     "evidence.artifact.created",
-    "report.exported"
+    "report.exported",
+    "topology.generated",
+    "narrative.generated"
   ];
   for (const type of requiredTypes) {
     source.addEventListener(type, (message) => {

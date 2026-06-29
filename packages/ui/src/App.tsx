@@ -1,20 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell, type NavigationItem } from "./components/AppShell.js";
-import { fetchFailures, fetchHealth, fetchIntegrations, fetchLatestRun, fetchPolicies, fetchReplay, fetchReports, fetchTrace, streamCoreEvents } from "./lib/api.js";
+import { fetchFailures, fetchHealth, fetchIntegrations, fetchLatestRun, fetchNarrative, fetchPolicies, fetchReplay, fetchReports, fetchTopology, fetchTrace, streamCoreEvents } from "./lib/api.js";
 import type { CoreEvent } from "@toolplane/core";
 import type {
   FailureInboxPayload,
   HealthPayload,
   IntegrationsPayload,
   LatestRunPayload,
+  NarrativePayload,
   PolicyPayload,
   ReplayPayload,
   ReportsPayload,
   ResourceStatus,
   ScreenId,
+  TopologyPayload,
+  TopologySelection,
   TracePayload
 } from "./lib/model.js";
 import { FailureInbox } from "./screens/FailureInbox.js";
+import { FailureTopologyMap } from "./screens/FailureTopologyMap.js";
 import { HealthMatrix } from "./screens/HealthMatrix.js";
 import { HarnessIntegrations } from "./screens/HarnessIntegrations.js";
 import { Overview } from "./screens/Overview.js";
@@ -28,6 +32,7 @@ import { TraceExplorer } from "./screens/TraceExplorer.js";
 const navigation: readonly NavigationItem[] = [
   { id: "overview", label: "Overview" },
   { id: "timeline", label: "Live Run Timeline" },
+  { id: "topology", label: "Failure Topology Map" },
   { id: "health", label: "Tool Server Health Matrix" },
   { id: "failures", label: "Failure Inbox" },
   { id: "traces", label: "Trace Explorer" },
@@ -40,6 +45,8 @@ const navigation: readonly NavigationItem[] = [
 interface DataState {
   readonly run?: LatestRunPayload | undefined;
   readonly health?: HealthPayload | undefined;
+  readonly topology?: TopologyPayload | undefined;
+  readonly narrative?: NarrativePayload | undefined;
   readonly failures?: FailureInboxPayload | undefined;
   readonly trace?: TracePayload | undefined;
   readonly policies?: PolicyPayload | undefined;
@@ -56,14 +63,17 @@ export function App() {
   const [streamEvents, setStreamEvents] = useState<CoreEvent[]>([]);
   const [streamState, setStreamState] = useState<"loading" | "connected" | "degraded" | "error">("loading");
   const [selectedCorrelationId, setSelectedCorrelationId] = useState<string | undefined>();
+  const [topologySelection, setTopologySelection] = useState<TopologySelection | undefined>();
 
   useEffect(() => {
     const controller = new AbortController();
     async function load() {
       setData({ status: "loading" });
-      const [runResult, healthResult, failureResult, traceResult, policyResult, integrationResult, replayResult, reportsResult] = await Promise.allSettled([
+      const [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, reportsResult] = await Promise.allSettled([
         fetchLatestRun(controller.signal),
         fetchHealth(controller.signal),
+        fetchTopology("latest", controller.signal),
+        fetchNarrative("latest", controller.signal),
         fetchFailures(controller.signal),
         fetchTrace("latest", controller.signal),
         fetchPolicies(controller.signal),
@@ -76,6 +86,8 @@ export function App() {
       }
       const run = runResult.status === "fulfilled" ? runResult.value : undefined;
       const health = healthResult.status === "fulfilled" ? healthResult.value : undefined;
+      const topology = topologyResult.status === "fulfilled" ? topologyResult.value : undefined;
+      const narrative = narrativeResult.status === "fulfilled" ? narrativeResult.value : undefined;
       const failures = failureResult.status === "fulfilled" ? failureResult.value : undefined;
       const trace = traceResult.status === "fulfilled" ? traceResult.value : undefined;
       const policies = policyResult.status === "fulfilled" ? policyResult.value : undefined;
@@ -88,23 +100,25 @@ export function App() {
         return;
       }
       if (run && run.eventCount === 0) {
-        setData({ run, ...(health ? { health } : {}), ...(failures ? { failures } : {}), ...(trace ? { trace } : {}), ...(policies ? { policies } : {}), ...(integrations ? { integrations } : {}), ...(replay ? { replay } : {}), ...(reports ? { reports } : {}), status: "empty" });
+        setData({ run, ...(health ? { health } : {}), ...(topology ? { topology } : {}), ...(narrative ? { narrative } : {}), ...(failures ? { failures } : {}), ...(trace ? { trace } : {}), ...(policies ? { policies } : {}), ...(integrations ? { integrations } : {}), ...(replay ? { replay } : {}), ...(reports ? { reports } : {}), status: "empty" });
         return;
       }
       const degradedError =
-        [runResult, healthResult, failureResult, traceResult, policyResult, integrationResult, replayResult, reportsResult].some((result) => result.status === "rejected")
+        [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, reportsResult].some((result) => result.status === "rejected")
           ? "One Core endpoint returned an error."
           : undefined;
       setData({
         ...(run ? { run } : {}),
         ...(health ? { health } : {}),
+        ...(topology ? { topology } : {}),
+        ...(narrative ? { narrative } : {}),
         ...(failures ? { failures } : {}),
         ...(trace ? { trace } : {}),
         ...(policies ? { policies } : {}),
         ...(integrations ? { integrations } : {}),
         ...(replay ? { replay } : {}),
         ...(reports ? { reports } : {}),
-        status: [runResult, healthResult, failureResult, traceResult, policyResult, integrationResult, replayResult, reportsResult].every((result) => result.status === "fulfilled") ? "ready" : "degraded",
+        status: [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, reportsResult].every((result) => result.status === "fulfilled") ? "ready" : "degraded",
         ...(degradedError ? { error: degradedError } : {})
       });
     }
@@ -165,11 +179,25 @@ export function App() {
       {active === "overview" ? (
         <Overview {...(data.run ? { run: data.run } : {})} {...(data.health ? { health: data.health } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
       ) : active === "timeline" ? (
-        <Timeline events={streamEvents.length > 0 ? streamEvents : data.run?.events ?? []} status={data.status} streamState={streamState} {...(data.error ? { error: data.error } : {})} />
+        <Timeline events={streamEvents.length > 0 ? streamEvents : data.run?.events ?? []} status={data.status} streamState={streamState} {...(data.error ? { error: data.error } : {})} {...(topologySelection ? { topologySelection } : {})} />
+      ) : active === "topology" ? (
+        <FailureTopologyMap
+          {...(data.topology ? { topology: data.topology } : {})}
+          {...(data.narrative ? { narrative: data.narrative } : {})}
+          {...(data.failures ? { failures: data.failures } : {})}
+          events={streamEvents.length > 0 ? streamEvents : data.run?.events ?? []}
+          {...(data.trace ? { trace: data.trace } : {})}
+          {...(data.health ? { health: data.health } : {})}
+          {...(data.reports ? { reports: data.reports } : {})}
+          status={data.status}
+          {...(data.error ? { error: data.error } : {})}
+          onSelectCorrelation={refetchTraceForSelection}
+          onSelectNode={setTopologySelection}
+        />
       ) : active === "health" ? (
-        <HealthMatrix {...(data.health ? { health: data.health } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
+        <HealthMatrix {...(data.health ? { health: data.health } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} {...(topologySelection ? { topologySelection } : {})} />
       ) : active === "failures" ? (
-        <FailureInbox {...(data.failures ? { payload: data.failures } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
+        <FailureInbox {...(data.failures ? { payload: data.failures } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} {...(topologySelection ? { topologySelection } : {})} />
       ) : active === "traces" ? (
         <TraceExplorer
           {...(data.trace ? { payload: data.trace } : {})}
@@ -190,7 +218,7 @@ export function App() {
       ) : active === "integrations" ? (
         <HarnessIntegrations {...(data.integrations ? { payload: data.integrations } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
       ) : active === "reports" ? (
-        <EvidenceReportViewer {...(data.reports ? { payload: data.reports } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
+        <EvidenceReportViewer {...(data.reports ? { payload: data.reports } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} {...(topologySelection ? { topologySelection } : {})} />
       ) : (
         <ScreenStateGallery screen={active} />
       )}

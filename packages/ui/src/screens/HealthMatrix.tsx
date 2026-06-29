@@ -10,15 +10,16 @@ import {
 import { useMemo, useState } from "react";
 import { StatePanel } from "../components/StatePanel.js";
 import { StatusChip } from "../components/StatusChip.js";
-import type { HealthPayload, HealthRow, ResourceStatus } from "../lib/model.js";
+import { selectionMatchesValues, type HealthPayload, type HealthRow, type ResourceStatus, type TopologySelection } from "../lib/model.js";
 
 interface HealthMatrixProps {
   readonly health?: HealthPayload;
   readonly status: ResourceStatus;
   readonly error?: string;
+  readonly topologySelection?: TopologySelection;
 }
 
-export function HealthMatrix({ health, status, error }: HealthMatrixProps) {
+export function HealthMatrix({ health, status, error, topologySelection }: HealthMatrixProps) {
   const [sorting, setSorting] = useState<SortingState>([{ id: "status", desc: false }]);
   const [globalFilter, setGlobalFilter] = useState("");
   const columns = useMemo<ColumnDef<HealthRow>[]>(
@@ -143,11 +144,13 @@ export function HealthMatrix({ health, status, error }: HealthMatrixProps) {
               ))}
             </thead>
             <tbody>
-              {table.getRowModel().rows.map((row) => (
+              {table.getRowModel().rows.map((row) => {
+                const highlighted = selectionMatchesValues(topologySelection, [row.original.id, row.original.name, row.original.downstreamServerId, row.original.runId]);
+                return (
                 <tr
                   key={row.id}
                   tabIndex={0}
-                  className="group outline-none transition hover:bg-primary/5 focus-visible:bg-primary/10"
+                  className={`group outline-none transition hover:bg-primary/5 focus-visible:bg-primary/10 ${highlighted ? "bg-primary/10" : ""}`}
                   aria-label={healthRowAccessibleLabel(row.original)}
                 >
                   {row.getVisibleCells().map((cell) => (
@@ -156,7 +159,8 @@ export function HealthMatrix({ health, status, error }: HealthMatrixProps) {
                     </td>
                   ))}
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

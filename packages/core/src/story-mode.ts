@@ -81,6 +81,141 @@ export interface DemoStoryModePayload {
   };
 }
 
+export interface DemoStoryScenarioProcessHandle {
+  readonly pid?: number;
+  close(): Promise<void> | void;
+}
+
+export interface DemoStoryFixtureResetTarget {
+  readonly port: number;
+  reset(scenario: DemoStoryScenario): Promise<void> | void;
+}
+
+export interface DemoStoryScenarioResetResult {
+  readonly ok: true;
+  readonly scenarioId: DemoStoryScenarioId;
+  readonly stableLabel: string;
+  readonly deterministicOutcome: string;
+  readonly cleanup: DemoStoryScenario["cleanup"];
+  readonly resetAt: string;
+  readonly resetSequence: number;
+  readonly fixtureState: {
+    readonly reset: true;
+    readonly fixtureId: string;
+    readonly scenarioSeed: string;
+    readonly resetCount: number;
+  };
+  readonly processCleanup: {
+    readonly scenarioOwnedProcessesClosed: number;
+    readonly closedPids: readonly number[];
+    readonly errors: readonly string[];
+  };
+  readonly fixtureStack: {
+    readonly resetTargets: readonly number[];
+    readonly resetCount: number;
+    readonly errors: readonly string[];
+  };
+}
+
+export class DemoStoryScenarioRuntime {
+  readonly #processes = new Map<DemoStoryScenarioId, Set<DemoStoryScenarioProcessHandle>>();
+  readonly #resetCounts = new Map<DemoStoryScenarioId, number>();
+  readonly #resetTargets: readonly DemoStoryFixtureResetTarget[];
+  #sequence = 0;
+
+  constructor(options: { readonly resetTargets?: readonly DemoStoryFixtureResetTarget[] } = {}) {
+    this.#resetTargets = options.resetTargets ?? [];
+  }
+
+  registerScenarioProcess(scenarioId: DemoStoryScenarioId, handle: DemoStoryScenarioProcessHandle): void {
+    const scenario = DEMO_STORY_SCENARIOS.find((candidate) => candidate.id === scenarioId);
+    if (!scenario) {
+      throw new Error(`Unknown demo story scenario: ${scenarioId}`);
+    }
+    const handles = this.#processes.get(scenarioId) ?? new Set<DemoStoryScenarioProcessHandle>();
+    handles.add(handle);
+    this.#processes.set(scenarioId, handles);
+  }
+
+  async resetScenario(
+    scenarioId: DemoStoryScenarioId
+  ): Promise<DemoStoryScenarioResetResult | { readonly ok: false; readonly error: "unknown_story_scenario"; readonly scenarioId: string }> {
+    const scenario = DEMO_STORY_SCENARIOS.find((candidate) => candidate.id === scenarioId);
+    if (!scenario) {
+      return { ok: false, error: "unknown_story_scenario", scenarioId };
+    }
+
+    const processCleanup = await this.#closeScenarioProcesses(scenarioId);
+    const fixtureStack = await this.#resetFixtureStack(scenario);
+    const resetCount = (this.#resetCounts.get(scenarioId) ?? 0) + 1;
+    this.#resetCounts.set(scenarioId, resetCount);
+    this.#sequence += 1;
+
+    return {
+      ok: true,
+      scenarioId,
+      stableLabel: scenario.stableLabel,
+      deterministicOutcome: scenario.deterministicOutcome,
+      cleanup: scenario.cleanup,
+      resetAt: new Date().toISOString(),
+      resetSequence: this.#sequence,
+      fixtureState: {
+        reset: true,
+        fixtureId: scenario.fixtureId,
+        scenarioSeed: scenario.scenarioSeed,
+        resetCount
+      },
+      processCleanup,
+      fixtureStack
+    };
+  }
+
+  async closeAll(): Promise<void> {
+    const scenarioIds = [...this.#processes.keys()];
+    await Promise.all(scenarioIds.map((scenarioId) => this.#closeScenarioProcesses(scenarioId)));
+  }
+
+  async #closeScenarioProcesses(scenarioId: DemoStoryScenarioId): Promise<DemoStoryScenarioResetResult["processCleanup"]> {
+    const handles = this.#processes.get(scenarioId) ?? new Set<DemoStoryScenarioProcessHandle>();
+    this.#processes.delete(scenarioId);
+    const closedPids: number[] = [];
+    const errors: string[] = [];
+    for (const handle of handles) {
+      try {
+        await handle.close();
+        if (typeof handle.pid === "number") {
+          closedPids.push(handle.pid);
+        }
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : String(error));
+      }
+    }
+    return {
+      scenarioOwnedProcessesClosed: handles.size,
+      closedPids,
+      errors
+    };
+  }
+
+  async #resetFixtureStack(scenario: DemoStoryScenario): Promise<DemoStoryScenarioResetResult["fixtureStack"]> {
+    const errors: string[] = [];
+    for (const target of this.#resetTargets) {
+      try {
+        await target.reset(scenario);
+      } catch (error) {
+        errors.push(`port ${target.port}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    return {
+      resetTargets: this.#resetTargets.map((target) => target.port),
+      resetCount: this.#resetTargets.length - errors.length,
+      errors
+    };
+  }
+}
+
+export const defaultDemoStoryScenarioRuntime = new DemoStoryScenarioRuntime();
+
 export const DEMO_STORY_STAGE_ORDER: readonly DemoStoryStage[] = [
   {
     id: "run-raw",
@@ -229,28 +364,10 @@ export function buildDemoStoryModePayload(): DemoStoryModePayload {
   };
 }
 
-export function resetDemoStoryScenario(scenarioId: DemoStoryScenarioId):
-  | {
-      readonly ok: true;
-      readonly scenarioId: DemoStoryScenarioId;
-      readonly stableLabel: string;
-      readonly deterministicOutcome: string;
-      readonly cleanup: DemoStoryScenario["cleanup"];
-      readonly resetAt: string;
-    }
-  | { readonly ok: false; readonly error: "unknown_story_scenario"; readonly scenarioId: string } {
-  const scenario = DEMO_STORY_SCENARIOS.find((candidate) => candidate.id === scenarioId);
-  if (!scenario) {
-    return { ok: false, error: "unknown_story_scenario", scenarioId };
-  }
-  return {
-    ok: true,
-    scenarioId,
-    stableLabel: scenario.stableLabel,
-    deterministicOutcome: scenario.deterministicOutcome,
-    cleanup: scenario.cleanup,
-    resetAt: new Date(0).toISOString()
-  };
+export function resetDemoStoryScenario(
+  scenarioId: DemoStoryScenarioId
+): Promise<DemoStoryScenarioResetResult | { readonly ok: false; readonly error: "unknown_story_scenario"; readonly scenarioId: string }> {
+  return defaultDemoStoryScenarioRuntime.resetScenario(scenarioId);
 }
 
 function makeScenario(input: {
@@ -283,7 +400,7 @@ function makeScenario(input: {
     cleanup: {
       afterScenario: `Reset ${input.fixtureId} deterministic state and close any scenario-owned process handles.`,
       onExit: "Close Core/API, UI child process, and any loopback fixture handles started by demo:serve.",
-      ownedPorts: [3660, 3661]
+      ownedPorts: [3660, 3661, 3662, 3663, 3664]
     },
     resetControl: {
       label: `Reset ${input.label}`,

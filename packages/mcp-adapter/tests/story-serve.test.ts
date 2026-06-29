@@ -20,8 +20,11 @@ describe("story mode serve orchestration", () => {
     expect(story.processHygiene.startSurfaces).toEqual(
       expect.arrayContaining([
         "Core/API/SSE on http://127.0.0.1:3660",
-        "UI on http://127.0.0.1:3661"
+        "UI on http://127.0.0.1:3661",
+        "Fixture stack is in-process or loopback-only on approved ports 3662-3664"
       ])
     );
+    expect(story.scenarios.every((scenario) => scenario.cleanup.ownedPorts.includes(3662))).toBe(true);
+    expect(story.scenarios.every((scenario) => scenario.cleanup.ownedPorts.includes(3664))).toBe(true);
   });
 });

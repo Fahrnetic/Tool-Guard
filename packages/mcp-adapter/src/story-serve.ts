@@ -1,29 +1,50 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import http, { type ServerResponse } from "node:http";
 import { createConnection } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
-import { buildDemoStoryModePayload } from "@toolplane/core";
+import { DemoStoryScenarioRuntime, buildDemoStoryModePayload, type DemoStoryScenario } from "@toolplane/core";
 import { createMcpAdapterDemoApiServer, type McpAdapterDemoApiServerHandle } from "./demo.js";
 
 const CORE_PORT = 3660;
 const UI_PORT = 3661;
+const FIXTURE_PORTS = [3662, 3663, 3664] as const;
 const CORE_URL = `http://127.0.0.1:${CORE_PORT}`;
 const UI_URL = `http://127.0.0.1:${UI_PORT}`;
 
 export interface StoryModeServeHandle {
   readonly core: McpAdapterDemoApiServerHandle;
   readonly ui: ChildProcess;
+  readonly fixtures: readonly StoryModeFixtureServerHandle[];
   readonly transcript: string;
   close(): Promise<void>;
 }
 
+export interface StoryModeFixtureServerHandle {
+  readonly port: number;
+  readonly resets: readonly { readonly scenarioId: string; readonly fixtureId: string; readonly resetAt: string }[];
+  readonly ready: Promise<void>;
+  reset(scenario: DemoStoryScenario): Promise<void>;
+  close(): Promise<void>;
+}
+
 export async function startStoryModeDemoServe(): Promise<StoryModeServeHandle> {
-  await assertApprovedPortFree(CORE_PORT);
-  await assertApprovedPortFree(UI_PORT);
-  const core = await createMcpAdapterDemoApiServer({ host: "127.0.0.1", port: CORE_PORT });
+  for (const port of [CORE_PORT, UI_PORT, ...FIXTURE_PORTS]) {
+    await assertApprovedPortFree(port);
+  }
+  const fixtures = await startFixtureStack();
+  const storyRuntime = new DemoStoryScenarioRuntime({
+    resetTargets: fixtures.map((fixture) => ({
+      port: fixture.port,
+      reset: (scenario) => fixture.reset(scenario)
+    }))
+  });
+  const core = await createMcpAdapterDemoApiServer({ host: "127.0.0.1", port: CORE_PORT, storyScenarioRuntime: storyRuntime });
   const ui = startUiDevServer();
   try {
     await assertHttpOk(`${CORE_URL}/health`, "Core/API");
+    await Promise.all(fixtures.map((fixture) => fixture.ready));
+    await Promise.all(fixtures.map((fixture) => assertHttpOk(`http://127.0.0.1:${fixture.port}/health`, `Fixture ${fixture.port}`)));
     await assertHttpOk(UI_URL, "UI");
     const story = buildDemoStoryModePayload();
     const transcript = [
@@ -31,29 +52,96 @@ export async function startStoryModeDemoServe(): Promise<StoryModeServeHandle> {
       "serveCommand: pnpm demo:serve",
       `coreApi: ${CORE_URL}`,
       `ui: ${UI_URL}`,
-      "fixtureStack: deterministic in-process and loopback-only fixtures on approved ports 3660-3664",
+      `fixtureStack: ${fixtures.map((fixture) => `http://127.0.0.1:${fixture.port}`).join(", ")}`,
       `scenarioCount: ${story.scenarios.length}`,
       "scenarios:",
       ...story.scenarios.map((scenario) => `  - ${scenario.stableLabel} (${scenario.route}) -> ${scenario.deterministicOutcome}`),
       "stages:",
       ...story.stageOrder.map((stage, index) => `  ${index + 1}. ${stage.label}`),
-      "cleanup: SIGINT/SIGTERM closes Core/API and owned UI child process by PID",
+      "cleanup: SIGINT/SIGTERM closes Core/API, fixture stack, and owned UI child process by PID",
       "status: running for human viewing until explicitly stopped"
     ].join("\n");
     return {
       core,
       ui,
+      fixtures,
       transcript,
       close: async () => {
+        await storyRuntime.closeAll();
         await stopChild(ui);
         await core.close();
+        await Promise.all(fixtures.map((fixture) => fixture.close()));
       }
     };
   } catch (error) {
     await stopChild(ui);
     await core.close();
+    await Promise.all(fixtures.map((fixture) => fixture.close()));
     throw error;
   }
+}
+
+async function startFixtureStack(): Promise<readonly StoryModeFixtureServerHandle[]> {
+  const fixtures = FIXTURE_PORTS.map((port, index) => startStoryModeFixtureServer(port, `story-fixture-${index + 1}`));
+  await Promise.all(fixtures.map((fixture) => fixture.ready));
+  return fixtures;
+}
+
+export function startStoryModeFixtureServer(port: number, name = `story-fixture-${port}`): StoryModeFixtureServerHandle {
+  const resets: { scenarioId: string; fixtureId: string; resetAt: string }[] = [];
+  const server = http.createServer((request, response) => {
+    if (!request.url) {
+      sendFixtureJson(response, 400, { error: "missing_url" });
+      return;
+    }
+    const url = new URL(request.url, `http://127.0.0.1:${port}`);
+    if (url.pathname === "/health") {
+      sendFixtureJson(response, 200, { ok: true, name, port, resetCount: resets.length });
+      return;
+    }
+    if (url.pathname === "/api/fixture/state") {
+      sendFixtureJson(response, 200, { ok: true, name, port, resets });
+      return;
+    }
+    sendFixtureJson(response, 404, { error: "not_found" });
+  });
+  const ready = new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+  return {
+    port,
+    get resets() {
+      return resets;
+    },
+    ready,
+    reset: async (scenario) => {
+      resets.length = 0;
+      resets.push({ scenarioId: scenario.id, fixtureId: scenario.fixtureId, resetAt: new Date().toISOString() });
+    },
+    close: async () => {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      });
+    }
+  };
+}
+
+function sendFixtureJson(response: ServerResponse, statusCode: number, body: unknown): void {
+  response.writeHead(statusCode, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store"
+  });
+  response.end(JSON.stringify(body));
 }
 
 function startUiDevServer(): ChildProcess {

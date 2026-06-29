@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDemoStoryModePayload, resetDemoStoryScenario } from "../src/story-mode.js";
+import { DemoStoryScenarioRuntime, buildDemoStoryModePayload, resetDemoStoryScenario } from "../src/story-mode.js";
 
 describe("demo story mode data", () => {
   it("offers stable fixture-only or loopback-only scenarios and required stages", () => {
@@ -49,16 +49,79 @@ describe("demo story mode data", () => {
     }
   });
 
-  it("returns deterministic reset receipts for known scenarios", () => {
-    const reset = resetDemoStoryScenario("prompt-injection");
+  it("returns actual reset receipts for known scenarios", async () => {
+    const reset = await resetDemoStoryScenario("prompt-injection");
     expect(reset).toMatchObject({
       ok: true,
       scenarioId: "prompt-injection",
-      resetAt: new Date(0).toISOString()
+      fixtureState: {
+        reset: true,
+        fixtureId: "fixture.prompt-injection-output",
+        scenarioSeed: "story-seed-002"
+      },
+      processCleanup: {
+        scenarioOwnedProcessesClosed: 0,
+        closedPids: [],
+        errors: []
+      }
     });
-    expect(resetDemoStoryScenario("missing" as never)).toMatchObject({
+    expect(Date.parse(reset.ok ? reset.resetAt : "")).not.toBeNaN();
+    await expect(resetDemoStoryScenario("missing" as never)).resolves.toMatchObject({
       ok: false,
       error: "unknown_story_scenario"
     });
+  });
+
+  it("resets fixture targets and closes scenario-owned process handles", async () => {
+    const fixtureResets: string[] = [];
+    const closedPids: number[] = [];
+    const runtime = new DemoStoryScenarioRuntime({
+      resetTargets: [
+        {
+          port: 3662,
+          reset: (scenario) => {
+            fixtureResets.push(`${scenario.id}:${scenario.fixtureId}`);
+          }
+        },
+        {
+          port: 3663,
+          reset: (scenario) => {
+            fixtureResets.push(`${scenario.id}:${scenario.scenarioSeed}`);
+          }
+        }
+      ]
+    });
+    runtime.registerScenarioProcess("malformed-mcp-response", {
+      pid: 4242,
+      close: () => {
+        closedPids.push(4242);
+      }
+    });
+
+    const reset = await runtime.resetScenario("malformed-mcp-response");
+
+    expect(reset).toMatchObject({
+      ok: true,
+      scenarioId: "malformed-mcp-response",
+      processCleanup: {
+        scenarioOwnedProcessesClosed: 1,
+        closedPids: [4242],
+        errors: []
+      },
+      fixtureStack: {
+        resetTargets: [3662, 3663],
+        resetCount: 2,
+        errors: []
+      }
+    });
+    expect(fixtureResets).toEqual([
+      "malformed-mcp-response:fixture.mcp-malformed-response",
+      "malformed-mcp-response:story-seed-005"
+    ]);
+    expect(closedPids).toEqual([4242]);
+
+    const secondReset = await runtime.resetScenario("malformed-mcp-response");
+    expect(secondReset.ok ? secondReset.processCleanup.scenarioOwnedProcessesClosed : -1).toBe(0);
+    expect(secondReset.ok ? secondReset.fixtureState.resetCount : -1).toBe(2);
   });
 });

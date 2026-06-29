@@ -10,7 +10,12 @@ import { redactStringWithSummary } from "./redaction.js";
 import { buildRunNarrative, buildRunTopology, generateAndPersistNarrative, generateAndPersistTopology } from "./topology.js";
 import { simulatePolicy } from "./policy-simulator.js";
 import { verifyIntegrationRoute } from "./integration-verification.js";
-import { buildDemoStoryModePayload, resetDemoStoryScenario, type DemoStoryScenarioId } from "./story-mode.js";
+import {
+  buildDemoStoryModePayload,
+  defaultDemoStoryScenarioRuntime,
+  type DemoStoryScenarioId,
+  type DemoStoryScenarioRuntime
+} from "./story-mode.js";
 import { createId, type StableId } from "./ids.js";
 import type { CoreEvent } from "./events.js";
 import type {
@@ -34,6 +39,7 @@ export interface CoreApiServerOptions {
   readonly session?: CoreSession;
   readonly registry?: ToolRegistry;
   readonly seedDirectRun?: boolean;
+  readonly storyScenarioRuntime?: DemoStoryScenarioRuntime;
 }
 
 export interface CoreApiServerHandle {
@@ -53,6 +59,7 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
   const registry = options.registry ?? new ToolRegistry();
   const seedDirectRun = options.seedDirectRun ?? options.session === undefined;
   const registerDefaultTools = options.registry === undefined;
+  const storyScenarioRuntime = options.storyScenarioRuntime ?? defaultDemoStoryScenarioRuntime;
 
   const downstreamServerId = createId("server");
   if (registerDefaultTools) {
@@ -279,7 +286,7 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
           sendJson(response, body.ok ? 400 : body.statusCode, { error: body.ok ? "invalid_story_reset_request" : body.message });
           return;
         }
-        const reset = resetDemoStoryScenario(body.payload.scenarioId as DemoStoryScenarioId);
+        const reset = await storyScenarioRuntime.resetScenario(body.payload.scenarioId as DemoStoryScenarioId);
         sendJson(response, reset.ok === false ? 404 : 200, reset);
         return;
       }

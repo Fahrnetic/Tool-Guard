@@ -56,13 +56,18 @@ export { verifyIntegrationRoute, type IntegrationVerificationInput } from "./int
 export {
   DEMO_STORY_SCENARIOS,
   DEMO_STORY_STAGE_ORDER,
+  DemoStoryScenarioRuntime,
   buildDemoStoryModePayload,
+  defaultDemoStoryScenarioRuntime,
   resetDemoStoryScenario,
   type DemoStoryComparison,
   type DemoStoryComparisonSide,
+  type DemoStoryFixtureResetTarget,
   type DemoStoryModePayload,
+  type DemoStoryScenarioResetResult,
   type DemoStoryScenario,
   type DemoStoryScenarioId,
+  type DemoStoryScenarioProcessHandle,
   type DemoStoryStage,
   type DemoStoryStageId
 } from "./story-mode.js";

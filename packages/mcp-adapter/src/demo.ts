@@ -9,7 +9,8 @@ import {
   createCoreApiServer,
   createId,
   type CoreApiServerHandle,
-  type CoreEvent
+  type CoreEvent,
+  type DemoStoryScenarioRuntime
 } from "@toolplane/core";
 import { ToolGuardMcpRouter, createInMemoryDownstreamServer } from "./index.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -120,6 +121,7 @@ export async function createMcpAdapterDemoApiServer(options: {
   readonly host?: string;
   readonly port?: number;
   readonly evidenceRoot?: string;
+  readonly storyScenarioRuntime?: DemoStoryScenarioRuntime;
 } = {}): Promise<McpAdapterDemoApiServerHandle> {
   const evidenceRoot = options.evidenceRoot ?? (await mkdtemp(path.join(os.tmpdir(), "toolguard-mcp-demo-api-")));
   const session = new CoreSession({
@@ -135,7 +137,8 @@ export async function createMcpAdapterDemoApiServer(options: {
     evidenceRoot,
     session,
     registry: coreRegistry,
-    seedDirectRun: false
+    seedDirectRun: false,
+    ...(options.storyScenarioRuntime === undefined ? {} : { storyScenarioRuntime: options.storyScenarioRuntime })
   });
   await api.ready;
   const result = await runMcpAdapterDemo({ evidenceRoot, session, coreRegistry });

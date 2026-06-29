@@ -260,6 +260,80 @@ export interface ReportExportResponse {
   readonly validationErrors: readonly string[];
 }
 
+export interface BundlePayload {
+  readonly runId: string;
+  readonly generatedAt: string;
+  readonly bundle: BundleView;
+}
+
+export interface BundleView {
+  readonly exists: boolean;
+  readonly bundleId?: string;
+  readonly bundleDir?: string;
+  readonly generatedAt?: string;
+  readonly manifestJson?: string;
+  readonly manifestUrl?: string;
+  readonly manifestValidation?: string;
+  readonly manifestValidationUrl?: string;
+  readonly manifestValid?: boolean;
+  readonly validationErrors?: readonly string[];
+  readonly reportManifestValid?: boolean;
+  readonly reportManifestErrors?: readonly string[];
+  readonly replaySafe?: boolean;
+  readonly replayReason?: string;
+  readonly replayInstructionsUrl?: string;
+  readonly files?: readonly BundleFileView[];
+  readonly rawArtifacts?: readonly BundleRawArtifactView[];
+  readonly artifactHashes?: readonly BundleArtifactHashView[];
+  readonly redactionSummary?: RedactionSummaryView;
+  readonly manifestHealth: BundleStatusView;
+  readonly artifactHashStatus: BundleStatusView;
+  readonly redactionStatus: BundleStatusView;
+  readonly replaySafetyStatus: BundleStatusView;
+}
+
+export interface BundleStatusView {
+  readonly status: "healthy" | "failed" | "blocked" | "missing" | string;
+  readonly label: string;
+  readonly summary: string;
+}
+
+export interface BundleFileView {
+  readonly key: string;
+  readonly relativePath: string;
+  readonly url: string;
+  readonly present: boolean;
+  readonly hashed: boolean;
+  readonly sha256: string;
+  readonly byteLength: number;
+}
+
+export interface BundleRawArtifactView {
+  readonly relativePath: string;
+  readonly url: string;
+  readonly sha256: string;
+  readonly byteLength: number;
+}
+
+export interface BundleArtifactHashView {
+  readonly relativePath: string;
+  readonly sha256: string;
+  readonly byteLength: number;
+}
+
+export interface BundleExportResponse {
+  readonly runId: string;
+  readonly bundleDir: string;
+  readonly manifestJson: string;
+  readonly manifestUrl: string;
+  readonly manifestValidation: string;
+  readonly manifestValidationUrl: string;
+  readonly manifestValid: boolean;
+  readonly validationErrors: readonly string[];
+  readonly replayInstructions?: string;
+  readonly replayInstructionsUrl?: string;
+}
+
 export interface IntegrationView {
   readonly id: string;
   readonly name: string;

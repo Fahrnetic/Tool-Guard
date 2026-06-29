@@ -53,3 +53,32 @@ select:focus-visible,
     0 0 0 2px var(--color-bg),
     0 0 0 4px var(--color-primary);
 }
+
+@media print {
+  :root {
+    color-scheme: light;
+    background: white;
+    color: black;
+  }
+
+  body {
+    background: white !important;
+  }
+
+  nav,
+  aside,
+  button {
+    display: none !important;
+  }
+
+  a {
+    color: black !important;
+    text-decoration: underline;
+  }
+
+  section,
+  article,
+  div {
+    box-shadow: none !important;
+  }
+}

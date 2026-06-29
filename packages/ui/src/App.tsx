@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell, type NavigationItem } from "./components/AppShell.js";
-import { fetchFailures, fetchHealth, fetchIntegrations, fetchLatestRun, fetchNarrative, fetchPolicies, fetchReplay, fetchReports, fetchStoryMode, fetchTopology, fetchTrace, streamCoreEvents } from "./lib/api.js";
+import { fetchBundle, fetchFailures, fetchHealth, fetchIntegrations, fetchLatestRun, fetchNarrative, fetchPolicies, fetchReplay, fetchReports, fetchStoryMode, fetchTopology, fetchTrace, streamCoreEvents } from "./lib/api.js";
 import type { CoreEvent } from "@toolplane/core";
 import type {
   FailureInboxPayload,
+  BundlePayload,
   HealthPayload,
   IntegrationsPayload,
   LatestRunPayload,
@@ -42,7 +43,7 @@ const navigation: readonly NavigationItem[] = [
   { id: "story", label: "Demo Story Mode" },
   { id: "policy", label: "Policy Studio" },
   { id: "integrations", label: "Harness Integrations" },
-  { id: "reports", label: "Evidence Report Viewer" }
+  { id: "reports", label: "Evidence Bundle Viewer" }
 ];
 
 interface DataState {
@@ -57,6 +58,7 @@ interface DataState {
   readonly replay?: ReplayPayload | undefined;
   readonly story?: StoryModePayload | undefined;
   readonly reports?: ReportsPayload | undefined;
+  readonly bundle?: BundlePayload | undefined;
   readonly status: ResourceStatus;
   readonly error?: string | undefined;
 }
@@ -78,7 +80,7 @@ export function App() {
       controllers.add(controller);
       setData({ status: "loading" });
       try {
-        const [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, reportsResult] = await Promise.allSettled([
+        const [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, reportsResult, bundleResult] = await Promise.allSettled([
           fetchLatestRun(controller.signal),
           fetchHealth(controller.signal),
           fetchTopology(topologyRunId, controller.signal),
@@ -89,7 +91,8 @@ export function App() {
           fetchIntegrations(controller.signal),
           fetchReplay(controller.signal),
           fetchStoryMode(controller.signal),
-          fetchReports(controller.signal)
+          fetchReports(controller.signal),
+          fetchBundle(controller.signal)
         ]);
         if (disposed || controller.signal.aborted) {
           return;
@@ -105,17 +108,18 @@ export function App() {
         const replay = replayResult.status === "fulfilled" ? replayResult.value : undefined;
         const story = storyResult.status === "fulfilled" ? storyResult.value : undefined;
         const reports = reportsResult.status === "fulfilled" ? reportsResult.value : undefined;
+        const bundle = bundleResult.status === "fulfilled" ? bundleResult.value : undefined;
         if (!run && !health) {
           const reason = runResult.status === "rejected" ? String(runResult.reason) : "Unknown Core API error";
           setData({ status: "error", error: reason });
           return;
         }
         if (run && run.eventCount === 0) {
-          setData({ run, ...(health ? { health } : {}), ...(topology ? { topology } : {}), ...(narrative ? { narrative } : {}), ...(failures ? { failures } : {}), ...(trace ? { trace } : {}), ...(policies ? { policies } : {}), ...(integrations ? { integrations } : {}), ...(replay ? { replay } : {}), ...(story ? { story } : {}), ...(reports ? { reports } : {}), status: "empty" });
+          setData({ run, ...(health ? { health } : {}), ...(topology ? { topology } : {}), ...(narrative ? { narrative } : {}), ...(failures ? { failures } : {}), ...(trace ? { trace } : {}), ...(policies ? { policies } : {}), ...(integrations ? { integrations } : {}), ...(replay ? { replay } : {}), ...(story ? { story } : {}), ...(reports ? { reports } : {}), ...(bundle ? { bundle } : {}), status: "empty" });
           return;
         }
         const degradedError =
-          [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, reportsResult].some((result) => result.status === "rejected")
+          [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, reportsResult, bundleResult].some((result) => result.status === "rejected")
             ? "One Core endpoint returned an error."
             : undefined;
         setData({
@@ -130,7 +134,8 @@ export function App() {
           ...(replay ? { replay } : {}),
           ...(story ? { story } : {}),
           ...(reports ? { reports } : {}),
-          status: [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, reportsResult].every((result) => result.status === "fulfilled") ? "ready" : "degraded",
+          ...(bundle ? { bundle } : {}),
+          status: [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, reportsResult, bundleResult].every((result) => result.status === "fulfilled") ? "ready" : "degraded",
           ...(degradedError ? { error: degradedError } : {})
         });
       } finally {
@@ -241,7 +246,7 @@ export function App() {
       ) : active === "integrations" ? (
         <HarnessIntegrations {...(data.integrations ? { payload: data.integrations } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
       ) : active === "reports" ? (
-        <EvidenceReportViewer {...(data.reports ? { payload: data.reports } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} {...(topologySelection ? { topologySelection } : {})} />
+        <EvidenceReportViewer {...(data.reports ? { payload: data.reports } : {})} {...(data.bundle ? { bundlePayload: data.bundle } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} {...(topologySelection ? { topologySelection } : {})} />
       ) : (
         <ScreenStateGallery screen={active} />
       )}

@@ -1,22 +1,26 @@
 import { useState } from "react";
 import { StatePanel } from "../components/StatePanel.js";
 import { StatusChip } from "../components/StatusChip.js";
-import { exportReport, fetchReports } from "../lib/api.js";
-import { selectionMatchesValues, type ReportView, type ReportsPayload, type ResourceStatus, type TopologySelection } from "../lib/model.js";
+import { exportBundle, exportReport, fetchBundle, fetchReports } from "../lib/api.js";
+import { selectionMatchesValues, type BundlePayload, type BundleStatusView, type BundleView, type ReportView, type ReportsPayload, type ResourceStatus, type TopologySelection } from "../lib/model.js";
 
 interface EvidenceReportViewerProps {
   readonly payload?: ReportsPayload;
+  readonly bundlePayload?: BundlePayload;
   readonly status: ResourceStatus;
   readonly error?: string;
   readonly topologySelection?: TopologySelection;
 }
 
-export function EvidenceReportViewer({ payload, status, error, topologySelection }: EvidenceReportViewerProps) {
+export function EvidenceReportViewer({ payload, bundlePayload, status, error, topologySelection }: EvidenceReportViewerProps) {
   const [reports, setReports] = useState<ReportsPayload | undefined>(payload);
+  const [bundles, setBundles] = useState<BundlePayload | undefined>(bundlePayload);
   const [exportState, setExportState] = useState<"idle" | "pending" | "success" | "failure">("idle");
   const [exportMessage, setExportMessage] = useState<string | undefined>();
   const activePayload = reports ?? payload;
+  const activeBundlePayload = bundles ?? bundlePayload;
   const report = activePayload?.reports[0];
+  const bundle = activeBundlePayload?.bundle;
 
   async function generateReport() {
     setExportState("pending");
@@ -33,11 +37,27 @@ export function EvidenceReportViewer({ payload, status, error, topologySelection
     }
   }
 
+  async function generateBundle() {
+    setExportState("pending");
+    setExportMessage("Generating replayable evidence bundle, manifest validation, artifact hashes, redaction summary, and replay safety status.");
+    try {
+      const exported = await exportBundle();
+      const [nextReports, nextBundle] = await Promise.all([fetchReports(), fetchBundle()]);
+      setReports(nextReports);
+      setBundles(nextBundle);
+      setExportState("success");
+      setExportMessage(`Created evidence bundle manifest at ${exported.manifestUrl}. Manifest valid: ${String(exported.manifestValid)}.`);
+    } catch (caught) {
+      setExportState("failure");
+      setExportMessage(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
   if (status === "loading") {
-    return <StatePanel status="loading" title="Loading Evidence Report Viewer" message="Fetching report manifests, artifact hashes, redaction summaries, narratives, and remediation." />;
+    return <StatePanel status="loading" title="Loading Evidence Bundle Viewer" message="Fetching bundle manifest health, artifact hashes, redaction summaries, replay safety, and report metadata from Core." />;
   }
   if (status === "error") {
-    return <StatePanel status="error" title="Evidence reports unavailable" message={error ?? "Core did not return report metadata."} />;
+    return <StatePanel status="error" title="Evidence bundles unavailable" message={error ?? "Core did not return bundle metadata."} />;
   }
 
   return (
@@ -45,23 +65,17 @@ export function EvidenceReportViewer({ payload, status, error, topologySelection
       <div className="rounded-3xl border border-border bg-bg-elevated/80 p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <StatusChip label="Evidence Report Viewer" tone="selected" />
-            <h2 className="mt-3 text-2xl font-semibold text-text">Reports, manifests, artifact hashes, and redaction proof</h2>
+            <StatusChip label="Evidence Bundle Viewer" tone="selected" />
+            <h2 className="mt-3 text-2xl font-semibold text-text">Replayable evidence bundle health, hashes, redaction, and print export</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
-              Export and inspect browser-safe static reports while keeping secret-shaped values redacted in UI previews.
-              Raw artifacts stay linked by metadata, hashes, and intentional local links.
+              Export and inspect real Core evidence bundles through local loopback routes. Raw artifacts stay separate,
+              secret-shaped values stay redacted in safe previews, and every link is served from Core instead of file URLs.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => void generateReport()}
-            disabled={exportState === "pending"}
-            aria-busy={exportState === "pending"}
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-primary/50 bg-primary/15 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/25 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {exportState === "pending" ? <span className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" /> : null}
-            {exportState === "pending" ? "Export pending..." : "Generate or refresh report"}
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <ActionButton onClick={() => void generateBundle()} busy={exportState === "pending"} label={exportState === "pending" ? "Bundle pending..." : "Export evidence bundle"} />
+            <ActionButton onClick={() => void generateReport()} busy={exportState === "pending"} label="Refresh static report" variant="secondary" />
+          </div>
         </div>
       </div>
 
@@ -79,12 +93,136 @@ export function EvidenceReportViewer({ payload, status, error, topologySelection
         <StatePanel
           status="empty"
           title="No exported report yet"
-          message="Generate a report to create report.html, manifest.json, artifact-hashes.json, and redaction-summary.json."
-          action="The action above calls `/api/reports/export` and then refreshes `/api/reports`."
+          message="Export a bundle or refresh the report to create report.html, manifest.json, artifact-hashes.json, and redaction-summary.json."
+          action="The primary action calls `/api/bundle/export` and then refreshes `/api/bundle` and `/api/reports`."
         />
       ) : null}
 
+      {!bundle?.exists ? (
+        <StatePanel
+          status="empty"
+          title="No evidence bundle yet"
+          message="Export an evidence bundle to see manifest health, hash validation, redaction status, and replay safety in one review surface."
+          action="Bundle links will be served as `http://127.0.0.1:3660/api/bundles/...` loopback routes."
+        />
+      ) : null}
+
+      {bundle ? <BundleCard bundle={bundle} /> : null}
       {report ? <ReportCard report={report} {...(topologySelection ? { topologySelection } : {})} /> : null}
+    </section>
+  );
+}
+
+function ActionButton({ onClick, busy, label, variant = "primary" }: { readonly onClick: () => void; readonly busy: boolean; readonly label: string; readonly variant?: "primary" | "secondary" }) {
+  const classes = variant === "primary"
+    ? "border-primary/50 bg-primary/15 text-primary hover:bg-primary/25"
+    : "border-border bg-bg/55 text-text hover:border-primary/45 hover:text-primary";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      aria-busy={busy}
+      className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${classes}`}
+    >
+      {busy ? <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" /> : null}
+      {label}
+    </button>
+  );
+}
+
+function BundleCard({ bundle }: { readonly bundle: BundleView }) {
+  const files = bundle.files ?? [];
+  const rawArtifacts = bundle.rawArtifacts ?? [];
+  return (
+    <article className="space-y-5 rounded-2xl border border-primary/25 bg-bg-panel/90 p-5 shadow-2xl shadow-primary/5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex flex-wrap gap-2">
+            <StatusChip label={bundle.exists ? "bundle exported" : "bundle missing"} tone={bundle.exists ? "healthy" : "degraded"} />
+            <StatusChip label={bundle.manifestValid ? "manifest valid" : "manifest pending"} tone={bundle.manifestValid ? "healthy" : "failed"} />
+            <StatusChip label={bundle.replaySafe ? "replay safe" : "replay withheld"} tone={bundle.replaySafe ? "healthy" : "degraded"} />
+          </div>
+          <h3 className="mt-3 text-xl font-semibold text-text">Evidence bundle {bundle.bundleId ?? "not exported"}</h3>
+          <p className="mt-1 text-sm text-text-muted">Generated {bundle.generatedAt ?? "after export"}</p>
+        </div>
+        <div className="grid gap-2 text-sm">
+          {bundle.manifestUrl ? <LocalLink href={bundle.manifestUrl} label="Open bundle manifest.json" path={bundle.manifestUrl} /> : null}
+          {bundle.manifestValidationUrl ? <LocalLink href={bundle.manifestValidationUrl} label="Open manifest-validation.json" path={bundle.manifestValidationUrl} /> : null}
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-4">
+        <BundleHealthCard title="Manifest health" status={bundle.manifestHealth} />
+        <BundleHealthCard title="Artifact hash status" status={bundle.artifactHashStatus} />
+        <BundleHealthCard title="Redaction status" status={bundle.redactionStatus} />
+        <BundleHealthCard title="Replay safety status" status={bundle.replaySafetyStatus} />
+      </div>
+
+      <section className="rounded-xl border border-border bg-bg/55 p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h4 className="text-sm font-semibold text-text">Print and PDF export view</h4>
+            <p className="mt-1 text-xs leading-5 text-text-muted">Use browser print to save this compact, screenshot-friendly bundle summary. Print CSS keeps health indicators, local links, and hash status visible.</p>
+          </div>
+          <button type="button" onClick={() => window.print()} className="min-h-11 rounded-xl border border-primary/45 bg-primary/10 px-4 text-sm font-semibold text-primary transition hover:bg-primary/20 active:scale-[0.98]">
+            Print or save PDF
+          </button>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-border bg-bg/55 p-4">
+        <h4 className="text-sm font-semibold text-text">Bundle file links served by Core loopback</h4>
+        <div className="mt-3 overflow-x-auto">
+          <table className="min-w-[900px] w-full text-left text-sm">
+            <thead className="text-xs uppercase tracking-[0.16em] text-text-dim">
+              <tr>
+                <th className="border-b border-border px-3 py-2">File</th>
+                <th className="border-b border-border px-3 py-2">Route</th>
+                <th className="border-b border-border px-3 py-2">SHA-256</th>
+                <th className="border-b border-border px-3 py-2">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {files.map((file) => {
+                const fileOk = file.present && (file.hashed || file.key === "artifactHashesJson");
+                return (
+                  <tr key={file.relativePath} className="hover:bg-primary/5">
+                    <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-text">{file.relativePath}</td>
+                    <td className="border-b border-border/70 px-3 py-2 font-mono text-xs"><a className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" href={file.url} target="_blank" rel="noreferrer">{file.url}</a></td>
+                    <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-text-muted">{file.sha256 || (file.key === "artifactHashesJson" ? "hash list source" : "missing hash")}</td>
+                    <td className="border-b border-border/70 px-3 py-2"><StatusChip label={fileOk ? (file.hashed ? "present and hashed" : "hash list generated") : "needs attention"} tone={fileOk ? "healthy" : "failed"} /></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-border bg-bg/55 p-4">
+        <h4 className="text-sm font-semibold text-text">Raw/untrusted artifacts remain separated</h4>
+        {rawArtifacts.length > 0 ? (
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {rawArtifacts.map((artifact) => (
+              <LocalLink key={artifact.relativePath} href={artifact.url} label="Open raw/untrusted artifact route" path={`${artifact.relativePath} · ${artifact.sha256}`} />
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-text-muted">No raw/untrusted artifacts were copied into this bundle.</p>
+        )}
+      </section>
+    </article>
+  );
+}
+
+function BundleHealthCard({ title, status }: { readonly title: string; readonly status: BundleStatusView }) {
+  const tone = status.status === "healthy" ? "healthy" : status.status === "failed" || status.status === "blocked" ? "failed" : "degraded";
+  return (
+    <section className="rounded-xl border border-border bg-bg/60 p-4">
+      <StatusChip label={status.label} tone={tone} />
+      <h4 className="mt-3 text-sm font-semibold text-text">{title}</h4>
+      <p className="mt-2 text-xs leading-5 text-text-muted">{status.summary}</p>
     </section>
   );
 }

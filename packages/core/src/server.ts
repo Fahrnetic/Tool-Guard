@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { CoreSession } from "./session.js";
 import { ToolRegistry } from "./registry.js";
 import { registerChaosFixtures } from "./chaos-fixtures.js";
-import { exportEvidenceBundle } from "./bundle.js";
+import { exportEvidenceBundle, validateEvidenceBundleManifest, type EvidenceBundleManifest } from "./bundle.js";
 import { validateReportManifest } from "./report.js";
 import { redactStringWithSummary } from "./redaction.js";
 import { buildRunNarrative, buildRunTopology, generateAndPersistNarrative, generateAndPersistTopology } from "./topology.js";
@@ -366,13 +366,33 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
           runId,
           bundleDir: bundle.bundleDir,
           manifestJson: bundle.manifestPath,
+          manifestUrl: bundleFileUrl(configuredBaseUrl(host, port, server), runId, "manifest.json"),
           manifestValidation: bundle.validationPath,
+          manifestValidationUrl: bundleFileUrl(configuredBaseUrl(host, port, server), runId, "manifest-validation.json"),
           manifestValid: bundle.validation.valid,
           validationErrors: bundle.validation.errors,
           replayInstructions: bundle.manifest.replay.instructionsFile
             ? path.join(bundle.bundleDir, bundle.manifest.replay.instructionsFile)
             : undefined,
+          replayInstructionsUrl: bundle.manifest.replay.instructionsFile
+            ? bundleFileUrl(configuredBaseUrl(host, port, server), runId, bundle.manifest.replay.instructionsFile)
+            : undefined,
           files: bundle.manifest.files
+        });
+        return;
+      }
+
+      if (url.pathname === "/api/bundle") {
+        sendJson(response, 200, await buildBundlePayload({ runId, runDir: session.recorder.runDir, baseUrl: configuredBaseUrl(host, port, server) }));
+        return;
+      }
+
+      if (url.pathname.startsWith("/api/bundles/") && url.pathname.includes("/files/")) {
+        await serveBundleFile({
+          response,
+          runId,
+          requestedPath: url.pathname,
+          runDir: session.recorder.runDir
         });
         return;
       }
@@ -867,6 +887,11 @@ function artifactFileUrl(baseUrl: string, runId: StableId, artifactId: StableId)
   return `${baseUrl}/api/reports/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(artifactId)}`;
 }
 
+function bundleFileUrl(baseUrl: string, runId: StableId, relativePath: string): string {
+  const encodedPath = relativePath.split(/[\\/]+/).map((part) => encodeURIComponent(part)).join("/");
+  return `${baseUrl}/api/bundles/${encodeURIComponent(runId)}/files/${encodedPath}`;
+}
+
 async function serveReportFile(input: {
   readonly response: http.ServerResponse;
   readonly runId: StableId;
@@ -903,7 +928,25 @@ async function serveArtifactFile(input: {
   await serveSafeArtifactFile(input.response, input.runDir, artifact);
 }
 
-async function serveRunFile(response: http.ServerResponse, runDir: string, relativePath: string, contentType: string): Promise<void> {
+async function serveBundleFile(input: {
+  readonly response: http.ServerResponse;
+  readonly runId: StableId;
+  readonly requestedPath: string;
+  readonly runDir: string;
+}): Promise<void> {
+  const match = /^\/api\/bundles\/([^/]+)\/files\/(.+)$/.exec(input.requestedPath);
+  const requestedRunId = match ? decodeURIComponent(match[1] ?? "") : "";
+  const requestedRelativePath = match
+    ? (match[2] ?? "").split("/").map((part) => decodeURIComponent(part)).join(path.sep)
+    : "";
+  if ((requestedRunId !== input.runId && requestedRunId !== "latest") || requestedRelativePath.length === 0) {
+    sendJson(input.response, 404, { error: "bundle_file_not_found", runId: requestedRunId, fileName: requestedRelativePath });
+    return;
+  }
+  await serveRunFile(input.response, path.join(input.runDir, "bundle"), requestedRelativePath, contentTypeForBundleFile(requestedRelativePath), requestedRelativePath.includes(`raw-untrusted${path.sep}`));
+}
+
+async function serveRunFile(response: http.ServerResponse, runDir: string, relativePath: string, contentType: string, rawUntrusted = false): Promise<void> {
   const safeRunDir = path.resolve(runDir);
   const filePath = path.resolve(runDir, relativePath);
   if (filePath !== safeRunDir && !filePath.startsWith(`${safeRunDir}${path.sep}`)) {
@@ -915,7 +958,8 @@ async function serveRunFile(response: http.ServerResponse, runDir: string, relat
     response.writeHead(200, {
       "content-type": contentType,
       "cache-control": "no-store",
-      "x-content-type-options": "nosniff"
+      "x-content-type-options": "nosniff",
+      ...(rawUntrusted ? { "x-toolguard-raw-untrusted": "true" } : {})
     });
     response.end(content);
   } catch (error) {
@@ -947,6 +991,12 @@ async function serveSafeArtifactFile(response: http.ServerResponse, runDir: stri
 
 function contentTypeForFile(fileName: string): string {
   return fileName.endsWith(".html") ? "text/html; charset=utf-8" : "application/json; charset=utf-8";
+}
+
+function contentTypeForBundleFile(fileName: string): string {
+  if (fileName.endsWith(".html")) return "text/html; charset=utf-8";
+  if (fileName.endsWith(".txt") || fileName.endsWith(".jsonl")) return "text/plain; charset=utf-8";
+  return "application/json; charset=utf-8";
 }
 
 function contentTypeForArtifact(artifact: EvidenceArtifact): string {
@@ -1151,6 +1201,132 @@ async function buildReportDetailPayload(input: {
     narrative,
     remediation: remediation || "No remediation required for successful fixture runs.",
     exists: Boolean(manifest)
+  };
+}
+
+async function buildBundlePayload(input: {
+  readonly runId: StableId;
+  readonly runDir: string;
+  readonly baseUrl: string;
+}): Promise<JsonObject> {
+  const bundleDir = path.join(input.runDir, "bundle");
+  const manifestPath = path.join(bundleDir, "manifest.json");
+  const validationPath = path.join(bundleDir, "manifest-validation.json");
+  const manifest = await readJsonFile(manifestPath);
+  if (!isEvidenceBundleManifest(manifest)) {
+    return {
+      runId: input.runId,
+      generatedAt: new Date().toISOString(),
+      bundle: {
+        exists: false,
+        manifestHealth: {
+          status: "missing",
+          label: "No evidence bundle exported",
+          summary: "Create a bundle to inspect manifest health, hashes, redaction status, and replay safety."
+        },
+        artifactHashStatus: {
+          status: "missing",
+          label: "No artifact hash list",
+          summary: "artifact-hashes.json is generated during bundle export."
+        },
+        redactionStatus: {
+          status: "missing",
+          label: "No redaction summary",
+          summary: "redaction-summary.json is generated during bundle export."
+        },
+        replaySafetyStatus: {
+          status: "missing",
+          label: "Replay safety unknown",
+          summary: "Replay safety is evaluated from fixture-only or safe loopback evidence."
+        }
+      }
+    };
+  }
+
+  const validation = await validateEvidenceBundleManifest({ bundleDir }).catch((error: unknown) => ({
+    valid: false,
+    errors: [error instanceof Error ? error.message : String(error)]
+  }));
+  const validationFile = await readJsonFile(validationPath);
+  const redactionSummary = await readJsonFile(path.join(bundleDir, manifest.redaction.summaryFile));
+  const redactionCount = isRecord(redactionSummary) && typeof redactionSummary.redactionCount === "number" ? redactionSummary.redactionCount : 0;
+  const redactionReasons = isRecord(redactionSummary) && Array.isArray(redactionSummary.reasons)
+    ? redactionSummary.reasons.filter((reason): reason is string => typeof reason === "string")
+    : [];
+  const requiredFiles = Object.entries(manifest.files).filter((entry): entry is [string, string] => typeof entry[1] === "string");
+  const hashByPath = new Map(manifest.artifactHashes.map((artifact) => [artifact.relativePath, artifact]));
+  const fileRows = requiredFiles.map(([key, relativePath]) => {
+    const hash = hashByPath.get(relativePath);
+    return {
+      key,
+      relativePath,
+      url: bundleFileUrl(input.baseUrl, input.runId, relativePath),
+      present: !validation.errors.some((error) => error.includes(relativePath) && error.startsWith("Missing bundle file reference")),
+      hashed: Boolean(hash),
+      sha256: hash?.sha256 ?? "",
+      byteLength: hash?.byteLength ?? 0
+    };
+  });
+  const rawArtifacts = manifest.rawArtifacts.map((relativePath) => {
+    const hash = hashByPath.get(relativePath);
+    return {
+      relativePath,
+      url: bundleFileUrl(input.baseUrl, input.runId, relativePath),
+      sha256: hash?.sha256 ?? "",
+      byteLength: hash?.byteLength ?? 0
+    };
+  });
+
+  return {
+    runId: input.runId,
+    generatedAt: new Date().toISOString(),
+    bundle: {
+      exists: true,
+      bundleId: manifest.bundleId,
+      bundleDir,
+      generatedAt: manifest.generatedAt,
+      manifestJson: manifestPath,
+      manifestUrl: bundleFileUrl(input.baseUrl, input.runId, "manifest.json"),
+      manifestValidation: validationPath,
+      manifestValidationUrl: bundleFileUrl(input.baseUrl, input.runId, "manifest-validation.json"),
+      manifestValid: validation.valid,
+      validationErrors: [...validation.errors],
+      reportManifestValid: manifest.reportManifestValidation.valid,
+      reportManifestErrors: [...manifest.reportManifestValidation.errors],
+      replaySafe: manifest.replay.safe,
+      replayReason: manifest.replay.reason,
+      replayInstructionsUrl: manifest.replay.instructionsFile ? bundleFileUrl(input.baseUrl, input.runId, manifest.replay.instructionsFile) : "",
+      files: fileRows,
+      rawArtifacts,
+      artifactHashes: manifest.artifactHashes.map((artifact) => ({ ...artifact })),
+      redactionSummary: {
+        redactionCount,
+        reasons: redactionReasons
+      },
+      manifestHealth: {
+        status: validation.valid && manifest.reportManifestValidation.valid ? "healthy" : "failed",
+        label: validation.valid && manifest.reportManifestValidation.valid ? "Manifest valid" : "Manifest needs attention",
+        summary: validation.valid
+          ? "Bundle manifest references resolve, artifact hashes match, and the report manifest validation is included."
+          : validation.errors.join("\n")
+      },
+      artifactHashStatus: {
+        status: validation.valid ? "healthy" : "failed",
+        label: validation.valid ? `${manifest.artifactHashes.length} hashed bundle files` : "Hash validation failed",
+        summary: validation.valid ? "All required bundle files include matching SHA-256 entries." : validation.errors.join("\n")
+      },
+      redactionStatus: {
+        status: "healthy",
+        label: `${redactionCount} redactions recorded`,
+        summary: redactionReasons.length ? redactionReasons.join("\n") : "No secret-shaped values appeared in the safe bundle summary."
+      },
+      replaySafetyStatus: {
+        status: manifest.replay.safe ? "healthy" : "blocked",
+        label: manifest.replay.safe ? "Replay instructions safe" : "Replay withheld",
+        summary: manifest.replay.reason
+      },
+      validationFile: validationFile ?? { valid: validation.valid, errors: [...validation.errors] }
+    }
   };
 }
 
@@ -1647,6 +1823,20 @@ function isEvidenceArtifact(value: CoreEvent["data"]): value is EvidenceArtifact
 
 function isPolicyDecision(value: CoreEvent["data"]): value is PolicyDecision {
   return isRecord(value) && typeof value.policyDecisionId === "string" && typeof value.decision === "string";
+}
+
+function isEvidenceBundleManifest(value: unknown): value is EvidenceBundleManifest {
+  return (
+    isRecord(value) &&
+    typeof value.bundleId === "string" &&
+    typeof value.runId === "string" &&
+    isRecord(value.files) &&
+    Array.isArray(value.artifactHashes) &&
+    Array.isArray(value.rawArtifacts) &&
+    isRecord(value.reportManifestValidation) &&
+    isRecord(value.redaction) &&
+    isRecord(value.replay)
+  );
 }
 
 function findLastEvent(events: readonly CoreEvent[], type: CoreEvent["type"]): CoreEvent | undefined {

@@ -1,6 +1,8 @@
 import type { CoreEvent } from "@toolplane/core";
 import type {
   FailureInboxPayload,
+  BundleExportResponse,
+  BundlePayload,
   HealthPayload,
   IntegrationsPayload,
   LatestRunPayload,
@@ -106,8 +108,20 @@ export async function fetchReports(signal?: AbortSignal): Promise<ReportsPayload
   return await fetchJson<ReportsPayload>("/api/reports", signal);
 }
 
+export async function fetchBundle(signal?: AbortSignal): Promise<BundlePayload> {
+  return await fetchJson<BundlePayload>("/api/bundle", signal);
+}
+
 export async function exportReport(signal?: AbortSignal): Promise<ReportExportResponse> {
   return await fetchJson<ReportExportResponse>("/api/reports/export", signal);
+}
+
+export async function exportBundle(signal?: AbortSignal): Promise<BundleExportResponse> {
+  return await fetchJson<BundleExportResponse>("/api/bundle/export", signal, {
+    method: "POST",
+    body: JSON.stringify({ replaySafety: { fixtureOnly: true, safeLoopback: true } }),
+    headers: { "content-type": "application/json" }
+  });
 }
 
 export function streamCoreEvents(input: {

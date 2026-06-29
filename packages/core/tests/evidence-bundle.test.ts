@@ -136,10 +136,34 @@ describe("evidence bundle export", () => {
       body: JSON.stringify({ replaySafety: { safeLoopback: true } })
     });
     expect(response.ok).toBe(true);
-    const payload = (await response.json()) as { bundleDir: string; manifestValid: boolean; replayInstructions?: string };
+    const payload = (await response.json()) as { bundleDir: string; manifestValid: boolean; manifestUrl: string; replayInstructions?: string; replayInstructionsUrl?: string };
     expect(payload.bundleDir).toBe(path.join(session.recorder.runDir, "bundle"));
     expect(payload.manifestValid).toBe(true);
+    expect(payload.manifestUrl).toBe(`${baseUrl}/api/bundles/${handle.session.runId}/files/manifest.json`);
     expect(payload.replayInstructions).toMatch(/replay-instructions\.json$/);
+    expect(payload.replayInstructionsUrl).toBe(`${baseUrl}/api/bundles/${handle.session.runId}/files/replay-instructions.json`);
+
+    const bundleResponse = await fetch(`${baseUrl}/api/bundle`);
+    expect(bundleResponse.status).toBe(200);
+    const bundlePayload = (await bundleResponse.json()) as {
+      bundle: {
+        manifestHealth: { label: string };
+        artifactHashStatus: { label: string };
+        redactionStatus: { label: string };
+        replaySafetyStatus: { label: string };
+        files: Array<{ url: string; sha256: string; present: boolean; hashed: boolean }>;
+      };
+    };
+    expect(bundlePayload.bundle.manifestHealth.label).toBe("Manifest valid");
+    expect(bundlePayload.bundle.artifactHashStatus.label).toMatch(/hashed bundle files/);
+    expect(bundlePayload.bundle.redactionStatus.label).toMatch(/redactions recorded/);
+    expect(bundlePayload.bundle.replaySafetyStatus.label).toBe("Replay instructions safe");
+    expect(bundlePayload.bundle.files.every((file) => file.url.startsWith(`${baseUrl}/api/bundles/${handle.session.runId}/files/`))).toBe(true);
+    expect(JSON.stringify(bundlePayload)).not.toContain("file://");
+
+    const manifestResponse = await fetch(payload.manifestUrl);
+    expect(manifestResponse.status).toBe(200);
+    expect(manifestResponse.headers.get("content-type")).toContain("application/json");
 
     await rm(path.join(session.recorder.runDir, "bundle", "manifest-validation.json"), { force: true });
   });

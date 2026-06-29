@@ -1,4 +1,4 @@
-import type { CoreEvent, RunNarrative, RunTopology, TopologyNode } from "@toolplane/core";
+import type { CoreEvent, RunIndexRecord, RunNarrative, RunTopology, TopologyNode } from "@toolplane/core";
 import type {
   DemoStoryModePayload,
   EvidenceArtifact,
@@ -16,6 +16,7 @@ import type {
 export type ScreenId =
   | "overview"
   | "timeline"
+  | "run-index"
   | "topology"
   | "health"
   | "failures"
@@ -35,6 +36,30 @@ export interface LatestRunPayload {
   readonly evidenceDir: string;
   readonly eventCount: number;
   readonly events: readonly CoreEvent[];
+}
+
+export interface RunIndexPayload {
+  readonly indexPath: string;
+  readonly count: number;
+  readonly records: readonly RunIndexRecord[];
+}
+
+export type RunIndexFilterWindow = "all" | "1h" | "24h" | "7d";
+
+export interface RunIndexFilters {
+  readonly failureType: string;
+  readonly routeType: string;
+  readonly toolOrStatus: string;
+  readonly timeWindow: RunIndexFilterWindow;
+}
+
+export interface RunComparisonGroup {
+  readonly key: string;
+  readonly label: string;
+  readonly raw: readonly RunIndexRecord[];
+  readonly mediated: readonly RunIndexRecord[];
+  readonly repeated: readonly RunIndexRecord[];
+  readonly records: readonly RunIndexRecord[];
 }
 
 export type TopologyPayload = RunTopology;

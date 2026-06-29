@@ -15,6 +15,7 @@ import type {
   ReplayResponse,
   ReportExportResponse,
   ReportsPayload,
+  RunIndexPayload,
   StoryModePayload,
   TopologyPayload,
   TracePayload,
@@ -27,6 +28,10 @@ const CORE_API_BASE = import.meta.env.VITE_TOOLGUARD_CORE_URL ?? "http://127.0.0
 
 export async function fetchLatestRun(signal?: AbortSignal): Promise<LatestRunPayload> {
   return await fetchJson<LatestRunPayload>("/api/runs/latest", signal);
+}
+
+export async function fetchRunIndex(signal?: AbortSignal): Promise<RunIndexPayload> {
+  return await fetchJson<RunIndexPayload>("/api/run-index", signal);
 }
 
 export async function fetchHealth(signal?: AbortSignal): Promise<HealthPayload> {

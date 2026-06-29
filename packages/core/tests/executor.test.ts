@@ -174,10 +174,10 @@ describe("safe executor preflight and evidence", () => {
             sawAbort = true;
             reject(new Error("cancelled raw detail"));
           });
+          setTimeout(() => cancellation.abort(), 0);
         })
     });
 
-    setTimeout(() => cancellation.abort(), 5);
     const result = await session.executeToolCall(
       registry,
       makeCall({ runId, toolName: "fixture.cancel", arguments: {}, deadlineMs: 1_000 }),

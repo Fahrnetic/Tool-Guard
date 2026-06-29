@@ -852,6 +852,16 @@ async function executeWithAbort(execute: () => Promise<JsonValue> | JsonValue, s
     throw new Error("execution aborted before start");
   }
 
+  let execution: Promise<JsonValue>;
+  try {
+    execution = Promise.resolve(execute());
+  } catch (error) {
+    throw error instanceof Error ? error : new Error(String(error));
+  }
+  if (signal.aborted) {
+    throw new Error("execution aborted");
+  }
+
   return await new Promise<JsonValue>((resolve, reject) => {
     let settled = false;
     const settle = (fn: () => void): void => {
@@ -867,8 +877,7 @@ async function executeWithAbort(execute: () => Promise<JsonValue> | JsonValue, s
     };
 
     signal.addEventListener("abort", onAbort, { once: true });
-    Promise.resolve()
-      .then(execute)
+    execution
       .then((value) => settle(() => resolve(value)))
       .catch((error: unknown) => settle(() => reject(error)));
   });

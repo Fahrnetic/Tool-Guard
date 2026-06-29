@@ -11,6 +11,10 @@ const copy: Record<ScreenId, { readonly title: string; readonly description: str
     title: "Live Run Timeline",
     description: "Append-only Core SSE events ordered by sequence and event time."
   },
+  "run-index": {
+    title: "Run Index Search",
+    description: "Latest real failures, filtering, and correlated raw versus mediated attempt comparison."
+  },
   topology: {
     title: "Failure Topology Map",
     description: "Event-derived topology with node states, relationship labels, narrative, and linked evidence highlights."

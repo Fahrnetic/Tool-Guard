@@ -135,7 +135,7 @@ describe("toolplane run process wrapper", () => {
     expect(await readFile(victim, "utf8")).toBe("still here");
   });
 
-  it("records process lifecycle and unknown timeout outcome for write-capable timed-out commands", async () => {
+  it("records process lifecycle and no observed impact when timed-out commands leave no mutation", async () => {
     const root = await makeTempRoot("toolguard-cli-timeout-impact-");
     const script = path.join(root, "write-then-hang.mjs");
     await writeFile(
@@ -152,8 +152,8 @@ describe("toolplane run process wrapper", () => {
     const row = ledger.at(-1);
 
     expect(result.exitCode).toBe(124);
-    expect(row.effectState).toBe("unknown");
-    expect(row.observedImpact.outcome).toBe("unknown");
+    expect(row.effectState).toBe("none");
+    expect(row.observedImpact.outcome).toBe("none");
     expect(row.observedImpact.fileChanges).toEqual([]);
     expect(row.observedImpact.processLifecycle).toMatchObject({
       pid: expect.any(Number),

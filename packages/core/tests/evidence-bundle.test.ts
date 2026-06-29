@@ -10,8 +10,10 @@ import {
   simulatePolicy,
   validateEvidenceBundleManifest,
   verifyIntegrationRoute,
+  type EvidenceArtifact,
   type CoreApiServerHandle,
-  type CoreEvent
+  type CoreEvent,
+  type ToolCall
 } from "../src/index.js";
 
 const serverHandles: CoreApiServerHandle[] = [];
@@ -38,6 +40,24 @@ async function makeSeededSession(prefix: string) {
   await simulatePolicy({ session, scenarioId: "blocked-destructive", proposedPolicy: { destructiveAction: "block" } });
   await verifyIntegrationRoute({ session, routeType: "cli-supervised", workspaceRoot: path.resolve(".") });
   return { root, session };
+}
+
+function makeToolCall(runId: ToolCall["runId"]): ToolCall {
+  return {
+    runId,
+    traceId: createId("trace"),
+    parentId: createId("parent"),
+    harnessId: createId("harness"),
+    adapterId: createId("adapter"),
+    downstreamServerId: createId("server"),
+    toolCallId: createId("toolcall"),
+    attemptId: createId("attempt"),
+    policyDecisionId: createId("policy"),
+    toolName: "fixture.echo",
+    arguments: {},
+    idempotency: "idempotent",
+    sourcePath: "non-mcp-direct"
+  };
 }
 
 describe("evidence bundle export", () => {
@@ -67,6 +87,7 @@ describe("evidence bundle export", () => {
       "cli-supervised"
     );
     await expect(readFile(path.join(bundle.bundleDir, "artifact-hashes.json"), "utf8")).resolves.toContain("sha256");
+    await expect(readFile(path.join(bundle.bundleDir, "artifact-hashes.json"), "utf8")).resolves.toContain("manifest-validation.json");
     await expect(readFile(path.join(bundle.bundleDir, "redaction-summary.json"), "utf8")).resolves.toContain(
       "redactionCount"
     );
@@ -78,6 +99,11 @@ describe("evidence bundle export", () => {
     expect(rawReadme).toMatch(/raw\/untrusted/i);
     expect(bundle.manifest.manifestValidation.valid).toBe(true);
     expect(bundle.validation.valid).toBe(true);
+    const manifest = await readJson<{ files: { manifestValidationJson?: string }; artifactHashes: Array<{ relativePath: string }> }>(bundle.manifestPath);
+    expect(manifest.files.manifestValidationJson).toBe("manifest-validation.json");
+    expect(manifest.artifactHashes).toEqual(
+      expect.arrayContaining([expect.objectContaining({ relativePath: "manifest-validation.json" })])
+    );
 
     const validation = await validateEvidenceBundleManifest({ bundleDir: bundle.bundleDir });
     expect(validation.valid).toBe(true);
@@ -159,6 +185,16 @@ describe("evidence bundle export", () => {
     expect(bundlePayload.bundle.redactionStatus.label).toMatch(/redactions recorded/);
     expect(bundlePayload.bundle.replaySafetyStatus.label).toBe("Replay instructions safe");
     expect(bundlePayload.bundle.files.every((file) => file.url.startsWith(`${baseUrl}/api/bundles/${handle.session.runId}/files/`))).toBe(true);
+    expect(bundlePayload.bundle.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          url: `${baseUrl}/api/bundles/${handle.session.runId}/files/manifest-validation.json`,
+          hashed: true,
+          present: true,
+          sha256: expect.stringMatching(/^[a-f0-9]{64}$/)
+        })
+      ])
+    );
     expect(JSON.stringify(bundlePayload)).not.toContain("file://");
 
     const manifestResponse = await fetch(payload.manifestUrl);
@@ -166,5 +202,57 @@ describe("evidence bundle export", () => {
     expect(manifestResponse.headers.get("content-type")).toContain("application/json");
 
     await rm(path.join(session.recorder.runDir, "bundle", "manifest-validation.json"), { force: true });
+  });
+
+  it("rejects traversal artifact paths before copying raw bundle evidence", async () => {
+    const { root, session } = await makeSeededSession("toolguard-bundle-traversal-");
+    const call = makeToolCall(session.runId);
+    const outsidePath = path.join(root, "outside-raw.txt");
+    await writeFile(outsidePath, "outside content must not be copied\n", "utf8");
+    const validArtifact = await session.recordRawArtifact(call, {
+      kind: "raw-stdout",
+      fileName: "stdout.txt",
+      content: "safe content"
+    });
+    await session.recorder.appendEvent({
+      ...session.recorder.events.at(-1)!,
+      eventId: createId("event"),
+      artifactId: createId("artifact"),
+      data: {
+        ...validArtifact,
+        artifactId: createId("artifact"),
+        relativePath: "../outside-raw.txt"
+      } satisfies EvidenceArtifact
+    });
+
+    await expect(exportEvidenceBundle({ session, replaySafety: { fixtureOnly: true } })).rejects.toThrow(
+      /outside the run directory|Invalid artifact relativePath/
+    );
+  });
+
+  it("rejects absolute artifact paths before copying raw bundle evidence", async () => {
+    const { root, session } = await makeSeededSession("toolguard-bundle-absolute-");
+    const call = makeToolCall(session.runId);
+    const outsidePath = path.join(root, "absolute-raw.txt");
+    await writeFile(outsidePath, "absolute content must not be copied\n", "utf8");
+    const validArtifact = await session.recordRawArtifact(call, {
+      kind: "raw-stderr",
+      fileName: "stderr.txt",
+      content: "safe content"
+    });
+    await session.recorder.appendEvent({
+      ...session.recorder.events.at(-1)!,
+      eventId: createId("event"),
+      artifactId: createId("artifact"),
+      data: {
+        ...validArtifact,
+        artifactId: createId("artifact"),
+        relativePath: outsidePath
+      } satisfies EvidenceArtifact
+    });
+
+    await expect(exportEvidenceBundle({ session, replaySafety: { fixtureOnly: true } })).rejects.toThrow(
+      /absolute artifact paths|Invalid artifact relativePath/
+    );
   });
 });

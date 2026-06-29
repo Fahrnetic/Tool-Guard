@@ -39,6 +39,7 @@ export interface EvidenceBundleManifest {
     readonly policySimulatorResultJson: string;
     readonly integrationVerificationReceiptsJson: string;
     readonly artifactHashesJson: string;
+    readonly manifestValidationJson: string;
     readonly redactionSummaryJson: string;
     readonly replayInstructionsJson?: string;
   };
@@ -134,12 +135,14 @@ export async function exportEvidenceBundle(input: {
   });
 
   await copyFile(session.recorder.eventsPath, path.join(bundleDir, "events.jsonl"));
+  const validationPath = path.join(bundleDir, "manifest-validation.json");
+  const provisionalValidation: ManifestValidationResult = { valid: true, errors: [] };
+  await writeFile(validationPath, `${JSON.stringify(provisionalValidation, null, 2)}\n`, "utf8");
 
   const artifactHashes = await hashBundleFiles(bundleDir);
   await writeFile(path.join(bundleDir, "artifact-hashes.json"), `${JSON.stringify(artifactHashes, null, 2)}\n`, "utf8");
 
   const bundleId = `bundle-${createHash("sha256").update(`${session.runId}:${bundleDir}`).digest("hex").slice(0, 12)}`;
-  const provisionalValidation: ManifestValidationResult = { valid: true, errors: [] };
   const manifestWithoutValidation = {
     bundleId,
     runId: session.runId,
@@ -155,6 +158,7 @@ export async function exportEvidenceBundle(input: {
       policySimulatorResultJson: "policy-simulator-result.json",
       integrationVerificationReceiptsJson: "integration-verification-receipts.json",
       artifactHashesJson: "artifact-hashes.json",
+      manifestValidationJson: "manifest-validation.json",
       redactionSummaryJson: "redaction-summary.json",
       ...(replay.safe ? { replayInstructionsJson: "replay-instructions.json" } : {})
     },
@@ -175,7 +179,6 @@ export async function exportEvidenceBundle(input: {
   const validation = await validateEvidenceBundleManifest({ bundleDir });
   const manifest: EvidenceBundleManifest = { ...manifestWithoutValidation, manifestValidation: validation };
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
-  const validationPath = path.join(bundleDir, "manifest-validation.json");
   await writeFile(validationPath, `${JSON.stringify(validation, null, 2)}\n`, "utf8");
 
   return { bundleId, bundleDir, manifestPath, validationPath, manifest, validation };
@@ -218,7 +221,7 @@ export async function validateEvidenceBundleManifest(input: { readonly bundleDir
 
   const hashedPaths = new Set(manifest.artifactHashes.map((artifact) => artifact.relativePath));
   for (const relativePath of await listBundleFiles(input.bundleDir)) {
-    if (relativePath === "manifest.json" || relativePath === "manifest-validation.json" || relativePath === "artifact-hashes.json") {
+    if (relativePath === "manifest.json" || relativePath === "artifact-hashes.json") {
       continue;
     }
     if (!hashedPaths.has(relativePath)) {
@@ -235,14 +238,21 @@ async function copyEvidenceArtifacts(
   evidenceDir: string
 ): Promise<{ readonly rawRelativePaths: readonly string[] }> {
   const rawRelativePaths: string[] = [];
+  const safeRunDir = path.resolve(runDir);
+  const bundleDir = path.dirname(evidenceDir);
   for (const artifact of artifacts) {
+    const sourcePath = resolveArtifactSourcePath(safeRunDir, artifact);
     const raw = isRawArtifact(artifact);
     const basename = path.basename(artifact.relativePath);
     const targetRelative = raw
       ? path.join("evidence", "raw-untrusted", `${artifact.artifactId}-raw-untrusted-${basename}`)
       : path.join("evidence", `${artifact.artifactId}-${basename}`);
-    await mkdir(path.dirname(path.join(path.dirname(evidenceDir), targetRelative)), { recursive: true });
-    await copyFile(path.join(runDir, artifact.relativePath), path.join(path.dirname(evidenceDir), targetRelative));
+    const targetPath = path.resolve(bundleDir, targetRelative);
+    if (!isWithinDirectory(path.resolve(bundleDir), targetPath)) {
+      throw new Error(`Invalid bundle artifact target path for ${artifact.artifactId}: outside the bundle directory`);
+    }
+    await mkdir(path.dirname(targetPath), { recursive: true });
+    await copyFile(sourcePath, targetPath);
     if (raw) rawRelativePaths.push(targetRelative);
   }
   return { rawRelativePaths };
@@ -256,7 +266,6 @@ async function hashBundleFiles(bundleDir: string): Promise<readonly EvidenceBund
   const relativePaths = (await listBundleFiles(bundleDir)).filter(
     (relativePath) =>
       relativePath !== "manifest.json" &&
-      relativePath !== "manifest-validation.json" &&
       relativePath !== "artifact-hashes.json"
   );
   const hashes: EvidenceBundleArtifactHash[] = [];
@@ -285,6 +294,21 @@ async function listBundleFiles(bundleDir: string, relativeDir = ""): Promise<str
     }
   }
   return files.sort();
+}
+
+function resolveArtifactSourcePath(safeRunDir: string, artifact: EvidenceArtifact): string {
+  if (path.isAbsolute(artifact.relativePath)) {
+    throw new Error(`Invalid artifact relativePath for ${artifact.artifactId}: absolute artifact paths are not allowed`);
+  }
+  const sourcePath = path.resolve(safeRunDir, artifact.relativePath);
+  if (!isWithinDirectory(safeRunDir, sourcePath)) {
+    throw new Error(`Invalid artifact relativePath for ${artifact.artifactId}: source path is outside the run directory`);
+  }
+  return sourcePath;
+}
+
+function isWithinDirectory(directory: string, candidate: string): boolean {
+  return candidate === directory || candidate.startsWith(`${directory}${path.sep}`);
 }
 
 async function copyOptionalFile(source: string, target: string, fallback: string): Promise<void> {

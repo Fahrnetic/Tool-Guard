@@ -57,6 +57,20 @@ select:focus-visible,
 @media print {
   :root {
     color-scheme: light;
+    --color-bg: oklch(99% 0.005 255);
+    --color-bg-elevated: oklch(98% 0.006 255);
+    --color-bg-panel: oklch(96% 0.008 255);
+    --color-border: oklch(72% 0.018 255);
+    --color-border-strong: oklch(48% 0.035 255);
+    --color-text: oklch(18% 0.018 255);
+    --color-text-muted: oklch(34% 0.022 255);
+    --color-text-dim: oklch(46% 0.018 255);
+    --color-primary: oklch(38% 0.14 245);
+    --color-primary-soft: oklch(88% 0.05 245);
+    --color-success: oklch(36% 0.12 154);
+    --color-warning: oklch(42% 0.13 82);
+    --color-danger: oklch(43% 0.16 27);
+    --color-info: oklch(38% 0.12 222);
     background: white;
     color: black;
   }

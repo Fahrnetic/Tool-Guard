@@ -1,5 +1,7 @@
+/// <reference types="node" />
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { readFile } from "node:fs/promises";
 import { EvidenceReportViewer } from "../src/screens/EvidenceReportViewer.js";
 import type { BundlePayload, ReportsPayload } from "../src/lib/model.js";
 
@@ -17,7 +19,25 @@ describe("Evidence Bundle Viewer", () => {
     expect(html).toContain("Print and PDF export view");
     expect(html).toContain("Print or save PDF");
     expect(html).toContain("http://127.0.0.1:3660/api/bundles/run_bundle/files/manifest.json");
+    expect(html).toContain("http://127.0.0.1:3660/api/bundles/run_bundle/files/manifest-validation.json");
     expect(html).not.toContain("file://");
+  });
+
+  it("defines print-friendly Tailwind theme variables for the bundle viewer", async () => {
+    const css = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
+    const printBlock = css.slice(css.indexOf("@media print"));
+
+    expect(printBlock).toContain("--color-bg:");
+    expect(printBlock).toContain("--color-bg-elevated:");
+    expect(printBlock).toContain("--color-bg-panel:");
+    expect(printBlock).toContain("--color-border:");
+    expect(printBlock).toContain("--color-text:");
+    expect(printBlock).toContain("--color-text-muted:");
+    expect(printBlock).toContain("--color-text-dim:");
+    expect(printBlock).toContain("--color-primary:");
+    expect(printBlock).toContain("--color-success:");
+    expect(printBlock).toContain("--color-warning:");
+    expect(printBlock).toContain("--color-danger:");
   });
 });
 
@@ -48,6 +68,15 @@ const bundlePayload: BundlePayload = {
         hashed: true,
         sha256: "a".repeat(64),
         byteLength: 128
+      },
+      {
+        key: "manifestValidationJson",
+        relativePath: "manifest-validation.json",
+        url: "http://127.0.0.1:3660/api/bundles/run_bundle/files/manifest-validation.json",
+        present: true,
+        hashed: true,
+        sha256: "d".repeat(64),
+        byteLength: 32
       },
       {
         key: "artifactHashesJson",

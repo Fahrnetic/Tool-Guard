@@ -1,16 +1,17 @@
 import { StatePanel } from "../components/StatePanel.js";
 import { StatusChip } from "../components/StatusChip.js";
-import { correlationKeys, type RawArtifactView, type ResourceStatus, type TracePayload } from "../lib/model.js";
+import { correlationKeys, selectionMatchesValues, type RawArtifactView, type ResourceStatus, type TopologySelection, type TracePayload } from "../lib/model.js";
 
 interface TraceExplorerProps {
   readonly payload?: TracePayload;
   readonly status: ResourceStatus;
   readonly error?: string;
   readonly selectedId?: string;
+  readonly topologySelection?: TopologySelection;
   readonly onSelectCorrelation?: (selection: { readonly id: string; readonly kind: string; readonly traceId?: string }) => void | Promise<void>;
 }
 
-export function TraceExplorer({ payload, status, error, selectedId, onSelectCorrelation }: TraceExplorerProps) {
+export function TraceExplorer({ payload, status, error, selectedId, topologySelection, onSelectCorrelation }: TraceExplorerProps) {
   if (status === "loading") {
     return <StatePanel status="loading" title="Loading Trace Explorer" message="Resolving the latest trace from `/api/traces/latest`." />;
   }
@@ -75,16 +76,26 @@ export function TraceExplorer({ payload, status, error, selectedId, onSelectCorr
         <section className="rounded-2xl border border-border bg-bg-panel/90 p-5">
           <h3 className="text-lg font-semibold text-text">Parent-child graph</h3>
           <ol className="mt-4 space-y-3">
-            {payload.nodes.map((node) => (
-              <li key={node.id} tabIndex={0} className="rounded-xl border border-border bg-bg/55 p-3 outline-none transition hover:border-primary/45 focus-visible:border-primary">
-                <div className="flex flex-wrap items-center gap-2">
-                  <StatusChip label={node.kind} tone="neutral" />
-                  <span className="break-all font-mono text-xs text-primary">{node.label}</span>
-                </div>
-                <p className="mt-2 text-sm text-text-muted">{node.summary}</p>
-                {node.parentId ? <p className="mt-1 break-all text-xs text-text-dim">parentId {node.parentId}</p> : null}
-              </li>
-            ))}
+            {payload.nodes.map((node) => {
+              const highlighted = selectionMatchesValues(topologySelection, [node.id, node.parentId, node.label]);
+              return (
+                <li
+                  key={node.id}
+                  tabIndex={0}
+                  aria-selected={highlighted}
+                  className={`rounded-xl border p-3 outline-none transition hover:border-primary/45 focus-visible:border-primary ${
+                    highlighted ? "border-primary bg-primary/10 shadow-lg shadow-primary/10" : "border-border bg-bg/55"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusChip label={node.kind} tone="neutral" />
+                    <span className="break-all font-mono text-xs text-primary">{node.label}</span>
+                  </div>
+                  <p className="mt-2 text-sm text-text-muted">{node.summary}</p>
+                  {node.parentId ? <p className="mt-1 break-all text-xs text-text-dim">parentId {node.parentId}</p> : null}
+                </li>
+              );
+            })}
           </ol>
         </section>
       </div>
@@ -103,15 +114,24 @@ export function TraceExplorer({ payload, status, error, selectedId, onSelectCorr
               </tr>
             </thead>
             <tbody>
-              {payload.events.map((event) => (
-                <tr key={event.eventId} className="hover:bg-primary/5">
-                  <td className="border-b border-border/70 px-3 py-2"><StatusChip label={event.type} tone="neutral" /></td>
-                  <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-text-muted">{event.occurredAt}</td>
-                  <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-primary">{event.toolCallId ?? "none"}</td>
-                  <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-primary">{event.attemptId ?? "none"}</td>
-                  <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-primary">{event.policyDecisionId ?? "none"}</td>
-                </tr>
-              ))}
+              {payload.events.map((event) => {
+                const highlighted = selectionMatchesValues(topologySelection, [event.eventId, event.traceId, event.toolCallId, event.attemptId, event.policyDecisionId, event.artifactId]);
+                return (
+                  <tr
+                    key={event.eventId}
+                    aria-selected={highlighted}
+                    className={`border-l-2 transition hover:bg-primary/5 ${
+                      highlighted ? "border-primary bg-primary/10" : "border-transparent"
+                    }`}
+                  >
+                    <td className="border-b border-border/70 px-3 py-2"><StatusChip label={event.type} tone="neutral" /></td>
+                    <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-text-muted">{event.occurredAt}</td>
+                    <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-primary">{event.toolCallId ?? "none"}</td>
+                    <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-primary">{event.attemptId ?? "none"}</td>
+                    <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-primary">{event.policyDecisionId ?? "none"}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -126,8 +146,8 @@ export function TraceExplorer({ payload, status, error, selectedId, onSelectCorr
           <StatusChip label={`${payload.rawArtifacts.length} artifacts`} tone={payload.rawArtifacts.length > 0 ? "selected" : "neutral"} />
         </div>
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          <RawArtifactPane title="Raw stdout" artifacts={payload.rawStdout} empty="No raw stdout artifact exists for this trace." />
-          <RawArtifactPane title="Raw stderr" artifacts={payload.rawStderr} empty="No raw stderr artifact exists for this trace." />
+          <RawArtifactPane title="Raw stdout" artifacts={payload.rawStdout} empty="No raw stdout artifact exists for this trace." topologySelection={topologySelection} />
+          <RawArtifactPane title="Raw stderr" artifacts={payload.rawStderr} empty="No raw stderr artifact exists for this trace." topologySelection={topologySelection} />
         </div>
       </section>
     </section>
@@ -148,7 +168,7 @@ function buildCorrelationControls(payload: TracePayload): readonly { readonly ki
   return [...controls, ...nodeControls];
 }
 
-function RawArtifactPane({ title, artifacts, empty }: { readonly title: string; readonly artifacts: readonly RawArtifactView[]; readonly empty: string }) {
+function RawArtifactPane({ title, artifacts, empty, topologySelection }: { readonly title: string; readonly artifacts: readonly RawArtifactView[]; readonly empty: string; readonly topologySelection: TopologySelection | undefined }) {
   return (
     <section className="min-h-56 rounded-xl border border-border bg-bg p-4">
       <h4 className="text-sm font-semibold text-text">{title}</h4>
@@ -156,27 +176,36 @@ function RawArtifactPane({ title, artifacts, empty }: { readonly title: string; 
         <p className="mt-3 text-sm text-text-muted">{empty}</p>
       ) : (
         <div className="mt-3 space-y-4">
-          {artifacts.map((artifact) => (
-            <article key={artifact.artifactId} className="rounded-lg border border-border/80 bg-bg-panel/60 p-3">
-              <div className="flex flex-wrap gap-2">
-                <StatusChip label={artifact.truncated ? "truncated at output limit" : "not truncated"} tone={artifact.truncated ? "degraded" : "selected"} />
-                <StatusChip label={artifact.redacted ? "redacted content" : "raw content"} tone={artifact.redacted ? "degraded" : "neutral"} />
-              </div>
-              <dl className="mt-3 grid gap-2 text-xs text-text-muted sm:grid-cols-2">
-                <div>
-                  <dt className="text-text-dim">artifactId</dt>
-                  <dd className="break-all font-mono text-primary">{artifact.artifactId}</dd>
+          {artifacts.map((artifact) => {
+            const highlighted = selectionMatchesValues(topologySelection, [artifact.artifactId, artifact.traceId, artifact.toolCallId, artifact.relativePath]);
+            return (
+              <article
+                key={artifact.artifactId}
+                aria-selected={highlighted}
+                className={`rounded-lg border p-3 transition ${
+                  highlighted ? "border-primary bg-primary/10 shadow-lg shadow-primary/10" : "border-border/80 bg-bg-panel/60"
+                }`}
+              >
+                <div className="flex flex-wrap gap-2">
+                  <StatusChip label={artifact.truncated ? "truncated at output limit" : "not truncated"} tone={artifact.truncated ? "degraded" : "selected"} />
+                  <StatusChip label={artifact.redacted ? "redacted content" : "raw content"} tone={artifact.redacted ? "degraded" : "neutral"} />
                 </div>
-                <div>
-                  <dt className="text-text-dim">bytes</dt>
-                  <dd className="font-mono">{artifact.byteLength}{artifact.outputLimitBytes ? `, limit ${artifact.outputLimitBytes}` : ""}</dd>
-                </div>
-              </dl>
-              <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/70 bg-bg/80 p-3 text-xs leading-5 text-text-muted">
-                {artifact.contentUnavailable ? `Content unavailable: ${artifact.contentUnavailable}` : artifact.content}
-              </pre>
-            </article>
-          ))}
+                <dl className="mt-3 grid gap-2 text-xs text-text-muted sm:grid-cols-2">
+                  <div>
+                    <dt className="text-text-dim">artifactId</dt>
+                    <dd className="break-all font-mono text-primary">{artifact.artifactId}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-text-dim">bytes</dt>
+                    <dd className="font-mono">{artifact.byteLength}{artifact.outputLimitBytes ? `, limit ${artifact.outputLimitBytes}` : ""}</dd>
+                  </div>
+                </dl>
+                <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/70 bg-bg/80 p-3 text-xs leading-5 text-text-muted">
+                  {artifact.contentUnavailable ? `Content unavailable: ${artifact.contentUnavailable}` : artifact.content}
+                </pre>
+              </article>
+            );
+          })}
         </div>
       )}
     </section>

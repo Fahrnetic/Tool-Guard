@@ -204,6 +204,7 @@ export function App() {
           status={data.status}
           {...(data.error ? { error: data.error } : {})}
           {...(selectedCorrelationId ? { selectedId: selectedCorrelationId } : {})}
+          {...(topologySelection ? { topologySelection } : {})}
           onSelectCorrelation={refetchTraceForSelection}
         />
       ) : active === "replay" ? (

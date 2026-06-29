@@ -59,6 +59,14 @@ pnpm demo:toolplane
 
 The raw demo runs the same deterministic fixture without mediation. The ToolGuard demo records a run under `runs/`, emits correlated events, produces a Failure Card, and exports static evidence.
 
+Run the persistent guided demo surface:
+
+```bash
+pnpm demo:serve
+```
+
+This starts the local Core API, UI, and fixture stack for the flagship story-mode demo. It is still fixture-only and loopback-only, so no external credentials are required.
+
 ## Demo commands
 
 ```bash
@@ -73,9 +81,24 @@ pnpm demo:mcp
 
 # Portfolio demo with local loopback Core/UI surfaces and cleanup checks
 pnpm demo
+
+# Persistent guided story-mode demo for human review
+pnpm demo:serve
 ```
 
 The demos are local-first and fixture-driven. They do not require cloud credentials or external services for the core evidence paths.
+
+## Flagship demo arc
+
+The current demo-ready product state is designed around a before-and-after arc:
+
+1. Run a deterministic fixture directly and observe the raw failure.
+2. Route the same fixture through ToolGuard and inspect the normalized Failure Card.
+3. Follow the run through the command center, live timeline, failure topology map, health narrative, trace explorer, and failure inbox.
+4. Use the policy simulator and integration verification wizard to preview policy outcomes and verify routed, wrapped, or supervised integration paths without claiming native interception.
+5. Export and view the evidence bundle, including report files, manifests, hashes, redaction summaries, topology, policy receipts, integration receipts, replay notes, side-effect ledger rows, blast-radius scoring, and retry-loop findings.
+
+Story mode covers raw malformed failures, prompt-injection containment, destructive fixture blocking, retry-loop containment, malformed MCP responses, CLI non-zero exits, and Python sidecar unavailability. Each scenario uses deterministic fixture or loopback inputs and has reset/cleanup controls for demo hygiene.
 
 ## What ToolGuard solves
 
@@ -136,6 +159,18 @@ safe summary / Failure Card / report
 
 Typical demo output under `runs/` includes `events.jsonl`, raw artifacts, `report.html`, `manifest.json`, `artifact-hashes.json`, and `redaction-summary.json`.
 
+Demo-ready evidence now also includes a side-effect ledger, topology and narrative exports, policy simulation receipts, integration verification receipts, retry-loop summaries, blast-radius summaries, and an exportable evidence bundle with a local viewer.
+
+### Consequence and health intelligence
+
+ToolGuard records expected or blocked side effects in a ledger, scores blast radius, detects repeated failure loops, and turns the combined event stream plus ledger into a failure topology map and run health narrative. These surfaces explain what failed, what ToolGuard blocked or contained, what should not be retried, and which harness, adapter, downstream tool, policy decision, attempt, artifact, or report node is involved.
+
+### Demo-ready UI surfaces
+
+The local UI includes the run health command center, live run timeline, failure topology map, tool server health matrix, failure inbox, trace explorer, replay lab, demo story mode, validation dashboard, policy studio, harness integrations, and evidence bundle viewer.
+
+`pnpm demo:serve` runs those surfaces persistently on approved loopback ports only: Core/API/SSE on `127.0.0.1:3660`, UI on `127.0.0.1:3661`, and the fixture stack on `127.0.0.1:3662` through `127.0.0.1:3664`. The launcher refuses ports outside the approved `3660-3669` range and traps shutdown to clean up ToolGuard-owned processes.
+
 ## Architecture and monorepo layout
 
 ```
@@ -155,11 +190,11 @@ toolplane/
 
 | Package | Role | Grounded surfaces in this repo |
 | --- | --- | --- |
-| `@toolplane/core` | Protocol-independent ToolGuard runtime | `CoreSession`, `ToolRegistry`, `EventBus`, `EvidenceRecorder`, `exportStaticReport`, `validateReportManifest`, `createCoreApiServer`, `SIDECAR_PROTOCOL_VERSION`, redaction, classifier, chaos fixtures |
+| `@toolplane/core` | Protocol-independent ToolGuard runtime | `CoreSession`, `ToolRegistry`, `EventBus`, `EvidenceRecorder`, `exportStaticReport`, `exportEvidenceBundle`, `validateReportManifest`, `createCoreApiServer`, `SIDECAR_PROTOCOL_VERSION`, side-effect ledger, blast-radius scoring, retry-loop detection, topology, narrative, policy simulator, integration verification, story mode, redaction, classifier, chaos fixtures |
 | `@toolplane/cli` | Safe process wrapper for shell, git, tests, and coding-agent supervision | `toolplane` and `toolguard` bins, `toolplane run -- <command>`, argv boundary preservation, timeout/cancellation, output limits, environment redaction, destructive command blocking |
-| `@toolplane/mcp-adapter` | MCP proxy/router between upstream MCP clients and downstream tools | deterministic virtual tool names, downstream preflight, MCP-compatible Failure Cards, SDK boundary tests, config snippet generation with MCP-routed-only limitations, portfolio demo |
+| `@toolplane/mcp-adapter` | MCP proxy/router between upstream MCP clients and downstream tools | deterministic virtual tool names, downstream preflight, MCP-compatible Failure Cards, SDK boundary tests, config snippet generation with MCP-routed-only limitations, portfolio demo, persistent `demo:serve` story-mode launcher |
 | `@toolplane/python-adapters` | Thin framework adapters for Python agent stacks | sidecar client, LangGraph wrapper, CrewAI wrapper, loopback-only sidecar endpoint validation, fail-closed protocol checks |
-| `@toolplane/ui` | Local observability UI | overview, live timeline, health matrix, failure inbox, trace explorer, replay lab, policy studio, harness integrations, evidence report viewer |
+| `@toolplane/ui` | Local observability UI | run health command center, live timeline, failure topology map, health matrix, failure inbox, trace explorer, replay lab, demo story mode, validation dashboard, policy studio, harness integrations, evidence bundle viewer |
 
 ## Development commands
 
@@ -173,6 +208,7 @@ pnpm lint
 pnpm demo
 pnpm demo:mcp
 pnpm demo:raw-failure
+pnpm demo:serve
 pnpm demo:toolplane
 pnpm dev:core
 pnpm dev:ui
@@ -196,6 +232,8 @@ pnpm --filter @toolplane/cli exec toolguard run -- git status --short
 
 `dev:core` and `dev:ui` start local loopback development servers. They are not required for the test suite.
 
+`demo:serve` starts a persistent local story-mode stack for demo review. It owns only approved loopback ports in the `3660-3669` range and uses deterministic fixtures rather than external credentials or production services.
+
 ## Validation evidence
 
 The repository test suite covers the public claims above:
@@ -205,11 +243,12 @@ The repository test suite covers the public claims above:
 - **Failure handling:** unknown tools, invalid arguments, timeouts, cancellation, downstream crashes, malformed JSON, non-zero exits, output limits, and preflight failures produce safe Failure Cards and evidence.
 - **Policy and resilience:** destructive calls are blocked before downstream execution, fixture-only destructive simulations do not mutate real files, retries are bounded, unsafe non-idempotent calls are not retried automatically, and circuits open/close by target.
 - **Evidence and redaction:** secret-shaped output is redacted from user-visible strings and exported reports, raw details stay separated, report manifests validate artifact hashes, and redaction summaries count changes.
+- **Consequence intelligence:** side effects are recorded or blocked in a ledger, blast-radius scores are emitted, retry loops are identified, and topology plus narrative payloads are generated from recorded events.
 - **CLI wrapper:** argv boundaries are preserved without shell interpretation, stdout/stderr and exit status are captured, timeouts and cancellation terminate child process trees, output limits are enforced, environment output is redacted, safe git reads work, and destructive shell/filesystem/git patterns are blocked.
 - **MCP adapter:** virtual tools are deterministic, downstream calls route to the intended server, unhealthy preflight fails fast, MCP-compatible Failure Cards are returned, prompt-injection output is contained, malformed protocol data does not crash the router, deadlines are enforced, and circuit fast-fail behavior is covered.
 - **Python adapters:** LangGraph and CrewAI wrappers route through the sidecar protocol, preserve correlation fields, validate loopback endpoints, and fail closed when the sidecar is unavailable or incompatible.
-- **UI model:** ToolOps screens are backed by Core API payloads for overview counts, correlation fields, timeline events, and health matrix labels.
-- **Portfolio demo:** acceptance tests cover required event types, deterministic chaos fixture rows, replay status, redaction scans, integration overclaim scans, report artifacts, and cleanup.
+- **UI model:** ToolOps screens are backed by Core API payloads for command-center counts, correlation fields, timeline events, topology, narrative, policy simulation, integration verification, validation dashboard, story mode, and evidence bundle data.
+- **Portfolio and story demos:** acceptance tests cover required event types, deterministic chaos fixture rows, replay status, redaction scans, integration overclaim scans, report and bundle artifacts, approved demo ports, and cleanup.
 
 Run the full local validation suite:
 
@@ -226,11 +265,13 @@ pnpm build
 - **Safe summaries are model-facing:** report data and user-visible event payloads pass through redaction helpers before display.
 - **Output budgets are enforced:** oversized stdout, stderr, or result payloads become bounded failures instead of flooding context.
 - **Replay is constrained:** replay endpoints expose metadata and block real-world or destructive command replay unless the request is fixture-only and safe.
+- **Policy simulation is dry-run:** policy simulator previews outcomes from local recorded scenarios without executing new downstream side effects.
+- **Integration verification is scoped:** verification receipts cover routed, wrapped, or supervised ToolGuard integration paths. They do not claim native interception of tools that bypass ToolGuard.
 - **Sidecar endpoints are local-only:** Python adapter configuration rejects non-loopback sidecar endpoints.
 - **Process execution avoids shell expansion:** CLI execution preserves explicit argv boundaries and uses `shell: false`.
 
 ## Status
 
-ToolGuard here is an early, local-first implementation. The packages are private workspace packages at version `0.0.0`, and the strongest current evidence is the checked-in test suite plus deterministic demos.
+ToolGuard here is a demo-ready, local-first implementation. The packages are private workspace packages at version `0.0.0`, and the strongest current evidence is the checked-in test suite plus deterministic demos.
 
-This repo does **not** claim native interception of host tools that are not routed through ToolGuard. It does **not** claim production cloud integrations or credential-backed external services. It does claim a working protocol-independent core, MCP route, CLI wrapper, Python sidecar adapters, local observability UI, evidence reports, redaction, policy gates, replay fixtures, and validation coverage for those surfaces.
+This repo does **not** claim native interception of host tools that are not routed through ToolGuard. It does **not** claim production cloud integrations or credential-backed external services. It does claim a working protocol-independent core, MCP route, CLI wrapper, Python sidecar adapters, local observability UI, evidence reports and bundles, redaction, policy gates, replay fixtures, side-effect ledger, blast-radius scoring, retry-loop detection, topology, narrative, policy simulation, integration verification, guided story mode, validation dashboard, and validation coverage for those routed, wrapped, or supervised surfaces.

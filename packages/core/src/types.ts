@@ -216,6 +216,7 @@ export interface EvidenceArtifact {
     | "raw-result"
     | "safe-summary"
     | "report"
+    | "impact-summary"
     | "policy-simulation"
     | "verification-receipt";
   readonly relativePath: string;
@@ -302,6 +303,67 @@ export type SideEffectTargetType =
   | "report-artifact"
   | "ui-action";
 
+export type ImpactAttributionLevel =
+  | "observed-caused"
+  | "observed-after"
+  | "inferred-risk"
+  | "blocked-before-execution"
+  | "unknown";
+export type ImpactEvidenceBasis =
+  | "filesystem-diff"
+  | "git-status-diff"
+  | "process-lifecycle"
+  | "policy-decision"
+  | "postflight-no-mutation"
+  | "timeout-no-postflight"
+  | "artifact-write";
+
+export interface FileMetadata {
+  readonly type: "file" | "directory" | "other";
+  readonly sizeBytes: number;
+  readonly mtimeMs: number;
+  readonly sha256?: string;
+}
+
+export interface ObservedFileChange {
+  readonly path: string;
+  readonly changeType: "created" | "modified" | "deleted";
+  readonly before?: FileMetadata;
+  readonly after?: FileMetadata;
+}
+
+export interface ObservedGitStatus {
+  readonly before: readonly string[];
+  readonly after: readonly string[];
+  readonly changed: boolean;
+}
+
+export interface ObservedProcessLifecycle {
+  readonly pid: number | null;
+  readonly processGroupId: number | null;
+  readonly startedAt: string;
+  readonly endedAt: string;
+  readonly exitCode: number | null;
+  readonly signal: string | null;
+  readonly timedOut: boolean;
+  readonly cancelled: boolean;
+  readonly cleanupResult: "not-needed" | "terminated" | "force-killed" | "already-exited" | "unknown";
+  readonly terminationSignals: readonly string[];
+}
+
+export interface ObservedLocalImpact {
+  readonly workspaceRoot: string;
+  readonly disposableWorkspace: boolean;
+  readonly pathContainment: "contained" | "rejected";
+  readonly gitStatus?: ObservedGitStatus;
+  readonly fileChanges: readonly ObservedFileChange[];
+  readonly tempArtifactWrites: readonly string[];
+  readonly processLifecycle?: ObservedProcessLifecycle;
+  readonly outcome: SideEffectState;
+  readonly rollbackGuidance: readonly string[];
+  readonly bundleHashes: readonly { readonly relativePath: string; readonly sha256: string; readonly byteLength: number }[];
+}
+
 export type BlastRadiusLabel = "contained" | "limited" | "workspace-risk" | "system-risk";
 
 export interface BlastRadiusFactor {
@@ -342,6 +404,11 @@ export interface SideEffectLedgerEntry {
   readonly reversibility: SideEffectReversibility;
   readonly operation: "call-completed" | "call-failed" | "call-blocked" | "retry-planned";
   readonly summary: string;
+  readonly attributionLevel: ImpactAttributionLevel;
+  readonly evidenceBasis: readonly ImpactEvidenceBasis[];
+  readonly causalClaim: string;
+  readonly counterEvidence: readonly string[];
+  readonly observedImpact?: ObservedLocalImpact;
   readonly blastRadius: BlastRadiusResult;
   readonly retryLoopFinding?: RetryLoopFinding;
 }

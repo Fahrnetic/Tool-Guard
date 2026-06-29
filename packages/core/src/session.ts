@@ -3,6 +3,13 @@ import { EvidenceRecorder } from "./evidence.js";
 import { createId, type StableId } from "./ids.js";
 import { exportStaticReport, type StaticReportResult } from "./report.js";
 import { buildRunIndexSeed } from "./run-index.js";
+import {
+  finishObservedImpact,
+  impactAttribution,
+  observedProcessLifecycleFromValue,
+  startObservedImpact,
+  type ObservedImpactStart
+} from "./observed-impact.js";
 import type { ToolRegistry } from "./registry.js";
 import { redactJsonValue } from "./redaction.js";
 import {
@@ -20,6 +27,7 @@ import type {
   IntegrationVerificationReceipt,
   JsonObject,
   JsonValue,
+  ObservedLocalImpact,
   PolicyDecision,
   PolicySimulationResult,
   PreflightFinding,
@@ -363,11 +371,19 @@ export class CoreSession {
     if (!startedAlready) {
       await this.#emit("tool.call.started", call, `Tool call started: ${call.toolName}`);
     }
+    const impactStart = await startObservedImpact(call);
     const targetKey = this.#targetKey(call);
     const circuitDecision = await this.#evaluateCircuit(call);
     if (circuitDecision.decision === "fail-fast") {
       await this.#emitPolicyDecision(call, circuitDecision);
-      return await this.#recordFailure(call, "circuit_open", ["Circuit breaker is open for this downstream target."], [], tool);
+      return await this.#recordFailure(
+        call,
+        "circuit_open",
+        ["Circuit breaker is open for this downstream target."],
+        [],
+        tool,
+        await this.#observedImpact(impactStart, call, "blocked", [])
+      );
     }
 
     const policy = this.#evaluatePolicy(tool, call);
@@ -378,7 +394,8 @@ export class CoreSession {
         tool.destructiveRisk === "high" ? "destructive_action_blocked" : "policy_blocked",
         [policy.reason],
         [],
-        tool
+        tool,
+        await this.#observedImpact(impactStart, call, "blocked", [])
       );
     }
 
@@ -448,7 +465,12 @@ export class CoreSession {
         artifactIds: [artifact.artifactId]
       };
       await this.#emit("tool.call.completed", call, `Tool call completed: ${call.toolName}`, { data: result });
-      await this.#recordSideEffect(call, { tool, outcome: "completed", artifactIds: [artifact.artifactId] });
+      await this.#recordSideEffect(call, {
+        tool,
+        outcome: "completed",
+        artifactIds: [artifact.artifactId],
+        observedImpact: await this.#observedImpact(impactStart, call, "completed", [artifact.relativePath], rawOutput)
+      });
       await this.#recordTargetSuccess(call, targetKey);
       return result;
     } catch (error) {
@@ -458,12 +480,22 @@ export class CoreSession {
       options.signal?.removeEventListener("abort", externalAbort);
 
       const failureType = controller.signal.aborted ? (abortReason ?? "cancellation") : "unknown";
+      const classification = classifyFailure(controller.signal.aborted ? { error, failureType } : { error });
+      const observedOutcome =
+        classification.failureType === "timeout" || classification.failureType === "cancellation" ? "unknown" : "none";
       const failure = await this.#recordFailure(
         call,
-        classifyFailure(controller.signal.aborted ? { error, failureType } : { error }),
+        classification,
         getRawFailureDetails(error),
         [],
-        tool
+        tool,
+        await this.#observedImpact(
+          impactStart,
+          call,
+          observedOutcome,
+          [],
+          getRawFailureDetails(error)
+        )
       );
       await this.#recordTargetFailure(call, failure.failureType);
       return failure;
@@ -530,7 +562,8 @@ export class CoreSession {
     failureTypeOrClassification: FailureCard["failureType"] | FailureClassification,
     rawDetails: readonly string[],
     existingArtifacts: readonly EvidenceArtifact[] = [],
-    tool?: RegisteredTool
+    tool?: RegisteredTool,
+    observedImpact?: ObservedLocalImpact
   ): Promise<FailureCard> {
     const classification =
       typeof failureTypeOrClassification === "string"
@@ -575,6 +608,7 @@ export class CoreSession {
           : "failed",
       failureType: classification.failureType,
       artifactIds: links.map((link) => link.artifactId),
+      observedImpact,
       retryLoopFinding
     });
     const failure = mergeFailureIntelligence(
@@ -603,6 +637,7 @@ export class CoreSession {
       readonly outcome: "completed" | "failed" | "blocked" | "retry";
       readonly failureType?: FailureType | undefined;
       readonly artifactIds: readonly StableId[];
+      readonly observedImpact?: ObservedLocalImpact | undefined;
       readonly retryLoopFinding?: ReturnType<typeof classifyRetryLoop>;
     }
   ): Promise<SideEffectLedgerEntry> {
@@ -638,6 +673,8 @@ export class CoreSession {
       reversibility: sideEffect.reversibility,
       operation: sideEffect.operation,
       summary: sideEffect.summary,
+      ...impactAttribution({ outcome: sideEffect.effectState, impact: input.observedImpact }),
+      ...(input.observedImpact ? { observedImpact: input.observedImpact } : {}),
       blastRadius,
       ...(input.retryLoopFinding ? { retryLoopFinding: input.retryLoopFinding } : {})
     };
@@ -645,6 +682,22 @@ export class CoreSession {
     await this.#emit("side_effect.recorded", call, `Side effect recorded: ${entry.effectState}`, { data: entry });
     await this.#emit("blast_radius.scored", call, `Blast radius scored: ${blastRadius.score}`, { data: blastRadius });
     return entry;
+  }
+
+  async #observedImpact(
+    start: ObservedImpactStart,
+    call: ToolCall,
+    outcome: SideEffectLedgerEntry["effectState"],
+    tempArtifactWrites: readonly string[],
+    processValue?: unknown
+  ): Promise<ObservedLocalImpact | undefined> {
+    return await finishObservedImpact({
+      start,
+      call,
+      outcome,
+      tempArtifactWrites,
+      ...(observedProcessLifecycleFromValue(processValue) ? { processLifecycle: observedProcessLifecycleFromValue(processValue) } : {})
+    });
   }
 
   #evaluatePolicy(tool: RegisteredTool, call: ToolCall): PolicyDecision {

@@ -51,11 +51,17 @@ export interface ProcessExecutionSummary extends JsonObject {
   readonly stdoutRedactionCount: number;
   readonly stderrRedactionCount: number;
   readonly redactionReasons: string[];
+  readonly pid: number | null;
+  readonly processGroupId: number | null;
+  readonly startedAt: string;
+  readonly endedAt: string;
   readonly exitCode: number | null;
   readonly signal: string | null;
   readonly elapsedMs: number;
   readonly timedOut: boolean;
   readonly cancelled: boolean;
+  readonly cleanupResult: "not-needed" | "terminated" | "force-killed" | "already-exited" | "unknown";
+  readonly terminationSignals: string[];
   readonly claimLevel: string;
 }
 
@@ -193,10 +199,16 @@ export async function runToolplaneCli(
           `command: ${summary.command}`,
           `argv: ${JSON.stringify(summary.argv)}`,
           `cwd: ${summary.cwd}`,
+          `pid: ${String(summary.pid)}`,
+          `processGroupId: ${String(summary.processGroupId)}`,
+          `startedAt: ${summary.startedAt}`,
+          `endedAt: ${summary.endedAt}`,
           `exitCode: ${String(summary.exitCode)}`,
           `signal: ${String(summary.signal)}`,
           `timedOut: ${String(summary.timedOut)}`,
           `cancelled: ${String(summary.cancelled)}`,
+          `cleanupResult: ${summary.cleanupResult}`,
+          `terminationSignals: ${summary.terminationSignals.join(",")}`,
           `stdout: ${summary.stdout}`,
           `stderr: ${summary.stderr}`
         ]);
@@ -354,6 +366,7 @@ async function forwardEventToCoreApi(coreUrl: string, event: unknown): Promise<v
 
 async function executeProcess(parsed: ParsedRunOptions, signal: AbortSignal): Promise<ProcessExecutionSummary> {
   const startedAt = Date.now();
+  const startedAtIso = new Date(startedAt).toISOString();
   const command = parsed.command[0];
   if (!command) {
     throw new ClassifiedToolError("spawn_failure", "Missing command after --.");
@@ -376,6 +389,8 @@ async function executeProcess(parsed: ParsedRunOptions, signal: AbortSignal): Pr
     let stderrTruncated = false;
     let timedOut = false;
     let cancelled = false;
+    let cleanupResult: ProcessExecutionSummary["cleanupResult"] = "not-needed";
+    const terminationSignals: string[] = [];
     let settled = false;
     let forceKillTimer: NodeJS.Timeout | undefined;
 
@@ -434,8 +449,14 @@ async function executeProcess(parsed: ParsedRunOptions, signal: AbortSignal): Pr
       } else {
         cancelled = true;
       }
+      cleanupResult = "terminated";
+      terminationSignals.push("SIGTERM");
       signalProcessTree(child.pid, "SIGTERM");
-      forceKillTimer = setTimeout(() => signalProcessTree(child.pid, "SIGKILL"), 250);
+      forceKillTimer = setTimeout(() => {
+        cleanupResult = "force-killed";
+        terminationSignals.push("SIGKILL");
+        signalProcessTree(child.pid, "SIGKILL");
+      }, 250);
     };
     const abortChild = (): void => {
       terminateChildTree("cancellation");
@@ -464,11 +485,17 @@ async function executeProcess(parsed: ParsedRunOptions, signal: AbortSignal): Pr
         stdoutRedactionCount: stdoutRedaction.count,
         stderrRedactionCount: stderrRedaction.count,
         redactionReasons: [...new Set([...stdoutRedaction.reasons, ...stderrRedaction.reasons])],
+        pid: child.pid ?? null,
+        processGroupId: process.platform === "win32" ? child.pid ?? null : child.pid ? -child.pid : null,
+        startedAt: startedAtIso,
+        endedAt: new Date().toISOString(),
         exitCode,
         signal: exitSignal,
         elapsedMs: Date.now() - startedAt,
         timedOut,
         cancelled,
+        cleanupResult: timedOut || cancelled ? cleanupResult : "not-needed",
+        terminationSignals,
         claimLevel: CLAIM_LEVEL
       });
     });

@@ -57,6 +57,13 @@ export {
   sideEffectSummary
 } from "./side-effects.js";
 export {
+  finishObservedImpact,
+  impactAttribution,
+  startObservedImpact,
+  workspaceRootFromCall,
+  type ObservedImpactStart
+} from "./observed-impact.js";
+export {
   buildRunNarrative,
   buildRunTopology,
   generateAndPersistNarrative,
@@ -94,6 +101,7 @@ export type {
   AdapterKind,
   EvidenceArtifact,
   EvidenceLink,
+  FileMetadata,
   FailureCard,
   FailureType,
   DiagnosticEvidenceAnchor,
@@ -111,6 +119,8 @@ export type {
   JsonObject,
   JsonPrimitive,
   JsonValue,
+  ImpactAttributionLevel,
+  ImpactEvidenceBasis,
   IntegrationCapabilityCheck,
   IntegrationProbeStatus,
   IntegrationRouteType,
@@ -123,6 +133,10 @@ export type {
   ProposedPolicy,
   RecordedPolicyScenarioId,
   RetryLoopFinding,
+  ObservedFileChange,
+  ObservedGitStatus,
+  ObservedLocalImpact,
+  ObservedProcessLifecycle,
   RegisteredTool,
   ReportManifest,
   SideEffectLedgerEntry,

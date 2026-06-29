@@ -58,6 +58,112 @@ async function writeGrandchildFixture(root: string, fileName: string): Promise<s
 }
 
 describe("toolplane run process wrapper", () => {
+  it("records observed disposable workspace file impact with rollback guidance and attribution fields", async () => {
+    const root = await makeTempRoot("toolguard-cli-impact-");
+    const script = path.join(root, "mutate.mjs");
+    const deleted = path.join(root, "delete-me.txt");
+    const modified = path.join(root, "modify-me.txt");
+    await writeFile(deleted, "remove me", "utf8");
+    await writeFile(modified, "before", "utf8");
+    await writeFile(
+      script,
+      [
+        "import { writeFileSync, appendFileSync, unlinkSync } from 'node:fs';",
+        "writeFileSync('created.txt', 'created safely');",
+        "appendFileSync('modify-me.txt', ' after');",
+        "unlinkSync('delete-me.txt');"
+      ].join("\n"),
+      "utf8"
+    );
+
+    const result = await runToolplaneCli(["run", "--evidence-root", root, "--cwd", root, "--", process.execPath, script]);
+    const ledger = (await readFile(path.join(result.evidenceDir, "ledger.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const row = ledger.at(-1);
+
+    expect(result.exitCode).toBe(0);
+    expect(row.attributionLevel).toBe("observed-after");
+    expect(row.evidenceBasis).toEqual(expect.arrayContaining(["filesystem-diff", "process-lifecycle"]));
+    expect(row.observedImpact.fileChanges.map((change: { path: string; changeType: string }) => [change.path, change.changeType])).toEqual(
+      expect.arrayContaining([
+        ["created.txt", "created"],
+        ["delete-me.txt", "deleted"],
+        ["modify-me.txt", "modified"]
+      ])
+    );
+    expect(row.observedImpact.rollbackGuidance.join("\n")).toMatch(/Remove created disposable-workspace path created\.txt/);
+    expect(row.observedImpact.bundleHashes[0].sha256).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("records safe git reads with before and after status but no mutation", async () => {
+    const root = await makeTempRoot("toolguard-cli-git-impact-");
+    await runToolplaneCli(["run", "--evidence-root", root, "--cwd", root, "--", "git", "init"]);
+
+    const result = await runToolplaneCli(["run", "--evidence-root", root, "--cwd", root, "--", "git", "status", "--short"]);
+    const ledger = (await readFile(path.join(result.evidenceDir, "ledger.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const row = ledger.at(-1);
+
+    expect(result.exitCode).toBe(0);
+    expect(row.targetType).toBe("git");
+    expect(row.observedImpact.gitStatus.changed).toBe(false);
+    expect(row.observedImpact.fileChanges).toEqual([]);
+    expect(row.counterEvidence).toEqual(expect.arrayContaining(["Postflight filesystem/git observation found no workspace mutation."]));
+  });
+
+  it("records blocked destructive commands as blocked before execution with no disposable workspace mutation", async () => {
+    const root = await makeTempRoot("toolguard-cli-blocked-impact-");
+    const victim = path.join(root, "victim.txt");
+    await writeFile(victim, "still here", "utf8");
+
+    const result = await runToolplaneCli(["run", "--evidence-root", root, "--cwd", root, "--", "rm", "-f", victim]);
+    const ledger = (await readFile(path.join(result.evidenceDir, "ledger.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const row = ledger.at(-1);
+
+    expect(result.exitCode).toBe(2);
+    expect(row.effectState).toBe("blocked");
+    expect(row.attributionLevel).toBe("blocked-before-execution");
+    expect(row.evidenceBasis).toEqual(["policy-decision"]);
+    expect(row.observedImpact.fileChanges).toEqual([]);
+    expect(await readFile(victim, "utf8")).toBe("still here");
+  });
+
+  it("records process lifecycle and unknown timeout outcome for write-capable timed-out commands", async () => {
+    const root = await makeTempRoot("toolguard-cli-timeout-impact-");
+    const script = path.join(root, "write-then-hang.mjs");
+    await writeFile(
+      script,
+      "import { writeFileSync } from 'node:fs'; writeFileSync('partial.txt', 'maybe done'); setInterval(() => {}, 1000)\n",
+      "utf8"
+    );
+
+    const result = await runToolplaneCli(["run", "--evidence-root", root, "--cwd", root, "--timeout-ms", "250", "--", process.execPath, script]);
+    const ledger = (await readFile(path.join(result.evidenceDir, "ledger.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const row = ledger.at(-1);
+
+    expect(result.exitCode).toBe(124);
+    expect(row.effectState).toBe("unknown");
+    expect(row.observedImpact.outcome).toBe("unknown");
+    expect(row.observedImpact.fileChanges).toEqual([]);
+    expect(row.observedImpact.processLifecycle).toMatchObject({
+      pid: expect.any(Number),
+      processGroupId: expect.any(Number),
+      exitCode: null,
+      timedOut: true,
+      cleanupResult: expect.stringMatching(/terminated|force-killed/)
+    });
+  });
+
   it("preserves argv boundaries after -- without shell interpretation", async () => {
     const root = await makeTempRoot();
     const script = path.join(root, "argv.mjs");

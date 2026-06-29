@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell, type NavigationItem } from "./components/AppShell.js";
-import { fetchFailures, fetchHealth, fetchIntegrations, fetchLatestRun, fetchNarrative, fetchPolicies, fetchReplay, fetchReports, fetchTopology, fetchTrace, streamCoreEvents } from "./lib/api.js";
+import { fetchFailures, fetchHealth, fetchIntegrations, fetchLatestRun, fetchNarrative, fetchPolicies, fetchReplay, fetchReports, fetchStoryMode, fetchTopology, fetchTrace, streamCoreEvents } from "./lib/api.js";
 import type { CoreEvent } from "@toolplane/core";
 import type {
   FailureInboxPayload,
@@ -13,6 +13,7 @@ import type {
   ReportsPayload,
   ResourceStatus,
   ScreenId,
+  StoryModePayload,
   TopologyPayload,
   TopologySelection,
   TracePayload
@@ -25,6 +26,7 @@ import { Overview } from "./screens/Overview.js";
 import { PolicyStudio } from "./screens/PolicyStudio.js";
 import { ReplayLab } from "./screens/ReplayLab.js";
 import { EvidenceReportViewer } from "./screens/EvidenceReportViewer.js";
+import { DemoStoryMode } from "./screens/DemoStoryMode.js";
 import { ScreenStateGallery } from "./screens/ScreenStateGallery.js";
 import { Timeline } from "./screens/Timeline.js";
 import { TraceExplorer } from "./screens/TraceExplorer.js";
@@ -37,6 +39,7 @@ const navigation: readonly NavigationItem[] = [
   { id: "failures", label: "Failure Inbox" },
   { id: "traces", label: "Trace Explorer" },
   { id: "replay", label: "Replay Lab" },
+  { id: "story", label: "Demo Story Mode" },
   { id: "policy", label: "Policy Studio" },
   { id: "integrations", label: "Harness Integrations" },
   { id: "reports", label: "Evidence Report Viewer" }
@@ -52,6 +55,7 @@ interface DataState {
   readonly policies?: PolicyPayload | undefined;
   readonly integrations?: IntegrationsPayload | undefined;
   readonly replay?: ReplayPayload | undefined;
+  readonly story?: StoryModePayload | undefined;
   readonly reports?: ReportsPayload | undefined;
   readonly status: ResourceStatus;
   readonly error?: string | undefined;
@@ -74,7 +78,7 @@ export function App() {
       controllers.add(controller);
       setData({ status: "loading" });
       try {
-        const [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, reportsResult] = await Promise.allSettled([
+        const [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, reportsResult] = await Promise.allSettled([
           fetchLatestRun(controller.signal),
           fetchHealth(controller.signal),
           fetchTopology(topologyRunId, controller.signal),
@@ -84,6 +88,7 @@ export function App() {
           fetchPolicies(controller.signal),
           fetchIntegrations(controller.signal),
           fetchReplay(controller.signal),
+          fetchStoryMode(controller.signal),
           fetchReports(controller.signal)
         ]);
         if (disposed || controller.signal.aborted) {
@@ -98,6 +103,7 @@ export function App() {
         const policies = policyResult.status === "fulfilled" ? policyResult.value : undefined;
         const integrations = integrationResult.status === "fulfilled" ? integrationResult.value : undefined;
         const replay = replayResult.status === "fulfilled" ? replayResult.value : undefined;
+        const story = storyResult.status === "fulfilled" ? storyResult.value : undefined;
         const reports = reportsResult.status === "fulfilled" ? reportsResult.value : undefined;
         if (!run && !health) {
           const reason = runResult.status === "rejected" ? String(runResult.reason) : "Unknown Core API error";
@@ -105,11 +111,11 @@ export function App() {
           return;
         }
         if (run && run.eventCount === 0) {
-          setData({ run, ...(health ? { health } : {}), ...(topology ? { topology } : {}), ...(narrative ? { narrative } : {}), ...(failures ? { failures } : {}), ...(trace ? { trace } : {}), ...(policies ? { policies } : {}), ...(integrations ? { integrations } : {}), ...(replay ? { replay } : {}), ...(reports ? { reports } : {}), status: "empty" });
+          setData({ run, ...(health ? { health } : {}), ...(topology ? { topology } : {}), ...(narrative ? { narrative } : {}), ...(failures ? { failures } : {}), ...(trace ? { trace } : {}), ...(policies ? { policies } : {}), ...(integrations ? { integrations } : {}), ...(replay ? { replay } : {}), ...(story ? { story } : {}), ...(reports ? { reports } : {}), status: "empty" });
           return;
         }
         const degradedError =
-          [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, reportsResult].some((result) => result.status === "rejected")
+          [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, reportsResult].some((result) => result.status === "rejected")
             ? "One Core endpoint returned an error."
             : undefined;
         setData({
@@ -122,8 +128,9 @@ export function App() {
           ...(policies ? { policies } : {}),
           ...(integrations ? { integrations } : {}),
           ...(replay ? { replay } : {}),
+          ...(story ? { story } : {}),
           ...(reports ? { reports } : {}),
-          status: [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, reportsResult].every((result) => result.status === "fulfilled") ? "ready" : "degraded",
+          status: [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, reportsResult].every((result) => result.status === "fulfilled") ? "ready" : "degraded",
           ...(degradedError ? { error: degradedError } : {})
         });
       } finally {
@@ -222,6 +229,8 @@ export function App() {
         />
       ) : active === "replay" ? (
         <ReplayLab {...(data.replay ? { payload: data.replay } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
+      ) : active === "story" ? (
+        <DemoStoryMode {...(data.story ? { payload: data.story } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
       ) : active === "policy" ? (
         <PolicyStudio
           {...(data.policies ? { payload: data.policies } : {})}

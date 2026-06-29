@@ -1,5 +1,6 @@
 import type { CoreEvent, RunNarrative, RunTopology, TopologyNode } from "@toolplane/core";
 import type {
+  DemoStoryModePayload,
   EvidenceArtifact,
   EvidenceLink,
   FailureCard,
@@ -20,6 +21,7 @@ export type ScreenId =
   | "failures"
   | "traces"
   | "replay"
+  | "story"
   | "policy"
   | "integrations"
   | "reports";
@@ -149,6 +151,8 @@ export interface PolicyPreview {
 export type PolicyScenarioId = RecordedPolicyScenarioId;
 export type PolicySimulation = PolicySimulationResult;
 export type PolicyDraft = ProposedPolicy;
+
+export type StoryModePayload = DemoStoryModePayload;
 
 export interface IntegrationsPayload {
   readonly runId: string;

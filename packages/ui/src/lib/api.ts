@@ -13,6 +13,7 @@ import type {
   ReplayResponse,
   ReportExportResponse,
   ReportsPayload,
+  StoryModePayload,
   TopologyPayload,
   TracePayload,
   VerificationReceipt,
@@ -79,6 +80,18 @@ export async function verifyIntegration(input: { routeType: VerificationRouteTyp
 
 export async function fetchReplay(signal?: AbortSignal): Promise<ReplayPayload> {
   return await fetchJson<ReplayPayload>("/api/replay", signal);
+}
+
+export async function fetchStoryMode(signal?: AbortSignal): Promise<StoryModePayload> {
+  return await fetchJson<StoryModePayload>("/api/story", signal);
+}
+
+export async function resetStoryScenario(input: { scenarioId: string }, signal?: AbortSignal): Promise<unknown> {
+  return await fetchJsonAllowingStatus<unknown>("/api/story/reset", signal, {
+    method: "POST",
+    body: JSON.stringify(input),
+    headers: { "content-type": "application/json" }
+  });
 }
 
 export async function requestReplay(input: { toolName: string; sourceRunId: string; fixtureOnly: boolean; mode?: string; destructive?: boolean }, signal?: AbortSignal): Promise<ReplayResponse> {

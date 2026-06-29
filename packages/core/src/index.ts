@@ -53,6 +53,19 @@ export {
 } from "./topology.js";
 export { RECORDED_POLICY_SCENARIOS, simulatePolicy, type PolicySimulationInput } from "./policy-simulator.js";
 export { verifyIntegrationRoute, type IntegrationVerificationInput } from "./integration-verification.js";
+export {
+  DEMO_STORY_SCENARIOS,
+  DEMO_STORY_STAGE_ORDER,
+  buildDemoStoryModePayload,
+  resetDemoStoryScenario,
+  type DemoStoryComparison,
+  type DemoStoryComparisonSide,
+  type DemoStoryModePayload,
+  type DemoStoryScenario,
+  type DemoStoryScenarioId,
+  type DemoStoryStage,
+  type DemoStoryStageId
+} from "./story-mode.js";
 export type {
   AdapterDescriptor,
   AdapterKind,

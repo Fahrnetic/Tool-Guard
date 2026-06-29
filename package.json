@@ -10,6 +10,7 @@
     "demo": "pnpm --filter @toolplane/mcp-adapter demo:portfolio",
     "demo:mcp": "pnpm --filter @toolplane/mcp-adapter demo",
     "demo:raw-failure": "pnpm --filter @toolplane/core demo:raw-failure",
+    "demo:serve": "pnpm --filter @toolplane/mcp-adapter demo:serve",
     "demo:toolplane": "pnpm --filter @toolplane/core demo:toolplane",
     "dev:core": "pnpm --filter @toolplane/core dev",
     "dev:ui": "pnpm --filter @toolplane/ui dev -- --host 127.0.0.1 --port 3661",

@@ -10,6 +10,7 @@ import { redactStringWithSummary } from "./redaction.js";
 import { buildRunNarrative, buildRunTopology, generateAndPersistNarrative, generateAndPersistTopology } from "./topology.js";
 import { simulatePolicy } from "./policy-simulator.js";
 import { verifyIntegrationRoute } from "./integration-verification.js";
+import { buildDemoStoryModePayload, resetDemoStoryScenario, type DemoStoryScenarioId } from "./story-mode.js";
 import { createId, type StableId } from "./ids.js";
 import type { CoreEvent } from "./events.js";
 import type {
@@ -260,6 +261,26 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
           return;
         }
         sendJson(response, 200, await verifyIntegrationRoute({ session, routeType }));
+        return;
+      }
+
+      if (url.pathname === "/api/story") {
+        sendJson(response, 200, buildDemoStoryModePayload());
+        return;
+      }
+
+      if (url.pathname === "/api/story/reset") {
+        if (request.method !== "POST") {
+          sendJson(response, 405, { error: "method_not_allowed" });
+          return;
+        }
+        const body = await readJsonBody(request, 64 * 1024);
+        if (!body.ok || !isRecord(body.payload) || typeof body.payload.scenarioId !== "string") {
+          sendJson(response, body.ok ? 400 : body.statusCode, { error: body.ok ? "invalid_story_reset_request" : body.message });
+          return;
+        }
+        const reset = resetDemoStoryScenario(body.payload.scenarioId as DemoStoryScenarioId);
+        sendJson(response, reset.ok === false ? 404 : 200, reset);
         return;
       }
 

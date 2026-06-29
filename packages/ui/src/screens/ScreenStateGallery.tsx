@@ -31,6 +31,10 @@ const copy: Record<ScreenId, { readonly title: string; readonly description: str
     title: "Replay Lab",
     description: "Fixture-only deterministic replay with unsafe action blocking."
   },
+  story: {
+    title: "Demo Story Mode",
+    description: "Guided raw-to-ToolGuard story flow with deterministic scenarios and cleanup controls."
+  },
   policy: {
     title: "Policy Studio",
     description: "Timeouts, retry bounds, circuit thresholds, output limits, and sanitizer gates."

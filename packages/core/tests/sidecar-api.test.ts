@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from "node:fs/promises";
+import { access, mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -14,6 +14,102 @@ import {
 } from "../src/index.js";
 
 describe("local sidecar API", () => {
+  it("serves deterministic topology and narrative from Core events and the side-effect ledger", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-topology-api-"));
+    const runId = createId("run");
+    const session = new CoreSession({ evidenceRoot: root, runId, retry: { maxRetries: 1 } });
+    const call: ToolCall = {
+      runId,
+      traceId: createId("trace"),
+      parentId: createId("parent"),
+      harnessId: createId("harness"),
+      adapterId: createId("adapter"),
+      downstreamServerId: createId("server"),
+      toolCallId: createId("toolcall"),
+      attemptId: createId("attempt"),
+      policyDecisionId: createId("policy"),
+      toolName: "fixture.topology-failure",
+      arguments: {},
+      deadlineMs: 1000,
+      idempotency: "idempotent",
+      sourcePath: "non-mcp-direct"
+    };
+    const registry = new ToolRegistry();
+    registry.register({
+      toolName: call.toolName,
+      title: "Topology failure fixture",
+      description: "Fails with raw downstream-looking content that must not appear in narrative.",
+      protocol: "fixture",
+      downstreamServerId: call.downstreamServerId,
+      inputSchema: { type: "object" },
+      destructiveRisk: "none",
+      execute: () => {
+        throw new Error("RAW_STDERR_SECRET api_key=topologysecret1234567890");
+      }
+    });
+    const handle = createCoreApiServer({ port: 0, evidenceRoot: root, session, registry, seedDirectRun: false });
+    await handle.ready;
+    const address = handle.server.address();
+    if (typeof address !== "object" || !address) {
+      throw new Error("Expected test server address");
+    }
+    try {
+      await session.executeToolCall(registry, call);
+      const origin = `http://127.0.0.1:${address.port}`;
+      const topologyResponse = await fetch(`${origin}/api/topology/${encodeURIComponent(runId)}`);
+      const narrativeResponse = await fetch(`${origin}/api/narrative/${encodeURIComponent(runId)}`);
+      const topologyAgainResponse = await fetch(`${origin}/api/topology/${encodeURIComponent(runId)}`);
+      const narrativeAgainResponse = await fetch(`${origin}/api/narrative/${encodeURIComponent(runId)}`);
+      expect(topologyResponse.status).toBe(200);
+      expect(narrativeResponse.status).toBe(200);
+      const topology = (await topologyResponse.json()) as {
+        nodes: { type: string; status: string; correlation: Record<string, string> }[];
+        edges: { type: string; source: string; target: string }[];
+        generatedFrom: { eventCount: number; ledgerCount: number };
+      };
+      const narrative = (await narrativeResponse.json()) as { text: string; sections: Record<string, string> };
+      const topologyAgain = await topologyAgainResponse.json();
+      const narrativeAgain = await narrativeAgainResponse.json();
+
+      expect(topology.nodes.map((node) => node.type)).toEqual(
+        expect.arrayContaining([
+          "harness",
+          "adapter",
+          "downstream-server",
+          "downstream-tool",
+          "policy-decision",
+          "attempt",
+          "side-effect",
+          "artifact"
+        ])
+      );
+      expect(topology.edges.map((edge) => edge.type)).toEqual(
+        expect.arrayContaining(["routed-through", "produced-artifact", "caused-by"])
+      );
+      expect(topology.nodes.some((node) => node.status === "failed" || node.status === "degraded")).toBe(true);
+      expect(topology.nodes.every((node) => node.correlation.runId === runId)).toBe(true);
+      expect(topology.generatedFrom.ledgerCount).toBeGreaterThan(0);
+      expect(topologyAgain).toEqual(topology);
+
+      expect(narrative.text).toContain("Root cause:");
+      expect(narrative.text).toContain("Blast radius:");
+      expect(narrative.text).toContain("Side effects:");
+      expect(narrative.text).toContain("Recovery status:");
+      expect(narrative.text).toContain("Next safe action:");
+      expect(JSON.stringify(narrative)).not.toContain("RAW_STDERR_SECRET");
+      expect(JSON.stringify(narrative)).not.toContain("topologysecret1234567890");
+      expect(narrativeAgain).toEqual(narrative);
+
+      await expect(access(path.join(root, runId, "topology.json"))).resolves.toBeUndefined();
+      await expect(access(path.join(root, runId, "narrative.json"))).resolves.toBeUndefined();
+      expect(handle.session.recorder.events.map((event) => event.type)).toEqual(
+        expect.arrayContaining(["topology.generated", "narrative.generated"])
+      );
+    } finally {
+      await handle.close();
+    }
+  });
+
   it("serves redacted raw stdout and stderr content with truncation metadata in failure and trace payloads", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "toolguard-raw-api-"));
     const runId = createId("run");

@@ -288,6 +288,29 @@ export class CoreSession {
     });
   }
 
+  async emitGeneratedArtifact(
+    type: "topology.generated" | "narrative.generated",
+    summary: string,
+    data: JsonValue
+  ): Promise<CoreEvent> {
+    const last = this.#recorder.events.at(-1);
+    const context = last
+      ? {
+          runId: last.runId,
+          traceId: last.traceId,
+          ...(last.parentId ? { parentId: last.parentId } : {}),
+          ...(last.harnessId ? { harnessId: last.harnessId } : {}),
+          ...(last.adapterId ? { adapterId: last.adapterId } : {}),
+          ...(last.downstreamServerId ? { downstreamServerId: last.downstreamServerId } : {}),
+          ...(last.toolCallId ? { toolCallId: last.toolCallId } : {}),
+          ...(last.attemptId ? { attemptId: last.attemptId } : {}),
+          ...(last.policyDecisionId ? { policyDecisionId: last.policyDecisionId } : {}),
+          ...(last.artifactId ? { artifactId: last.artifactId } : {})
+        }
+      : { runId: this.#runId, traceId: createId("trace") };
+    return await this.#emitContext(type, context, summary, { data: data as NonNullable<CoreEvent["data"]> });
+  }
+
   async #executeAttempt(
     tool: RegisteredTool,
     call: ToolCall,

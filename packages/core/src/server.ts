@@ -7,6 +7,7 @@ import { ToolRegistry } from "./registry.js";
 import { registerChaosFixtures } from "./chaos-fixtures.js";
 import { validateReportManifest } from "./report.js";
 import { redactStringWithSummary } from "./redaction.js";
+import { generateAndPersistNarrative, generateAndPersistTopology } from "./topology.js";
 import { createId, type StableId } from "./ids.js";
 import type { CoreEvent } from "./events.js";
 import type { EvidenceArtifact, FailureCard, JsonObject, JsonValue, PolicyDecision, ToolCall } from "./types.js";
@@ -108,6 +109,59 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
 
       if (url.pathname === "/api/health") {
         sendJson(response, 200, buildHealthPayload(runId, session.recorder.events));
+        return;
+      }
+
+      if (url.pathname.startsWith("/api/topology/")) {
+        const requestedRunId = decodeURIComponent(url.pathname.slice("/api/topology/".length));
+        if (requestedRunId !== runId && requestedRunId !== "latest") {
+          sendJson(response, 404, { error: "topology_run_not_found", runId: requestedRunId });
+          return;
+        }
+        const topology = await generateAndPersistTopology({
+          runId,
+          runDir: session.recorder.runDir,
+          events: session.recorder.events,
+          ledger: session.recorder.ledger
+        });
+        await session.emitGeneratedArtifact("topology.generated", "Topology graph generated", {
+          runId,
+          path: path.join(session.recorder.runDir, "topology.json"),
+          nodeCount: topology.nodes.length,
+          edgeCount: topology.edges.length,
+          sourceEventCount: topology.generatedFrom.eventCount,
+          sourceLedgerCount: topology.generatedFrom.ledgerCount
+        });
+        sendJson(response, 200, topology);
+        return;
+      }
+
+      if (url.pathname.startsWith("/api/narrative/")) {
+        const requestedRunId = decodeURIComponent(url.pathname.slice("/api/narrative/".length));
+        if (requestedRunId !== runId && requestedRunId !== "latest") {
+          sendJson(response, 404, { error: "narrative_run_not_found", runId: requestedRunId });
+          return;
+        }
+        const topology = await generateAndPersistTopology({
+          runId,
+          runDir: session.recorder.runDir,
+          events: session.recorder.events,
+          ledger: session.recorder.ledger
+        });
+        const narrative = await generateAndPersistNarrative({
+          runId,
+          runDir: session.recorder.runDir,
+          events: session.recorder.events,
+          ledger: session.recorder.ledger,
+          topology
+        });
+        await session.emitGeneratedArtifact("narrative.generated", "Run health narrative generated", {
+          runId,
+          path: path.join(session.recorder.runDir, "narrative.json"),
+          sourceEventCount: narrative.generatedFrom.eventCount,
+          sourceLedgerCount: narrative.generatedFrom.ledgerCount
+        });
+        sendJson(response, 200, narrative);
         return;
       }
 

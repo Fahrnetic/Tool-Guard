@@ -38,6 +38,19 @@ export {
   scoreBlastRadius,
   sideEffectSummary
 } from "./side-effects.js";
+export {
+  buildRunNarrative,
+  buildRunTopology,
+  generateAndPersistNarrative,
+  generateAndPersistTopology,
+  type RunNarrative,
+  type RunTopology,
+  type TopologyEdge,
+  type TopologyEdgeType,
+  type TopologyNode,
+  type TopologyNodeStatus,
+  type TopologyNodeType
+} from "./topology.js";
 export type {
   AdapterDescriptor,
   AdapterKind,

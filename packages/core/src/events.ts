@@ -28,7 +28,9 @@ export type CoreEventType =
   | "circuit.closed"
   | "output.sanitized"
   | "evidence.artifact.created"
-  | "report.exported";
+  | "report.exported"
+  | "topology.generated"
+  | "narrative.generated";
 
 export interface CorrelationFields {
   readonly runId: StableId;

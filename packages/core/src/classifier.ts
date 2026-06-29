@@ -1,4 +1,5 @@
 import type { FailureCard, FailureType, JsonValue, ToolCall } from "./types.js";
+import { buildRootCauseDiagnostic } from "./diagnostics.js";
 
 export class ClassifiedToolError extends Error {
   readonly failureType: FailureType;
@@ -231,12 +232,20 @@ export function buildFailureCard(input: {
   readonly call: ToolCall;
   readonly classification: FailureClassification;
   readonly evidenceLinks: FailureCard["evidenceLinks"];
+  readonly rawDetails?: readonly string[];
   readonly safeSummarySuffix?: string;
 }): FailureCard {
+  const diagnostic = buildRootCauseDiagnostic({
+    call: input.call,
+    failureType: input.classification.failureType,
+    rawDetails: input.rawDetails ?? [],
+    evidenceLinks: input.evidenceLinks
+  });
   return {
     toolName: input.call.toolName,
     failureType: input.classification.failureType,
     likelyRootCause: input.classification.likelyRootCause,
+    ...diagnostic,
     retryable: input.classification.retryable,
     doNotRetrySameCall: input.classification.doNotRetrySameCall,
     safeRecoveryOptions: input.classification.safeRecoveryOptions,

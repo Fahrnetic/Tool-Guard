@@ -560,7 +560,7 @@ export class CoreSession {
       }
     ];
 
-    const baseFailure = buildFailureCard({ call, classification, evidenceLinks: links });
+    const baseFailure = buildFailureCard({ call, classification, evidenceLinks: links, rawDetails });
     const fingerprint = buildCallFingerprint(call, classification.failureType);
     const repeatedFailures = (this.#retryFingerprints.get(fingerprint) ?? 0) + 1;
     this.#retryFingerprints.set(fingerprint, repeatedFailures);

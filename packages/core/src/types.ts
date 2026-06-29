@@ -118,6 +118,13 @@ export interface FailureCard {
   readonly toolName: string;
   readonly failureType: FailureType;
   readonly likelyRootCause: string;
+  readonly failureCause: DiagnosticFailureCause;
+  readonly failureBoundary: DiagnosticFailureBoundary;
+  readonly failureMechanism: string;
+  readonly rootCauseConfidence: RootCauseConfidence;
+  readonly contributingFactors: readonly string[];
+  readonly evidenceAnchors: readonly DiagnosticEvidenceAnchor[];
+  readonly diagnosticHypotheses: readonly DiagnosticHypothesis[];
   readonly retryable: boolean;
   readonly doNotRetrySameCall: boolean;
   readonly safeRecoveryOptions: readonly string[];
@@ -130,6 +137,72 @@ export interface FailureCard {
   readonly blastRadiusLabel?: BlastRadiusLabel;
   readonly blastRadiusFactors?: readonly BlastRadiusFactor[];
   readonly rawDetailsSeparated: true;
+}
+
+export type DiagnosticFailureCause =
+  | "missing-binary"
+  | "wrong-cwd"
+  | "permission-denied-temp"
+  | "schema-mismatch"
+  | "protocol-parse-failure"
+  | "caller-deadline-timeout"
+  | "downstream-hang-timeout"
+  | "caller-cancellation"
+  | "policy-block"
+  | "circuit-open"
+  | "suspicious-output"
+  | "secret-leak-risk"
+  | "process-exit"
+  | "process-crash"
+  | "sidecar-unavailable"
+  | "sidecar-protocol"
+  | "output-budget"
+  | "unknown";
+
+export type DiagnosticFailureBoundary =
+  | "caller"
+  | "adapter"
+  | "core"
+  | "policy"
+  | "environment"
+  | "downstream"
+  | "protocol"
+  | "safety"
+  | "unknown";
+
+export type RootCauseConfidence = "high" | "medium" | "low";
+
+export interface DiagnosticEvidenceAnchor {
+  readonly anchorId: StableId;
+  readonly evidenceType:
+    | "command-resolution"
+    | "cwd-fact"
+    | "package-context"
+    | "permission-fact"
+    | "schema-validation"
+    | "parse-offset"
+    | "protocol-frame"
+    | "timeout-source"
+    | "safe-environment"
+    | "raw-artifact"
+    | "policy-decision"
+    | "stderr-anchor"
+    | "stdout-anchor";
+  readonly label: string;
+  readonly summary: string;
+  readonly confidenceContribution: RootCauseConfidence;
+  readonly artifactId?: StableId;
+  readonly href?: string;
+  readonly path?: string;
+}
+
+export interface DiagnosticHypothesis {
+  readonly rank: number;
+  readonly cause: DiagnosticFailureCause;
+  readonly boundary: DiagnosticFailureBoundary;
+  readonly mechanism: string;
+  readonly confidence: RootCauseConfidence;
+  readonly evidenceAnchorIds: readonly StableId[];
 }
 
 export interface EvidenceArtifact {

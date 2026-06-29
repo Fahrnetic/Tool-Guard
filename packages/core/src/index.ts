@@ -45,6 +45,7 @@ export {
   getRawFailureDetails,
   type FailureClassification
 } from "./classifier.js";
+export { buildRootCauseDiagnostic, type RootCauseDiagnostic } from "./diagnostics.js";
 export { createChaosFixtures, registerChaosFixtures, type ChaosFixtureOptions } from "./chaos-fixtures.js";
 export {
   buildCallFingerprint,
@@ -95,6 +96,11 @@ export type {
   EvidenceLink,
   FailureCard,
   FailureType,
+  DiagnosticEvidenceAnchor,
+  DiagnosticFailureBoundary,
+  DiagnosticFailureCause,
+  DiagnosticHypothesis,
+  RootCauseConfidence,
   BlastRadiusFactor,
   BlastRadiusLabel,
   BlastRadiusResult,

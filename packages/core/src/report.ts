@@ -180,6 +180,7 @@ function renderReportHtml(input: {
     .map(
       (failure) => `<li><strong>${escapeHtml(failure.toolName)}</strong>: ${escapeHtml(failure.failureType)}
         <p>${escapeHtml(failure.safeSummary)}</p>
+        ${renderDiagnosticReportSection(failure)}
       </li>`
     )
     .join("");
@@ -217,6 +218,51 @@ function renderReportHtml(input: {
 </body>
 </html>
 `;
+}
+
+function renderDiagnosticReportSection(failure: FailureCard): string {
+  const confidence = failure.rootCauseConfidence ?? "low";
+  const weakNotice =
+    confidence === "low"
+      ? `<p><strong>Weak inference, not fact.</strong> Treat this diagnosis as a lead to verify against evidence.</p>`
+      : "";
+  const hypotheses = (failure.diagnosticHypotheses ?? [])
+    .map(
+      (hypothesis) => `<li>
+        <strong>Rank ${hypothesis.rank}: ${escapeHtml(hypothesis.cause)}</strong>
+        <span> (${escapeHtml(confidenceLabel(hypothesis.confidence))})</span>
+        ${hypothesis.confidence === "low" ? `<em> Weak inference, not fact.</em>` : ""}
+        <p>${escapeHtml(hypothesis.mechanism)}</p>
+        <p>Evidence anchors: ${hypothesis.evidenceAnchorIds.map(escapeHtml).join(", ") || "none linked"}</p>
+      </li>`
+    )
+    .join("");
+  const anchors = (failure.evidenceAnchors ?? [])
+    .map(
+      (anchor) => `<li id="${escapeHtml(anchor.anchorId)}">
+        <a href="${escapeHtml(anchor.href ?? `#${anchor.anchorId}`)}">${escapeHtml(anchor.label)}</a>
+        <span> ${escapeHtml(anchor.evidenceType)} (${escapeHtml(confidenceLabel(anchor.confidenceContribution))})</span>
+        <p>${escapeHtml(anchor.summary)}</p>
+      </li>`
+    )
+    .join("");
+  return `<section>
+    <h3>Root-cause diagnosis</h3>
+    <p>Confidence label: <strong>${escapeHtml(confidenceLabel(confidence))}</strong></p>
+    ${weakNotice}
+    <p>Cause: ${escapeHtml(failure.failureCause ?? "unknown")} at ${escapeHtml(failure.failureBoundary ?? "unknown")} boundary.</p>
+    <p>${escapeHtml(failure.failureMechanism ?? "No mechanism provided.")}</p>
+    <h4>Diagnostic hypotheses</h4>
+    <ol>${hypotheses}</ol>
+    <h4>Evidence anchors</h4>
+    <ul>${anchors}</ul>
+  </section>`;
+}
+
+function confidenceLabel(confidence: "high" | "medium" | "low"): string {
+  if (confidence === "high") return "High confidence";
+  if (confidence === "medium") return "Medium confidence";
+  return "Low confidence";
 }
 
 function escapeHtml(input: string): string {

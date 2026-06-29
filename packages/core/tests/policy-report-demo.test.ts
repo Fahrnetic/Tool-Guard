@@ -343,6 +343,31 @@ describe("policy, redaction, reports, and demos", () => {
         toolName: "fixture.secret",
         failureType: "secret_leak_risk",
         likelyRootCause: "Synthetic event for redaction summary counting.",
+        failureCause: "secret-leak-risk",
+        failureBoundary: "safety",
+        failureMechanism: "Secret-shaped output was detected in model-facing failure detail.",
+        rootCauseConfidence: "low",
+        contributingFactors: ["Synthetic secret-shaped output needs redaction."],
+        evidenceAnchors: [
+          {
+            anchorId: "anchor_secret_shape",
+            evidenceType: "stderr-anchor",
+            label: "Secret-shaped stderr anchor",
+            summary: "A redacted bearer-token-shaped value appeared in synthetic stderr.",
+            confidenceContribution: "low",
+            href: "#anchor_secret_shape"
+          }
+        ],
+        diagnosticHypotheses: [
+          {
+            rank: 1,
+            cause: "secret-leak-risk",
+            boundary: "safety",
+            mechanism: "The output resembles a secret, but the synthetic record needs verification before treating it as fact.",
+            confidence: "low",
+            evidenceAnchorIds: ["anchor_secret_shape"]
+          }
+        ],
         retryable: false,
         doNotRetrySameCall: true,
         safeRecoveryOptions: ["Inspect the sanitized report."],
@@ -363,6 +388,10 @@ describe("policy, redaction, reports, and demos", () => {
 
     expect(redactionSummary.redactionCount).toBeGreaterThanOrEqual(1);
     expect(redactionSummary.reasons).toContain("bearer-token");
+    expect(html).toContain("Root-cause diagnosis");
+    expect(html).toContain("Low confidence");
+    expect(html).toContain("Weak inference, not fact");
+    expect(html).toContain("Secret-shaped stderr anchor");
     expect(html).not.toContain(rawSecret);
   });
 });

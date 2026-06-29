@@ -3,8 +3,10 @@ import type {
   BlastRadiusResult,
   EvidenceArtifact,
   FailureCard,
+  IntegrationVerificationReceipt,
   JsonObject,
   PolicyDecision,
+  PolicySimulationResult,
   RetryLoopFinding,
   SideEffectLedgerEntry,
   ToolResult
@@ -30,7 +32,9 @@ export type CoreEventType =
   | "evidence.artifact.created"
   | "report.exported"
   | "topology.generated"
-  | "narrative.generated";
+  | "narrative.generated"
+  | "policy.simulated"
+  | "integration.verified";
 
 export interface CorrelationFields {
   readonly runId: StableId;
@@ -56,6 +60,8 @@ export interface CoreEvent extends CorrelationFields {
     | ToolResult
     | FailureCard
     | EvidenceArtifact
+    | PolicySimulationResult
+    | IntegrationVerificationReceipt
     | PolicyDecision
     | SideEffectLedgerEntry
     | BlastRadiusResult

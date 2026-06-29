@@ -8,9 +8,20 @@ import { registerChaosFixtures } from "./chaos-fixtures.js";
 import { validateReportManifest } from "./report.js";
 import { redactStringWithSummary } from "./redaction.js";
 import { buildRunNarrative, buildRunTopology, generateAndPersistNarrative, generateAndPersistTopology } from "./topology.js";
+import { simulatePolicy } from "./policy-simulator.js";
+import { verifyIntegrationRoute } from "./integration-verification.js";
 import { createId, type StableId } from "./ids.js";
 import type { CoreEvent } from "./events.js";
-import type { EvidenceArtifact, FailureCard, JsonObject, JsonValue, PolicyDecision, ToolCall } from "./types.js";
+import type {
+  EvidenceArtifact,
+  FailureCard,
+  IntegrationRouteType,
+  JsonObject,
+  JsonValue,
+  PolicyDecision,
+  RecordedPolicyScenarioId,
+  ToolCall
+} from "./types.js";
 
 export const SIDECAR_PROTOCOL_VERSION = "toolguard.sidecar.v1";
 
@@ -203,8 +214,51 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
         return;
       }
 
+      if (url.pathname === "/api/policy/simulate") {
+        if (request.method !== "POST") {
+          sendJson(response, 405, { error: "method_not_allowed" });
+          return;
+        }
+        const body = await readJsonBody(request, 64 * 1024);
+        if (!body.ok || !isRecord(body.payload)) {
+          sendJson(response, body.ok ? 400 : body.statusCode, { error: body.ok ? "invalid_policy_simulation_request" : body.message });
+          return;
+        }
+        const scenarioId = parseScenarioId(body.payload.scenarioId);
+        if (!scenarioId) {
+          sendJson(response, 400, { error: "unknown_policy_simulation_scenario" });
+          return;
+        }
+        const simulation = await simulatePolicy({
+          session,
+          scenarioId,
+          proposedPolicy: isRecord(body.payload.proposedPolicy) ? body.payload.proposedPolicy : {}
+        });
+        sendJson(response, 200, simulation);
+        return;
+      }
+
       if (url.pathname === "/api/integrations") {
         sendJson(response, 200, buildIntegrationsPayload(runId));
+        return;
+      }
+
+      if (url.pathname === "/api/integrations/verify") {
+        if (request.method !== "POST") {
+          sendJson(response, 405, { error: "method_not_allowed" });
+          return;
+        }
+        const body = await readJsonBody(request, 64 * 1024);
+        if (!body.ok || !isRecord(body.payload)) {
+          sendJson(response, body.ok ? 400 : body.statusCode, { error: body.ok ? "invalid_integration_verification_request" : body.message });
+          return;
+        }
+        const routeType = parseRouteType(body.payload.routeType);
+        if (!routeType) {
+          sendJson(response, 400, { error: "unknown_integration_route_type" });
+          return;
+        }
+        sendJson(response, 200, await verifyIntegrationRoute({ session, routeType }));
         return;
       }
 
@@ -1493,6 +1547,16 @@ function buildIntegrationsPayload(runId: StableId): JsonObject {
       }
     ]
   };
+}
+
+function parseScenarioId(value: unknown): RecordedPolicyScenarioId | undefined {
+  return value === "safe-success" || value === "blocked-destructive" || value === "retry-loop-failure"
+    ? value
+    : undefined;
+}
+
+function parseRouteType(value: unknown): IntegrationRouteType | undefined {
+  return value === "mcp-routed" || value === "sdk-wrapped-python" || value === "cli-supervised" ? value : undefined;
 }
 
 function correlationFromCoreEvent(event: CoreEvent): JsonObject {

@@ -13,7 +13,9 @@ export type StableId =
   | `artifact_${string}`
   | `ledger_${string}`
   | `event_${string}`
-  | `report_${string}`;
+  | `report_${string}`
+  | `simulation_${string}`
+  | `receipt_${string}`;
 
 export function createId(prefix: StableId extends `${infer Prefix}_${string}` ? Prefix : never): StableId {
   return `${prefix}_${randomUUID()}` as StableId;

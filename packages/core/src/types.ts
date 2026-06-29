@@ -127,7 +127,14 @@ export interface EvidenceArtifact {
   readonly runId: StableId;
   readonly traceId: StableId;
   readonly toolCallId?: StableId;
-  readonly kind: "raw-stdout" | "raw-stderr" | "raw-result" | "safe-summary" | "report";
+  readonly kind:
+    | "raw-stdout"
+    | "raw-stderr"
+    | "raw-result"
+    | "safe-summary"
+    | "report"
+    | "policy-simulation"
+    | "verification-receipt";
   readonly relativePath: string;
   readonly sha256: string;
   readonly byteLength: number;
@@ -145,6 +152,59 @@ export interface PolicyDecision {
   readonly decision: "allow" | "block" | "retry" | "open-circuit" | "close-circuit" | "fail-fast";
   readonly reason: string;
   readonly retryable: boolean;
+}
+
+export type PolicyPreviewDecision = "allow" | "block" | "retry" | "fail-fast" | "open circuit" | "close circuit";
+export type RecordedPolicyScenarioId = "safe-success" | "blocked-destructive" | "retry-loop-failure";
+
+export interface ProposedPolicy {
+  readonly retryLimit?: number;
+  readonly circuitFailureThreshold?: number;
+  readonly destructiveAction?: "allow-fixture-only" | "block";
+  readonly timeoutMs?: number;
+}
+
+export interface PolicySimulationResult {
+  readonly simulationId: StableId;
+  readonly runId: StableId;
+  readonly scenarioId: RecordedPolicyScenarioId;
+  readonly scenarioName: string;
+  readonly generatedAt: string;
+  readonly proposedPolicy: ProposedPolicy;
+  readonly previewDecisions: readonly PolicyPreviewDecision[];
+  readonly blastRadius: {
+    readonly before: BlastRadiusResult;
+    readonly after: BlastRadiusResult;
+    readonly delta: number;
+  };
+  readonly explanation: string;
+  readonly dryRun: {
+    readonly downstreamExecuted: false;
+    readonly sideEffectsExecuted: false;
+    readonly replayedFromRecordedScenario: true;
+    readonly evidenceOnly: true;
+  };
+  readonly evidenceLinks: readonly EvidenceLink[];
+}
+
+export type IntegrationRouteType = "mcp-routed" | "sdk-wrapped-python" | "cli-supervised";
+export type IntegrationProbeStatus = "configured" | "available" | "unsupported" | "not-yet-verified";
+
+export interface IntegrationCapabilityCheck {
+  readonly capability: string;
+  readonly status: IntegrationProbeStatus;
+  readonly localOnly: true;
+  readonly evidence: string;
+}
+
+export interface IntegrationVerificationReceipt {
+  readonly receiptId: StableId;
+  readonly runId: StableId;
+  readonly timestamp: string;
+  readonly routeType: IntegrationRouteType;
+  readonly checkedCapabilities: readonly IntegrationCapabilityCheck[];
+  readonly limitation: string;
+  readonly evidenceLinks: readonly EvidenceLink[];
 }
 
 export type SideEffectState = "none" | "planned" | "blocked" | "simulated" | "completed" | "partial" | "unknown";

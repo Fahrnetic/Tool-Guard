@@ -16,8 +16,10 @@ import type {
   EvidenceLink,
   FailureCard,
   FailureType,
+  IntegrationVerificationReceipt,
   JsonValue,
   PolicyDecision,
+  PolicySimulationResult,
   PreflightFinding,
   RegisteredTool,
   SideEffectLedgerEntry,
@@ -309,6 +311,26 @@ export class CoreSession {
         }
       : { runId: this.#runId, traceId: createId("trace") };
     return await this.#emitContext(type, context, summary, { data: data as NonNullable<CoreEvent["data"]> });
+  }
+
+  async emitPolicySimulated(result: PolicySimulationResult): Promise<CoreEvent> {
+    const artifactId = result.evidenceLinks[0]?.artifactId;
+    return await this.#emitContext(
+      "policy.simulated",
+      { runId: result.runId, traceId: createId("trace") },
+      `Policy simulated for ${result.scenarioId}`,
+      artifactId ? { data: result, artifactId } : { data: result }
+    );
+  }
+
+  async emitIntegrationVerified(receipt: IntegrationVerificationReceipt): Promise<CoreEvent> {
+    const artifactId = receipt.evidenceLinks[0]?.artifactId;
+    return await this.#emitContext(
+      "integration.verified",
+      { runId: receipt.runId, traceId: createId("trace") },
+      `Integration verified for ${receipt.routeType}`,
+      artifactId ? { data: receipt, artifactId } : { data: receipt }
+    );
   }
 
   async #executeAttempt(

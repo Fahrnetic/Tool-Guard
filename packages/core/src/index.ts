@@ -51,6 +51,8 @@ export {
   type TopologyNodeStatus,
   type TopologyNodeType
 } from "./topology.js";
+export { RECORDED_POLICY_SCENARIOS, simulatePolicy, type PolicySimulationInput } from "./policy-simulator.js";
+export { verifyIntegrationRoute, type IntegrationVerificationInput } from "./integration-verification.js";
 export type {
   AdapterDescriptor,
   AdapterKind,
@@ -68,9 +70,17 @@ export type {
   JsonObject,
   JsonPrimitive,
   JsonValue,
+  IntegrationCapabilityCheck,
+  IntegrationProbeStatus,
+  IntegrationRouteType,
+  IntegrationVerificationReceipt,
   PreflightFinding,
   PreflightProbeResult,
   PolicyDecision,
+  PolicyPreviewDecision,
+  PolicySimulationResult,
+  ProposedPolicy,
+  RecordedPolicyScenarioId,
   RetryLoopFinding,
   RegisteredTool,
   ReportManifest,

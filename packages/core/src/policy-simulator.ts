@@ -1,4 +1,5 @@
 import { createId } from "./ids.js";
+import { buildContextWasteDelta } from "./context-impact.js";
 import type { StableId } from "./ids.js";
 import { scoreBlastRadius } from "./side-effects.js";
 import type { CoreSession } from "./session.js";
@@ -129,6 +130,11 @@ export async function simulatePolicy(input: PolicySimulationInput): Promise<Poli
       after,
       delta: after.score - before.score
     },
+    contextDelta: buildContextWasteDelta({
+      beforeContent: scenarioContextSummary(scenario, proposedPolicy, "before"),
+      afterContent: scenarioContextSummary(scenario, proposedPolicy, "after"),
+      notes: ["Negative deltas mean the proposed policy would reduce model-facing context."]
+    }),
     explanation: scenario.explanation(proposedPolicy),
     dryRun: {
       downstreamExecuted: false,
@@ -154,6 +160,17 @@ export async function simulatePolicy(input: PolicySimulationInput): Promise<Poli
   const result: PolicySimulationResult = { ...resultWithoutLinks, evidenceLinks };
   await input.session.emitPolicySimulated(result);
   return result;
+}
+
+function scenarioContextSummary(
+  scenario: RecordedScenario,
+  policy: ProposedPolicy,
+  phase: "before" | "after"
+): string {
+  const decisions = phase === "before" ? scenario.baselineDecisions : scenario.proposedDecisions(policy);
+  const repeat = scenario.scenarioId === "retry-loop-failure" && phase === "before" ? 3 : decisions.length;
+  const unit = `${scenario.scenarioName}: ${decisions.join(", ")}. ${scenario.explanation(policy)}`;
+  return Array.from({ length: Math.max(1, repeat) }, () => unit).join("\n");
 }
 
 function normalizeProposedPolicy(policy: ProposedPolicy | undefined): ProposedPolicy {

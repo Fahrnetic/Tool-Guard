@@ -1,5 +1,6 @@
 import type { FailureCard, FailureType, JsonValue, ToolCall } from "./types.js";
 import { buildRootCauseDiagnostic } from "./diagnostics.js";
+import { buildContextImpact } from "./context-impact.js";
 
 export class ClassifiedToolError extends Error {
   readonly failureType: FailureType;
@@ -241,6 +242,9 @@ export function buildFailureCard(input: {
     rawDetails: input.rawDetails ?? [],
     evidenceLinks: input.evidenceLinks
   });
+  const safeSummary = `Tool ${input.call.toolName} failed with ${input.classification.failureType}. Raw details are stored separately in evidence artifacts.${
+    input.safeSummarySuffix ? ` ${input.safeSummarySuffix}` : ""
+  }`;
   return {
     toolName: input.call.toolName,
     failureType: input.classification.failureType,
@@ -251,9 +255,12 @@ export function buildFailureCard(input: {
     safeRecoveryOptions: input.classification.safeRecoveryOptions,
     humanFix: input.classification.humanFix,
     evidenceLinks: input.evidenceLinks,
-    safeSummary: `Tool ${input.call.toolName} failed with ${input.classification.failureType}. Raw details are stored separately in evidence artifacts.${
-      input.safeSummarySuffix ? ` ${input.safeSummarySuffix}` : ""
-    }`,
+    safeSummary,
+    contextImpact: buildContextImpact({
+      rawContent: (input.rawDetails ?? []).join("\n"),
+      modelFacingContent: safeSummary,
+      safeDisplayedContent: safeSummary
+    }),
     rawDetailsSeparated: true
   };
 }

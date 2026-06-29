@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createId } from "./ids.js";
+import { contextEstimationNotes } from "./context-impact.js";
 import { redactJsonValue, redactJsonValueWithSummary, redactStringWithSummary } from "./redaction.js";
 import type { CoreEvent } from "./events.js";
 import type { EvidenceArtifact, FailureCard, ReportManifest } from "./types.js";
@@ -63,7 +64,8 @@ export async function exportStaticReport(input: { readonly runDir: string }): Pr
     redactionSummaryFile: "redaction-summary.json",
     ...(ledgerHash ? { ledgerFile: "ledger.jsonl", ledgerSha256: ledgerHash } : {}),
     artifacts,
-    redactionSummary
+    redactionSummary,
+    contextEstimationNotes: contextEstimationNotes()
   };
 
   const reportHtml = renderReportHtml({
@@ -213,6 +215,11 @@ function renderReportHtml(input: {
     <section><h2>Failure narrative</h2><pre>${escapeHtml(input.narrative)}</pre></section>
     <section><h2>Remediation steps</h2><pre>${escapeHtml(input.remediation)}</pre></section>
     <section><h2>Failure Cards</h2><ul>${failureItems}</ul></section>
+    <section><h2>Context and token estimation notes</h2>
+      <p>Token estimate method: <code>heuristic-chars-div-4</code>.</p>
+      <p>Provider usage is unavailable for this local evidence path, so ToolGuard estimates tokens from safe character counts divided by four with low confidence.</p>
+      <p>Raw unsafe output remains in separated artifacts. Reports include aggregate bytes, characters, and token estimates only.</p>
+    </section>
     <section><h2>Artifact hashes</h2><table><thead><tr><th>ID</th><th>Kind</th><th>Path</th><th>SHA-256</th></tr></thead><tbody>${artifactRows}</tbody></table></section>
   </main>
 </body>

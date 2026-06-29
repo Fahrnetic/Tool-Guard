@@ -100,6 +100,7 @@ export interface ToolResult {
   readonly output: JsonValue;
   readonly safeSummary: string;
   readonly artifactIds: readonly StableId[];
+  readonly contextImpact: ContextImpactMetrics;
 }
 
 export type FailureType =
@@ -139,6 +140,7 @@ export interface FailureCard {
   readonly humanFix?: string;
   readonly evidenceLinks: readonly EvidenceLink[];
   readonly safeSummary: string;
+  readonly contextImpact: ContextImpactMetrics;
   readonly sideEffectSummary?: string;
   readonly retryLoopFinding?: RetryLoopFinding;
   readonly blastRadiusScore?: number;
@@ -269,6 +271,7 @@ export interface PolicySimulationResult {
     readonly after: BlastRadiusResult;
     readonly delta: number;
   };
+  readonly contextDelta: ContextWasteDelta;
   readonly explanation: string;
   readonly dryRun: {
     readonly downstreamExecuted: false;
@@ -277,6 +280,68 @@ export interface PolicySimulationResult {
     readonly evidenceOnly: true;
   };
   readonly evidenceLinks: readonly EvidenceLink[];
+}
+
+export type TokenEstimateMethod = "heuristic-chars-div-4" | "provider-reported" | "local-tokenizer";
+export type TokenEstimateConfidence = "high" | "medium" | "low";
+
+export interface ContextSizeEstimate {
+  readonly bytes: number;
+  readonly chars: number;
+  readonly estimatedTokens: number;
+}
+
+export interface ContextTokenEstimate {
+  readonly estimatedTokens: number;
+  readonly method: TokenEstimateMethod;
+  readonly provenance: string;
+  readonly confidence: TokenEstimateConfidence;
+}
+
+export interface ContextSavings {
+  readonly bytes: number;
+  readonly chars: number;
+  readonly estimatedTokens: number;
+}
+
+export interface DuplicateRetryContext {
+  readonly fingerprint: string;
+  readonly repeatedFingerprintCount: number;
+  readonly estimatedDuplicateBytes: number;
+  readonly estimatedDuplicateChars: number;
+  readonly estimatedDuplicateTokens: number;
+}
+
+export interface RetryAmplificationMetrics {
+  readonly attemptCount: number;
+  readonly contextMultiplier: number;
+  readonly estimatedAmplifiedBytes: number;
+  readonly estimatedAmplifiedTokens: number;
+}
+
+export interface ContextImpactMetrics {
+  readonly modelFacingContent: ContextSizeEstimate;
+  readonly rawContentEstimate: ContextSizeEstimate;
+  readonly safeDisplayedEstimate: ContextSizeEstimate;
+  readonly tokenEstimate: ContextTokenEstimate;
+  readonly preventedContextFlood: {
+    readonly rawEstimate: ContextSizeEstimate;
+    readonly safeDisplayedEstimate: ContextSizeEstimate;
+    readonly saved: ContextSavings;
+  };
+  readonly redactionSavings: ContextSavings;
+  readonly truncationSavings: ContextSavings;
+  readonly duplicateRetryContext: DuplicateRetryContext;
+  readonly retryAmplification: RetryAmplificationMetrics;
+  readonly notes: readonly string[];
+}
+
+export interface ContextWasteDelta {
+  readonly before: ContextSizeEstimate;
+  readonly after: ContextSizeEstimate;
+  readonly delta: ContextSavings;
+  readonly estimation: ContextTokenEstimate;
+  readonly notes: readonly string[];
 }
 
 export type IntegrationRouteType = "mcp-routed" | "sdk-wrapped-python" | "cli-supervised";
@@ -446,6 +511,12 @@ export interface ReportManifest {
   readonly redactionSummary: {
     readonly redactionCount: number;
     readonly reasons: readonly string[];
+  };
+  readonly contextEstimationNotes?: {
+    readonly tokenEstimateMethod: TokenEstimateMethod;
+    readonly provenance: string;
+    readonly confidence: TokenEstimateConfidence;
+    readonly notes: readonly string[];
   };
 }
 

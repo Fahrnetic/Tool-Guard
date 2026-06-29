@@ -64,6 +64,13 @@ export {
   type ObservedImpactStart
 } from "./observed-impact.js";
 export {
+  buildContextImpact,
+  buildContextWasteDelta,
+  contextEstimationNotes,
+  estimateContextSize,
+  heuristicTokenEstimate
+} from "./context-impact.js";
+export {
   buildRunNarrative,
   buildRunTopology,
   generateAndPersistNarrative,
@@ -119,6 +126,15 @@ export type {
   JsonObject,
   JsonPrimitive,
   JsonValue,
+  ContextImpactMetrics,
+  ContextSavings,
+  ContextSizeEstimate,
+  ContextTokenEstimate,
+  ContextWasteDelta,
+  DuplicateRetryContext,
+  RetryAmplificationMetrics,
+  TokenEstimateConfidence,
+  TokenEstimateMethod,
   ImpactAttributionLevel,
   ImpactEvidenceBasis,
   IntegrationCapabilityCheck,

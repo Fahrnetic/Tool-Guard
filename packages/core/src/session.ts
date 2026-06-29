@@ -1,6 +1,7 @@
 import { EventBus, type CoreEvent, type CoreEventType } from "./events.js";
 import { EvidenceRecorder } from "./evidence.js";
 import { createId, type StableId } from "./ids.js";
+import { buildContextImpact } from "./context-impact.js";
 import { exportStaticReport, type StaticReportResult } from "./report.js";
 import { buildRunIndexSeed } from "./run-index.js";
 import {
@@ -444,7 +445,7 @@ export class CoreSession {
         });
         const failure = await this.#recordFailure(call, suspicious, ["Unsafe downstream output stored as raw evidence."], [
           artifact
-        ], tool);
+        ], tool, undefined, JSON.stringify(rawOutput));
         await this.#recordTargetFailure(call, failure.failureType);
         return failure;
       }
@@ -463,7 +464,14 @@ export class CoreSession {
         safeSummary: overLimit
           ? `Tool ${call.toolName} completed successfully, but output was truncated for model safety.`
           : `Tool ${call.toolName} completed successfully.`,
-        artifactIds: [artifact.artifactId]
+        artifactIds: [artifact.artifactId],
+        contextImpact: buildContextImpact({
+          rawContent: serialized,
+          modelFacingContent: JSON.stringify(overLimit ? { truncated: true, artifactId: artifact.artifactId } : rawOutput),
+          safeDisplayedContent: overLimit ? `Tool ${call.toolName} completed successfully, but output was truncated for model safety.` : serialized,
+          outputLimitBytes: this.#outputLimitBytes,
+          fingerprint: buildCallFingerprint(call, undefined)
+        })
       };
       await this.#emit("tool.call.completed", call, `Tool call completed: ${call.toolName}`, { data: result });
       await this.#recordSideEffect(call, {
@@ -557,7 +565,13 @@ export class CoreSession {
       toolName: call.toolName,
       output,
       safeSummary: `Tool ${call.toolName} completed successfully.`,
-      artifactIds: [artifact.artifactId]
+      artifactIds: [artifact.artifactId],
+      contextImpact: buildContextImpact({
+        rawContent: JSON.stringify(output),
+        modelFacingContent: JSON.stringify(output),
+        safeDisplayedContent: `Tool ${call.toolName} completed successfully.`,
+        fingerprint: buildCallFingerprint(call, undefined)
+      })
     };
     await this.#emit("tool.call.completed", call, `Tool call completed: ${call.toolName}`, { data: result });
     await this.#recordSideEffect(call, { outcome: "completed", artifactIds: [artifact.artifactId] });
@@ -572,7 +586,8 @@ export class CoreSession {
     rawDetails: readonly string[],
     existingArtifacts: readonly EvidenceArtifact[] = [],
     tool?: RegisteredTool,
-    observedImpact?: ObservedLocalImpact
+    observedImpact?: ObservedLocalImpact,
+    rawContentForContext?: string
   ): Promise<FailureCard> {
     const classification =
       typeof failureTypeOrClassification === "string"
@@ -623,7 +638,14 @@ export class CoreSession {
     const failure = mergeFailureIntelligence(
       {
         ...baseFailure,
-        safeSummary: `${baseFailure.safeSummary} Side effects: ${sideEffectSummary(ledgerEntry)}`
+        safeSummary: `${baseFailure.safeSummary} Side effects: ${sideEffectSummary(ledgerEntry)}`,
+        contextImpact: buildContextImpact({
+          rawContent: rawContentForContext ?? [rawDetails.join("\n"), ...existingArtifacts.map((existing) => `artifact:${existing.kind}:${existing.byteLength}`)].join("\n"),
+          modelFacingContent: baseFailure.safeSummary,
+          safeDisplayedContent: `${baseFailure.safeSummary} Side effects: ${sideEffectSummary(ledgerEntry)}`,
+          fingerprint,
+          repeatedFingerprintCount: repeatedFailures
+        })
       },
       ledgerEntry,
       retryLoopFinding

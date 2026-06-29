@@ -96,6 +96,43 @@ describe("durable run index", () => {
       await second.close();
     }
   });
+
+  it("preserves multiple records that share one durable run id", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-run-index-shared-run-"));
+    const registry = new ToolRegistry();
+    registry.register({
+      toolName: "fixture.fail",
+      title: "Fail",
+      description: "Failing fixture",
+      protocol: "fixture",
+      downstreamServerId: "server_fixture",
+      inputSchema: { type: "object" },
+      destructiveRisk: "none",
+      execute: ({ call }) => {
+        throw new Error(`failed ${call.toolCallId}`);
+      }
+    });
+    const sharedRunId = createId("run");
+    const session = new CoreSession({ evidenceRoot: root, runId: sharedRunId });
+    const firstCall = makeCall(sharedRunId, "fixture.fail", "shared session");
+    const secondCall = makeCall(sharedRunId, "fixture.fail", "shared session");
+
+    await session.executeToolCall(registry, firstCall);
+    await session.executeToolCall(registry, secondCall);
+
+    const records = await session.recorder.listRunIndexRecords();
+    const sharedRecords = records.filter((record) => record.runId === sharedRunId);
+    expect(sharedRecords).toHaveLength(2);
+    expect(sharedRecords.map((record) => record.runIndexRecordId).sort()).toEqual(
+      [`${sharedRunId}:${firstCall.toolCallId}`, `${sharedRunId}:${secondCall.toolCallId}`].sort()
+    );
+    expect(new Set(sharedRecords.map((record) => record.runIndexRecordId)).size).toBe(2);
+
+    const jsonl = await readFile(path.join(root, "run-index.jsonl"), "utf8");
+    expect(jsonl.match(new RegExp(sharedRunId, "g"))?.length).toBeGreaterThanOrEqual(2);
+    expect(jsonl).toContain(firstCall.toolCallId);
+    expect(jsonl).toContain(secondCall.toolCallId);
+  });
 });
 
 function makeCall(runId: StableId, toolName: string, sessionLabel: string): ToolCall {

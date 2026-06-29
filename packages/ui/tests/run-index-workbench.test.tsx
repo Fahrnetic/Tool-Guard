@@ -43,9 +43,39 @@ describe("Run Index Workbench", () => {
     expect(group?.mediated.map((record) => record.runId)).toEqual(["run_mediated_2", "run_mediated_1"]);
     expect(group?.repeated.map((record) => record.runId)).toEqual(["run_mediated_2", "run_mediated_1"]);
   });
+
+  it("does not build comparison groups for unrelated records that only share a loose label", () => {
+    const groups = buildRunComparisons([
+      {
+        ...baseRecord,
+        runIndexRecordId: "runidx_unrelated_a",
+        runId: "run_unrelated_a",
+        runName: "first unrelated mcp failure",
+        routeType: "mcp",
+        tool: "fixture.one",
+        downstreamTarget: { id: "fixture_server", toolName: "fixture.one" },
+        firstFailure: { failureType: "timeout", summary: "Timed out." },
+        startedAt: "2026-06-29T11:00:00.000Z"
+      },
+      {
+        ...baseRecord,
+        runIndexRecordId: "runidx_unrelated_b",
+        runId: "run_unrelated_b",
+        runName: "second unrelated mcp failure",
+        routeType: "mcp",
+        tool: "fixture.two",
+        downstreamTarget: { id: "fixture_server", toolName: "fixture.two" },
+        firstFailure: { failureType: "malformed_json", summary: "Malformed JSON." },
+        startedAt: "2026-06-29T10:00:00.000Z"
+      }
+    ]);
+
+    expect(groups).toHaveLength(0);
+  });
 });
 
 const baseRecord = {
+  runIndexRecordId: "runidx_base",
   runName: "fixture failure",
   sourcePath: "mcp-adapter",
   hostHarness: { id: "harness_demo", name: "demo harness" },
@@ -69,6 +99,7 @@ const payload: RunIndexPayload = {
   records: [
     {
       ...baseRecord,
+      runIndexRecordId: "runidx_mediated_2",
       runId: "run_mediated_2",
       runName: "mediated malformed response retry",
       routeType: "mcp",
@@ -76,6 +107,7 @@ const payload: RunIndexPayload = {
     },
     {
       ...baseRecord,
+      runIndexRecordId: "runidx_mediated_1",
       runId: "run_mediated_1",
       runName: "mediated malformed response",
       routeType: "mcp",
@@ -83,6 +115,7 @@ const payload: RunIndexPayload = {
     },
     {
       ...baseRecord,
+      runIndexRecordId: "runidx_raw_1",
       runId: "run_raw_1",
       runName: "raw malformed response",
       routeType: "direct",

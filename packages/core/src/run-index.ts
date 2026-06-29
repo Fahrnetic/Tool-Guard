@@ -15,6 +15,7 @@ export interface SafeRunLabels {
 }
 
 export interface RunIndexSeed {
+  readonly runIndexRecordId: string;
   readonly runName: string;
   readonly routeType: RunIndexRouteType;
   readonly sourcePath: ToolCall["sourcePath"];
@@ -70,13 +71,15 @@ export class RunIndexStore {
 
   async ingestEvent(event: CoreEvent): Promise<void> {
     await this.#load();
-    const existing = this.#records.get(event.runId);
     const seed = runIndexSeedFromEvent(event);
+    const recordId = seed?.runIndexRecordId ?? runIndexRecordIdFromEvent(event);
+    const existing = this.#records.get(recordId);
     if (event.type === "run.started" || seed) {
       const startedAt = existing?.startedAt ?? event.occurredAt;
-      this.#records.set(event.runId, {
+      this.#records.set(recordId, {
         ...(existing ?? defaultRecordFromEvent(event)),
         ...(seed ?? {}),
+        runIndexRecordId: recordId,
         runId: event.runId,
         startedAt,
         status: existing?.status ?? "running"
@@ -91,7 +94,7 @@ export class RunIndexStore {
 
     if (event.type === "tool.call.failed") {
       const firstFailure = existing.firstFailure ?? firstFailureFromEvent(event);
-      this.#records.set(event.runId, {
+      this.#records.set(recordId, {
         ...existing,
         status: "failed",
         ...(firstFailure ? { firstFailure } : {})
@@ -101,7 +104,7 @@ export class RunIndexStore {
     }
 
     if (event.type === "tool.call.completed") {
-      this.#records.set(event.runId, {
+      this.#records.set(recordId, {
         ...existing,
         status: existing.status === "failed" ? "failed" : "succeeded"
       });
@@ -110,7 +113,7 @@ export class RunIndexStore {
     }
 
     if (event.type === "run.completed") {
-      this.#records.set(event.runId, {
+      this.#records.set(recordId, {
         ...existing,
         status: existing.status === "failed" ? "failed" : "succeeded",
         completedAt: event.occurredAt
@@ -132,7 +135,9 @@ export class RunIndexStore {
         }
         const parsed = JSON.parse(line) as RunIndexRecord;
         if (typeof parsed.runId === "string" && typeof parsed.startedAt === "string") {
-          this.#records.set(parsed.runId, parsed);
+          const runIndexRecordId =
+            typeof parsed.runIndexRecordId === "string" ? parsed.runIndexRecordId : legacyRunIndexRecordId(parsed);
+          this.#records.set(runIndexRecordId, { ...parsed, runIndexRecordId });
         }
       }
     } catch (error) {
@@ -157,6 +162,7 @@ export function buildRunIndexSeed(call: ToolCall, evidencePath: string, eventsPa
   const labels = sanitizeLabels(call.labels);
   const tags = sanitizeTags(call.tags);
   return {
+    runIndexRecordId: runIndexRecordIdFromCall(call),
     runName: sanitizeLabel(call.runName ?? defaultRunName(routeType, command ?? call.originalToolName ?? call.toolName)),
     routeType,
     sourcePath: call.sourcePath,
@@ -237,6 +243,7 @@ function runIndexSeedFromEvent(event: CoreEvent): RunIndexSeed | undefined {
 
 function defaultRecordFromEvent(event: CoreEvent): RunIndexRecord {
   return {
+    runIndexRecordId: runIndexRecordIdFromEvent(event),
     runId: event.runId,
     runName: "unknown run",
     routeType: "direct",
@@ -255,6 +262,18 @@ function defaultRecordFromEvent(event: CoreEvent): RunIndexRecord {
     tags: [],
     labels: {}
   };
+}
+
+function runIndexRecordIdFromCall(call: ToolCall): string {
+  return sanitizeLabel(`${call.runId}:${call.toolCallId}`);
+}
+
+function runIndexRecordIdFromEvent(event: CoreEvent): string {
+  return sanitizeLabel(`${event.runId}:${event.toolCallId ?? "run"}`);
+}
+
+function legacyRunIndexRecordId(record: Pick<RunIndexRecord, "runId"> & { readonly toolCallId?: string }): string {
+  return sanitizeLabel(`${record.runId}:${record.toolCallId ?? "run"}`);
 }
 
 function firstFailureFromEvent(event: CoreEvent): RunIndexRecord["firstFailure"] {

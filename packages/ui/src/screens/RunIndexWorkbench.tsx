@@ -120,7 +120,7 @@ export function RunIndexWorkbench({ payload, status, error }: RunIndexWorkbenchP
         />
       ) : (
         <div className="grid gap-4">
-          {filteredFailures.map((record) => <RunFailureCard key={record.runId} record={record} />)}
+          {filteredFailures.map((record) => <RunFailureCard key={record.runIndexRecordId} record={record} />)}
         </div>
       )}
 
@@ -178,7 +178,7 @@ export function buildRunComparisons(records: readonly RunIndexRecord[]): readonl
       if (!firstRecord) return [];
       const raw = sorted.filter((record) => record.routeType === "direct");
       const mediated = sorted.filter((record) => record.routeType !== "direct");
-      const repeated = sorted.filter((record, index, source) => source.some((other, otherIndex) => otherIndex !== index && sameAttemptFingerprint(record, other)));
+      const repeated = repeatedFingerprintRecords(sorted);
       return [{
         key,
         label: comparisonLabel(firstRecord),
@@ -188,7 +188,7 @@ export function buildRunComparisons(records: readonly RunIndexRecord[]): readonl
         records: sorted
       }];
     })
-    .filter((group) => group.records.length > 1 && (group.raw.length > 0 || group.mediated.length > 0 || group.repeated.length > 0))
+    .filter((group) => group.records.length > 1 && ((group.raw.length > 0 && group.mediated.length > 0) || group.repeated.length > 0))
     .sort((a, b) => {
       const aLatest = a.records[0]?.startedAt ?? "";
       const bLatest = b.records[0]?.startedAt ?? "";
@@ -251,7 +251,7 @@ function ComparisonLane({ title, records, empty }: { readonly title: string; rea
       ) : (
         <ul className="mt-3 space-y-3">
           {records.map((record) => (
-            <li key={record.runId} className="rounded-lg border border-border bg-bg/70 p-3">
+            <li key={record.runIndexRecordId} className="rounded-lg border border-border bg-bg/70 p-3">
               <div className="flex flex-wrap gap-2">
                 <StatusChip label={record.routeType} tone={record.routeType === "direct" ? "warning" : "selected"} />
                 <StatusChip label={record.firstFailure?.failureType ?? record.status} tone="failed" />
@@ -344,5 +344,22 @@ function comparisonLabel(record: RunIndexRecord): string {
 }
 
 function sameAttemptFingerprint(a: RunIndexRecord, b: RunIndexRecord): boolean {
-  return comparisonKey(a) === comparisonKey(b) && a.routeType === b.routeType && a.tool === b.tool;
+  return attemptFingerprint(a) === attemptFingerprint(b);
+}
+
+function repeatedFingerprintRecords(records: readonly RunIndexRecord[]): readonly RunIndexRecord[] {
+  return records.filter((record, index, source) =>
+    source.some((other, otherIndex) => otherIndex !== index && sameAttemptFingerprint(record, other))
+  );
+}
+
+function attemptFingerprint(record: RunIndexRecord): string {
+  return [
+    comparisonKey(record),
+    record.routeType,
+    record.tool,
+    record.downstreamTarget.id,
+    record.command ?? "",
+    record.firstFailure?.failureType ?? record.status
+  ].join("|");
 }

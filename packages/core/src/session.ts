@@ -848,20 +848,6 @@ export class CoreSession {
 }
 
 async function executeWithAbort(execute: () => Promise<JsonValue> | JsonValue, signal: AbortSignal): Promise<JsonValue> {
-  if (signal.aborted) {
-    throw new Error("execution aborted before start");
-  }
-
-  let execution: Promise<JsonValue>;
-  try {
-    execution = Promise.resolve(execute());
-  } catch (error) {
-    throw error instanceof Error ? error : new Error(String(error));
-  }
-  if (signal.aborted) {
-    throw new Error("execution aborted");
-  }
-
   return await new Promise<JsonValue>((resolve, reject) => {
     let settled = false;
     const settle = (fn: () => void): void => {
@@ -877,6 +863,19 @@ async function executeWithAbort(execute: () => Promise<JsonValue> | JsonValue, s
     };
 
     signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+
+    let execution: Promise<JsonValue>;
+    try {
+      execution = Promise.resolve(execute());
+    } catch (error) {
+      settle(() => reject(error instanceof Error ? error : new Error(String(error))));
+      return;
+    }
+
     execution
       .then((value) => settle(() => resolve(value)))
       .catch((error: unknown) => settle(() => reject(error)));

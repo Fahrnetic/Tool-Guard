@@ -192,6 +192,52 @@ describe("safe executor preflight and evidence", () => {
     });
   });
 
+  it("observes downstream rejection when cancellation races with execution startup", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-core-"));
+    const runId = createId("run");
+    const session = new CoreSession({ evidenceRoot: root, runId });
+    const registry = new ToolRegistry();
+    const cancellation = new AbortController();
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+
+    registry.register({
+      toolName: "fixture.racy-cancel",
+      title: "Racy cancel",
+      description: "Aborts while downstream execution is being constructed",
+      protocol: "fixture",
+      downstreamServerId: createId("server"),
+      inputSchema: { type: "object", properties: {} },
+      destructiveRisk: "none",
+      execute: ({ signal }) => {
+        const downstream = new Promise<never>((_resolve, reject) => {
+          signal.addEventListener("abort", () => {
+            queueMicrotask(() => reject(new Error("racy downstream rejection observed")));
+          });
+        });
+        cancellation.abort();
+        return downstream;
+      }
+    });
+
+    try {
+      const result = await session.executeToolCall(
+        registry,
+        makeCall({ runId, toolName: "fixture.racy-cancel", arguments: {}, deadlineMs: 1_000 }),
+        { signal: cancellation.signal }
+      );
+
+      expect("failureType" in result ? result.failureType : undefined).toBe("cancellation");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
   it("returns on deadline even when downstream ignores abort", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "toolguard-core-"));
     const runId = createId("run");

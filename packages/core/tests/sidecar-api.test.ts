@@ -1,4 +1,5 @@
 import { access, mkdtemp, readFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -14,6 +15,59 @@ import {
 } from "../src/index.js";
 
 describe("local sidecar API", () => {
+  it("backs validation dashboard process hygiene with a local approved-port probe", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-validation-dashboard-"));
+    const leakedFixturePort = 3669;
+    const leakedFixture = createServer();
+    const handle = createCoreApiServer({ port: 0, evidenceRoot: root, seedDirectRun: false });
+
+    await new Promise<void>((resolve, reject) => {
+      leakedFixture.once("error", reject);
+      leakedFixture.listen(leakedFixturePort, "127.0.0.1", () => {
+        leakedFixture.off("error", reject);
+        resolve();
+      });
+    });
+    await handle.ready;
+    const address = handle.server.address();
+    if (typeof address !== "object" || !address) {
+      throw new Error("Expected test server address");
+    }
+
+    try {
+      const origin = `http://127.0.0.1:${address.port}`;
+      const response = await fetch(`${origin}/api/validation-dashboard`);
+      expect(response.status).toBe(200);
+      const payload = (await response.json()) as {
+        approvedPorts: number[];
+        processHygiene: {
+          status: string;
+          openApprovedPorts: number[];
+          expectedOpenPorts: number[];
+          unexpectedOpenPorts: number[];
+          currentPid: number;
+          detail: string;
+        };
+        checks: { id: string; status: string; detail: string }[];
+      };
+      const processHygieneCheck = payload.checks.find((check) => check.id === "process-hygiene");
+
+      expect(payload.approvedPorts).toEqual([3660, 3661, 3662, 3663, 3664, 3665, 3666, 3667, 3668, 3669]);
+      expect(payload.processHygiene.status).toBe("fail");
+      expect(payload.processHygiene.openApprovedPorts).toContain(leakedFixturePort);
+      expect(payload.processHygiene.unexpectedOpenPorts).toContain(leakedFixturePort);
+      expect(payload.processHygiene.currentPid).toBe(process.pid);
+      expect(payload.processHygiene.detail).toContain("unexpected ToolGuard-owned approved loopback ports still open");
+      expect(processHygieneCheck).toMatchObject({ id: "process-hygiene", status: "fail" });
+      expect(processHygieneCheck?.detail).toContain(String(leakedFixturePort));
+    } finally {
+      await handle.close();
+      await new Promise<void>((resolve, reject) => {
+        leakedFixture.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
   it("serves deterministic topology and narrative from Core events and the side-effect ledger", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "toolguard-topology-api-"));
     const runId = createId("run");

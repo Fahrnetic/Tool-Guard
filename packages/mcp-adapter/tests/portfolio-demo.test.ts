@@ -60,7 +60,7 @@ describe("portfolio demo orchestration", () => {
     expect(repeated.reportHtml).toBe(result.reportHtml);
     expect(repeated.manifestJson).toBe(result.manifestJson);
     expect(result.evidenceBundleManifest).toBeDefined();
-    expect(result.transcript).toContain("cleanupProbe: portsClosed=3660");
+    expect(result.transcript).toContain("cleanupProbe: portsClosed=3660,3661,3662,3663,3664,3665,3666,3667,3668,3669");
     expect(result.transcript).toContain("deterministicSeed: toolguard-flagship-demo-v0.11");
     expect(result.transcript).toContain("fixtureReset: cleared deterministic run directory");
     expect(result.transcript).toContain("topologyMap: nodes=");

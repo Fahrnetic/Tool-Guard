@@ -17,7 +17,8 @@ import { createMcpAdapterDemoApiServer, type McpAdapterDemoApiServerHandle } fro
 
 const CORE_URL = "http://127.0.0.1:3660";
 const UI_URL = "http://127.0.0.1:3661";
-const APPROVED_PORTS = "3660-3669";
+const APPROVED_DEMO_PORTS = [3660, 3661, 3662, 3663, 3664, 3665, 3666, 3667, 3668, 3669] as const;
+const APPROVED_PORTS = `${APPROVED_DEMO_PORTS[0]}-${APPROVED_DEMO_PORTS.at(-1)}`;
 const FLAGSHIP_DEMO_SEED = "toolguard-flagship-demo-v0.11";
 const FLAGSHIP_DEMO_RUN_ID = "run_demo_flagship_seed_v011";
 const FLAGSHIP_SCENARIO_LIST = [
@@ -264,7 +265,7 @@ export async function runPortfolioDemo(options: PortfolioDemoOptions = {}): Prom
     throw new Error("Portfolio demo did not produce a result before cleanup.");
   }
   const cleanupProbe = await verifyOwnedCleanup({
-    ports: startUi ? [3660, 3661] : [3660],
+    ports: APPROVED_DEMO_PORTS,
     pids: ui?.pid ? [ui.pid] : []
   });
   if (!cleanupProbe.verified) {

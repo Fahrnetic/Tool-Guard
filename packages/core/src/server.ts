@@ -1,4 +1,5 @@
 import http from "node:http";
+import { createConnection } from "node:net";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -134,7 +135,16 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
       }
 
       if (url.pathname === "/api/validation-dashboard") {
-        sendJson(response, 200, await buildValidationDashboardPayload({ runId, runDir: session.recorder.runDir, events: session.recorder.events }));
+        sendJson(
+          response,
+          200,
+          await buildValidationDashboardPayload({
+            runId,
+            runDir: session.recorder.runDir,
+            events: session.recorder.events,
+            currentServerPort: currentServerPort(port, server)
+          })
+        );
         return;
       }
 
@@ -870,6 +880,11 @@ function configuredBaseUrl(host: string, port: number, server: http.Server): str
   return `http://${loopbackHost}:${actualPort}`;
 }
 
+function currentServerPort(configuredPort: number, server: http.Server): number {
+  const address = server.address();
+  return typeof address === "object" && address ? address.port : configuredPort;
+}
+
 function normalizeLoopbackHost(host: string): string {
   if (host === "localhost" || host === "127.0.0.1") {
     return host;
@@ -1162,6 +1177,7 @@ async function buildValidationDashboardPayload(input: {
   readonly runId: StableId;
   readonly runDir: string;
   readonly events: readonly CoreEvent[];
+  readonly currentServerPort?: number;
 }): Promise<JsonObject> {
   const reportExists = await fileExists(path.join(input.runDir, "report.html"));
   const manifestExists = await fileExists(path.join(input.runDir, "manifest.json"));
@@ -1178,6 +1194,11 @@ async function buildValidationDashboardPayload(input: {
   ]);
   const secretFindings = findSecretPatterns(scanText);
   const approvedPorts = [3660, 3661, 3662, 3663, 3664, 3665, 3666, 3667, 3668, 3669];
+  const processHygiene = await probeProcessHygiene({
+    approvedPorts,
+    currentServerPort: input.currentServerPort,
+    currentPid: process.pid
+  });
   const checks = [
     validationCheck("tests", "Tests", "warn", "Run `pnpm test` for the current checkout gate transcript."),
     validationCheck("typecheck", "Typecheck", "warn", "Run `pnpm typecheck` for the current checkout gate transcript."),
@@ -1211,8 +1232,8 @@ async function buildValidationDashboardPayload(input: {
     validationCheck(
       "process-hygiene",
       "Process hygiene",
-      "pass",
-      `Demo-owned surfaces are constrained to approved loopback ports ${approvedPorts[0]}-${approvedPorts.at(-1)} and cleanup probes check owned ports/PIDs.`
+      processHygiene.status,
+      processHygiene.detail
     )
   ];
 
@@ -1229,8 +1250,73 @@ async function buildValidationDashboardPayload(input: {
       manifest: manifestExists,
       bundleManifest: bundleManifestExists
     },
+    processHygiene,
     checks
   };
+}
+
+async function probeProcessHygiene(input: {
+  readonly approvedPorts: readonly number[];
+  readonly currentServerPort: number | undefined;
+  readonly currentPid: number;
+}): Promise<{
+  readonly status: "pass" | "warn" | "fail";
+  readonly detail: string;
+  readonly approvedPorts: number[];
+  readonly openApprovedPorts: number[];
+  readonly expectedOpenPorts: number[];
+  readonly unexpectedOpenPorts: number[];
+  readonly currentPid: number;
+}> {
+  const openApprovedPorts = await openLoopbackPorts(input.approvedPorts);
+  const expectedOpenPorts: number[] =
+    input.currentServerPort && input.approvedPorts.includes(input.currentServerPort) ? [input.currentServerPort] : [];
+  const unexpectedOpenPorts = openApprovedPorts.filter((port) => !expectedOpenPorts.includes(port));
+  const approvedPortRange = `${input.approvedPorts[0]}-${input.approvedPorts.at(-1)}`;
+  if (unexpectedOpenPorts.length > 0) {
+    return {
+      status: "fail",
+      detail: `Local cleanup probe found unexpected ToolGuard-owned approved loopback ports still open: ${unexpectedOpenPorts.join(
+        ", "
+      )}. Expected open ports: ${expectedOpenPorts.join(", ") || "none"}; current Core PID: ${input.currentPid}.`,
+      approvedPorts: [...input.approvedPorts],
+      openApprovedPorts,
+      expectedOpenPorts,
+      unexpectedOpenPorts,
+      currentPid: input.currentPid
+    };
+  }
+
+  return {
+    status: "pass",
+    detail: `Local cleanup probe checked approved loopback ports ${approvedPortRange}; no unexpected ToolGuard-owned ports are open. Expected open ports: ${
+      expectedOpenPorts.join(", ") || "none"
+    }; current Core PID: ${input.currentPid}.`,
+    approvedPorts: [...input.approvedPorts],
+    openApprovedPorts,
+    expectedOpenPorts,
+    unexpectedOpenPorts,
+    currentPid: input.currentPid
+  };
+}
+
+async function openLoopbackPorts(ports: readonly number[]): Promise<number[]> {
+  const states = await Promise.all(ports.map(async (port) => ({ port, open: await isLoopbackPortOpen(port) })));
+  return states.filter((state) => state.open).map((state) => state.port);
+}
+
+async function isLoopbackPortOpen(port: number): Promise<boolean> {
+  return await new Promise<boolean>((resolve) => {
+    const socket = createConnection({ host: "127.0.0.1", port });
+    const done = (open: boolean): void => {
+      socket.removeAllListeners();
+      socket.destroy();
+      resolve(open);
+    };
+    socket.once("connect", () => done(true));
+    socket.once("error", () => done(false));
+    socket.setTimeout(500, () => done(false));
+  });
 }
 
 function validationCheck(id: string, label: string, status: "pass" | "fail" | "warn", detail: string): JsonObject {

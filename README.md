@@ -93,6 +93,10 @@ All demos are local-first and fixture-driven. They do **not** require cloud cred
 
 The launcher refuses ports outside the approved `3660-3669` range and traps shutdown to clean up ToolGuard-owned processes.
 
+### Demo-ready visual surfaces
+
+The demo is designed to read clearly on screen: start with the before/after arc, then use the command center, failure topology map, story mode, validation dashboard, and evidence bundle viewer to show how a raw tool failure becomes a routed, redacted, replayable ToolGuard run. These surfaces stay local-first and reflect only routed, wrapped, or supervised paths; ToolGuard does not natively intercept host tools that bypass it.
+
 ---
 
 ## Architecture

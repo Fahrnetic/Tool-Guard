@@ -6,12 +6,17 @@ import type {
   LatestRunPayload,
   NarrativePayload,
   PolicyPayload,
+  PolicyDraft,
+  PolicyScenarioId,
+  PolicySimulation,
   ReplayPayload,
   ReplayResponse,
   ReportExportResponse,
   ReportsPayload,
   TopologyPayload,
-  TracePayload
+  TracePayload,
+  VerificationReceipt,
+  VerificationRouteType
 } from "./model.js";
 
 const CORE_API_BASE = import.meta.env.VITE_TOOLGUARD_CORE_URL ?? "http://127.0.0.1:3660";
@@ -52,8 +57,24 @@ export async function savePolicyPreview(input: { timeoutMs: number; retryLimit: 
   });
 }
 
+export async function simulatePolicy(input: { scenarioId: PolicyScenarioId; proposedPolicy: PolicyDraft }, signal?: AbortSignal): Promise<PolicySimulation> {
+  return await fetchJson<PolicySimulation>("/api/policy/simulate", signal, {
+    method: "POST",
+    body: JSON.stringify(input),
+    headers: { "content-type": "application/json" }
+  });
+}
+
 export async function fetchIntegrations(signal?: AbortSignal): Promise<IntegrationsPayload> {
   return await fetchJson<IntegrationsPayload>("/api/integrations", signal);
+}
+
+export async function verifyIntegration(input: { routeType: VerificationRouteType }, signal?: AbortSignal): Promise<VerificationReceipt> {
+  return await fetchJson<VerificationReceipt>("/api/integrations/verify", signal, {
+    method: "POST",
+    body: JSON.stringify(input),
+    headers: { "content-type": "application/json" }
+  });
 }
 
 export async function fetchReplay(signal?: AbortSignal): Promise<ReplayPayload> {
@@ -106,7 +127,9 @@ export function streamCoreEvents(input: {
     "evidence.artifact.created",
     "report.exported",
     "topology.generated",
-    "narrative.generated"
+    "narrative.generated",
+    "policy.simulated",
+    "integration.verified"
   ];
   for (const type of requiredTypes) {
     source.addEventListener(type, (message) => {

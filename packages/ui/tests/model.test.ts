@@ -136,7 +136,9 @@ describe("correlation helpers", () => {
       "evidence.artifact.created",
       "report.exported",
       "topology.generated",
-      "narrative.generated"
+      "narrative.generated",
+      "policy.simulated",
+      "integration.verified"
     ]);
   });
 });

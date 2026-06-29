@@ -1,5 +1,16 @@
 import type { CoreEvent, RunNarrative, RunTopology, TopologyNode } from "@toolplane/core";
-import type { EvidenceArtifact, EvidenceLink, FailureCard, PolicyDecision } from "@toolplane/core";
+import type {
+  EvidenceArtifact,
+  EvidenceLink,
+  FailureCard,
+  IntegrationCapabilityCheck,
+  IntegrationRouteType,
+  IntegrationVerificationReceipt,
+  PolicyDecision,
+  PolicySimulationResult,
+  ProposedPolicy,
+  RecordedPolicyScenarioId
+} from "@toolplane/core";
 
 export type ScreenId =
   | "overview"
@@ -135,11 +146,19 @@ export interface PolicyPreview {
   readonly reason: string;
 }
 
+export type PolicyScenarioId = RecordedPolicyScenarioId;
+export type PolicySimulation = PolicySimulationResult;
+export type PolicyDraft = ProposedPolicy;
+
 export interface IntegrationsPayload {
   readonly runId: string;
   readonly generatedAt: string;
   readonly integrations: readonly IntegrationView[];
 }
+
+export type VerificationRouteType = IntegrationRouteType;
+export type VerificationReceipt = IntegrationVerificationReceipt;
+export type VerificationCapabilityCheck = IntegrationCapabilityCheck;
 
 export interface ReplayPayload {
   readonly runId: string;
@@ -293,7 +312,9 @@ export const requiredCoreEventTypes = [
   "evidence.artifact.created",
   "report.exported",
   "topology.generated",
-  "narrative.generated"
+  "narrative.generated",
+  "policy.simulated",
+  "integration.verified"
 ] as const;
 
 export interface ToolOpsSummary {

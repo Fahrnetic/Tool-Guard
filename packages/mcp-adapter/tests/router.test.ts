@@ -97,6 +97,34 @@ describe("ToolGuardMcpRouter", () => {
     );
   });
 
+  it("indexes MCP fixture route records with a distinct route label", async () => {
+    const router = await makeRouter([
+      createInMemoryDownstreamServer({
+        serverId: "server_mcp_index",
+        name: "indexed",
+        tools: [{ name: "echo", description: "Echo", inputSchema: objectSchema() }],
+        handler: async () => ({ indexed: true })
+      })
+    ]);
+
+    await router.callVirtualTool("tg__server_mcp_index__echo", {});
+
+    const records = await router.session.recorder.listRunIndexRecords();
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          routeType: "mcp",
+          adapter: expect.objectContaining({ name: "toolguard-mcp-adapter" }),
+          downstreamTarget: expect.objectContaining({
+            id: "server_mcp_index",
+            originalToolName: "echo"
+          }),
+          status: "succeeded"
+        })
+      ])
+    );
+  });
+
   it("returns MCP-compatible Failure Cards for protocol failures, retries, and circuit fast-fail", async () => {
     const router = await makeRouter(
       [

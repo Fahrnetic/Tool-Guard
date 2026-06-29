@@ -390,7 +390,9 @@ export class ToolGuardMcpRouter {
       traceId: createId("trace"),
       ...(input.parentId ? { parentId: input.parentId } : {}),
       harnessId: this.#harnessId,
+      harnessName: "mcp-upstream",
       adapterId: this.#adapterId,
+      adapterName: "toolguard-mcp-adapter",
       downstreamServerId: input.downstreamServerId,
       toolCallId: createId("toolcall"),
       attemptId: createId("attempt"),
@@ -400,7 +402,9 @@ export class ToolGuardMcpRouter {
       arguments: input.args,
       deadlineMs: input.deadlineMs ?? this.#deadlineMs,
       idempotency: "idempotent",
-      sourcePath: "mcp-adapter"
+      sourcePath: "mcp-adapter",
+      runName: `mcp ${input.originalToolName}`,
+      tags: ["mcp", "fixture"]
     };
   }
 }

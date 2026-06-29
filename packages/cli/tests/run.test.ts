@@ -107,6 +107,69 @@ describe("toolplane run process wrapper", () => {
     expect(events.filter((event) => event.type === "evidence.artifact.created").length).toBeGreaterThanOrEqual(2);
   });
 
+  it("indexes CLI success and failure runs with safe labels and command metadata", async () => {
+    const root = await makeTempRoot();
+    const okScript = path.join(root, "ok.mjs");
+    const failScript = path.join(root, "fail-index.mjs");
+    await writeFile(okScript, "console.log('ok')\n", "utf8");
+    await writeFile(failScript, "console.error('token=' + 's'.repeat(36)); process.exit(9)\n", "utf8");
+
+    const ok = await runToolplaneCli([
+      "run",
+      "--evidence-root",
+      root,
+      "--run-name",
+      "safe cli success",
+      "--session-label",
+      "session-token=" + "a".repeat(36),
+      "--task-label",
+      "run index",
+      "--repo-label",
+      "toolplane",
+      "--agent-label",
+      "cli-test",
+      "--tag",
+      "cli",
+      "--",
+      process.execPath,
+      okScript
+    ]);
+    const failed = await runToolplaneCli([
+      "run",
+      "--evidence-root",
+      root,
+      "--run-name",
+      "safe cli failure",
+      "--",
+      process.execPath,
+      failScript
+    ]);
+
+    const records = (await readFile(path.join(root, "run-index.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: ok.runId,
+          routeType: "cli",
+          command: expect.stringContaining(process.execPath),
+          status: "succeeded",
+          labels: expect.objectContaining({ task: "run index", repo: "toolplane", agent: "cli-test" })
+        }),
+        expect.objectContaining({
+          runId: failed.runId,
+          routeType: "cli",
+          status: "failed",
+          firstFailure: expect.objectContaining({ failureType: "non_zero_exit" })
+        })
+      ])
+    );
+    expect(JSON.stringify(records)).not.toContain("a".repeat(36));
+    expect(JSON.stringify(records)).not.toContain("s".repeat(36));
+  });
+
   it("enforces timeouts and terminates children safely", async () => {
     const root = await makeTempRoot();
     const script = path.join(root, "hang.mjs");

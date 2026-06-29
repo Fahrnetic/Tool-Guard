@@ -94,6 +94,9 @@ class ToolGuardSidecarClient:
         original_tool_name: str | None = None,
         deadline_ms: int | None = None,
         idempotency: Idempotency = "idempotent",
+        run_name: str | None = None,
+        tags: list[str] | None = None,
+        labels: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         try:
             self.config.validate_local()
@@ -116,6 +119,9 @@ class ToolGuardSidecarClient:
             "arguments": arguments or {},
             "deadlineMs": deadline_ms,
             "idempotency": idempotency,
+            "runName": run_name,
+            "tags": tags or [],
+            "labels": labels or {},
             "correlation": selected_correlation.to_protocol(),
             "observableConfig": self.config.redacted_observable_config(),
         }

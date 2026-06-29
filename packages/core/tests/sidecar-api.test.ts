@@ -7,12 +7,21 @@ import {
   ToolRegistry,
   CoreSession,
   createCoreApiServer,
+  type CoreApiServerHandle,
   createId,
   SIDECAR_PROTOCOL_VERSION,
   type CoreEvent,
   type FailureCard,
   type ToolCall
 } from "../src/index.js";
+
+function originFor(handle: CoreApiServerHandle): string {
+  const address = handle.server.address();
+  if (typeof address !== "object" || !address) {
+    throw new Error("Expected test server address");
+  }
+  return `http://127.0.0.1:${address.port}`;
+}
 
 describe("local sidecar API", () => {
   it("backs validation dashboard process hygiene with a local approved-port probe", async () => {
@@ -371,15 +380,16 @@ describe("local sidecar API", () => {
 
   it("routes framework adapter tool calls through Core with correlation and report evidence", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "toolguard-sidecar-"));
-    const handle = createCoreApiServer({ port: 3665, evidenceRoot: root, seedDirectRun: false });
+    const handle = createCoreApiServer({ port: 0, evidenceRoot: root, seedDirectRun: false });
     await handle.ready;
+    const origin = originFor(handle);
     try {
       const runId = handle.session.runId;
       const traceId = createId("trace");
       const harnessId = createId("harness");
       const adapterId = createId("adapter");
 
-      const response = await fetch("http://127.0.0.1:3665/api/sidecar/v1/tool-calls", {
+      const response = await fetch(`${origin}/api/sidecar/v1/tool-calls`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -411,11 +421,22 @@ describe("local sidecar API", () => {
         adapterId
       });
 
-      const reportResponse = await fetch("http://127.0.0.1:3665/api/reports/export");
+      const reportResponse = await fetch(`${origin}/api/reports/export`);
       expect(reportResponse.status).toBe(200);
       const report = (await reportResponse.json()) as { manifestValid: boolean; reportHtml: string };
       expect(report.manifestValid).toBe(true);
       expect(report.reportHtml).toContain("report.html");
+
+      const records = await handle.session.recorder.listRunIndexRecords();
+      expect(records).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            routeType: "python",
+            adapter: expect.objectContaining({ name: "toolguard-langgraph" }),
+            status: "succeeded"
+          })
+        ])
+      );
     } finally {
       await handle.close();
     }
@@ -423,10 +444,11 @@ describe("local sidecar API", () => {
 
   it("rejects incompatible sidecar protocol versions with a fail-closed Failure Card", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "toolguard-sidecar-"));
-    const handle = createCoreApiServer({ port: 3665, evidenceRoot: root, seedDirectRun: false });
+    const handle = createCoreApiServer({ port: 0, evidenceRoot: root, seedDirectRun: false });
     await handle.ready;
+    const origin = originFor(handle);
     try {
-      const response = await fetch("http://127.0.0.1:3665/api/sidecar/v1/tool-calls", {
+      const response = await fetch(`${origin}/api/sidecar/v1/tool-calls`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -468,15 +490,16 @@ describe("local sidecar API", () => {
         return { ok: true };
       }
     });
-    const handle = createCoreApiServer({ port: 3665, evidenceRoot: root, registry, seedDirectRun: false });
+    const handle = createCoreApiServer({ port: 0, evidenceRoot: root, registry, seedDirectRun: false });
     await handle.ready;
+    const origin = originFor(handle);
     try {
       for (const requestBody of [
         { protocolVersion: SIDECAR_PROTOCOL_VERSION, arguments: {} },
         { protocolVersion: SIDECAR_PROTOCOL_VERSION, toolName: 42, arguments: {} },
         { protocolVersion: SIDECAR_PROTOCOL_VERSION, toolName: "fixture.good", arguments: null }
       ]) {
-        const response = await fetch("http://127.0.0.1:3665/api/sidecar/v1/tool-calls", {
+        const response = await fetch(`${origin}/api/sidecar/v1/tool-calls`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(requestBody)
@@ -499,10 +522,11 @@ describe("local sidecar API", () => {
 
   it("records malformed JSON and oversized sidecar bodies as report-visible failures", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "toolguard-sidecar-"));
-    const handle = createCoreApiServer({ port: 3665, evidenceRoot: root, seedDirectRun: false });
+    const handle = createCoreApiServer({ port: 0, evidenceRoot: root, seedDirectRun: false });
     await handle.ready;
+    const origin = originFor(handle);
     try {
-      const malformed = await fetch("http://127.0.0.1:3665/api/sidecar/v1/tool-calls", {
+      const malformed = await fetch(`${origin}/api/sidecar/v1/tool-calls`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: "{not-json"
@@ -512,7 +536,7 @@ describe("local sidecar API", () => {
         "sidecar_protocol_error"
       );
 
-      const oversized = await fetch("http://127.0.0.1:3665/api/sidecar/v1/tool-calls", {
+      const oversized = await fetch(`${origin}/api/sidecar/v1/tool-calls`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: "x".repeat(256 * 1024 + 1)
@@ -526,7 +550,7 @@ describe("local sidecar API", () => {
       expect(events.filter((event) => event.type === "tool.call.failed")).toHaveLength(2);
       expect(events.filter((event) => event.type === "evidence.artifact.created")).toHaveLength(2);
 
-      const reportResponse = await fetch("http://127.0.0.1:3665/api/reports/export");
+      const reportResponse = await fetch(`${origin}/api/reports/export`);
       expect(reportResponse.status).toBe(200);
       const report = (await reportResponse.json()) as { manifestValid: boolean; reportHtml: string };
       expect(report.manifestValid).toBe(true);

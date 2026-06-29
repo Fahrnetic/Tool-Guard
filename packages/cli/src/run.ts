@@ -70,6 +70,9 @@ interface ParsedRunOptions {
   readonly coreUrl?: string;
   readonly fixtureOnly: boolean;
   readonly json: boolean;
+  readonly runName?: string;
+  readonly tags: readonly string[];
+  readonly labels: NonNullable<ToolCall["labels"]>;
 }
 
 interface DestructiveAssessment {
@@ -203,6 +206,7 @@ export async function runToolplaneCli(
   });
 
   const mediated = await session.executeToolCall(registry, call, options.signal ? { signal: options.signal } : {});
+  await session.recorder.flushRunIndex();
   await Promise.allSettled(forwardedEvents);
   const result = "failureType" in mediated ? undefined : withCliSafeSummary(mediated);
   const failureCard = "failureType" in mediated ? mediated : undefined;
@@ -247,6 +251,9 @@ export function parseToolplaneRunArgs(argv: readonly string[]): ParsedRunOptions
   let stdin: string | undefined;
   let fixtureOnly = false;
   let json = false;
+  let runName: string | undefined;
+  const tags: string[] = [];
+  const labels: { session?: string; task?: string; repo?: string; agent?: string } = labelsFromEnvironment(process.env);
   const env: Record<string, string> = {};
 
   for (let index = 0; index < optionArgs.length; index += 1) {
@@ -288,6 +295,24 @@ export function parseToolplaneRunArgs(argv: readonly string[]): ParsedRunOptions
       case "--json":
         json = true;
         break;
+      case "--run-name":
+        runName = requireValue(optionArgs, ++index, "--run-name");
+        break;
+      case "--tag":
+        tags.push(requireValue(optionArgs, ++index, "--tag"));
+        break;
+      case "--session-label":
+        labels.session = requireValue(optionArgs, ++index, "--session-label");
+        break;
+      case "--task-label":
+        labels.task = requireValue(optionArgs, ++index, "--task-label");
+        break;
+      case "--repo-label":
+        labels.repo = requireValue(optionArgs, ++index, "--repo-label");
+        break;
+      case "--agent-label":
+        labels.agent = requireValue(optionArgs, ++index, "--agent-label");
+        break;
       default:
         throw new Error(`Unknown toolplane run option: ${String(option)}`);
     }
@@ -303,7 +328,10 @@ export function parseToolplaneRunArgs(argv: readonly string[]): ParsedRunOptions
     evidenceRoot,
     ...(coreUrl ? { coreUrl } : {}),
     fixtureOnly,
-    json
+    json,
+    ...(runName ? { runName } : {}),
+    tags,
+    labels
   };
 }
 
@@ -482,7 +510,9 @@ function makeProcessToolCall(runId: StableId, parsed: ParsedRunOptions): ToolCal
     traceId: createId("trace"),
     parentId: createId("parent"),
     harnessId: "harness_cli" as StableId,
+    harnessName: "cli",
     adapterId: "adapter_cli_wrapper" as StableId,
+    adapterName: "toolguard-cli-wrapper",
     downstreamServerId: "server_local_process" as StableId,
     toolCallId: createId("toolcall"),
     attemptId: createId("attempt"),
@@ -500,7 +530,10 @@ function makeProcessToolCall(runId: StableId, parsed: ParsedRunOptions): ToolCal
     },
     deadlineMs: parsed.timeoutMs + 1_000,
     idempotency: idempotencyFor(parsed.command),
-    sourcePath: "cli-wrapper"
+    sourcePath: "cli-wrapper",
+    runName: parsed.runName ?? `cli ${parsed.command[0] ?? "process"}`,
+    tags: parsed.tags,
+    labels: parsed.labels
   };
 }
 
@@ -714,6 +747,15 @@ function parsePositiveInteger(value: string, optionName: string): number {
     throw new Error(`${optionName} must be a positive integer.`);
   }
   return parsed;
+}
+
+function labelsFromEnvironment(env: NodeJS.ProcessEnv): { session?: string; task?: string; repo?: string; agent?: string } {
+  return {
+    ...(env.TOOLGUARD_SESSION_LABEL ? { session: env.TOOLGUARD_SESSION_LABEL } : {}),
+    ...(env.TOOLGUARD_TASK_LABEL ? { task: env.TOOLGUARD_TASK_LABEL } : {}),
+    ...(env.TOOLGUARD_REPO_LABEL ? { repo: env.TOOLGUARD_REPO_LABEL } : {}),
+    ...(env.TOOLGUARD_AGENT_LABEL ? { agent: env.TOOLGUARD_AGENT_LABEL } : {})
+  };
 }
 
 function truncateUtf8(value: string, limitBytes: number): string {

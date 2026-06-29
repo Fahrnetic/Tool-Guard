@@ -2,6 +2,15 @@ export { PROJECT_NAME, PRODUCT_DISPLAY_NAME } from "./product.js";
 export { createId, type StableId } from "./ids.js";
 export { EventBus, type CoreEvent, type CoreEventType, type CorrelationFields } from "./events.js";
 export { EvidenceRecorder, type EvidenceRecorderOptions } from "./evidence.js";
+export {
+  RunIndexStore,
+  buildRunIndexSeed,
+  type RunIndexRecord,
+  type RunIndexRouteType,
+  type RunIndexSeed,
+  type RunIndexStatus,
+  type SafeRunLabels
+} from "./run-index.js";
 export { ToolRegistry, validateJsonSchema, type ArgumentValidationResult } from "./registry.js";
 export { CoreSession, type CoreSessionOptions } from "./session.js";
 export {

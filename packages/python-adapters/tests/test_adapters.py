@@ -228,6 +228,35 @@ class PythonAdapterTests(unittest.TestCase):
             },
         )
 
+    def test_sidecar_client_forwards_safe_run_index_labels(self) -> None:
+        with FakeSidecar(
+            [
+                {
+                    "protocolVersion": SIDECAR_PROTOCOL_VERSION,
+                    "status": "success",
+                    "result": {
+                        "toolName": "fixture.good",
+                        "output": "indexed",
+                        "safeSummary": "Tool fixture.good completed successfully.",
+                        "artifactIds": ["artifact_success"],
+                    },
+                }
+            ]
+        ) as server:
+            response = ToolGuardSidecarClient(config()).call_tool(
+                "fixture.good",
+                {},
+                run_name="python indexed run",
+                tags=["python", "run-index"],
+                labels={"session": "session-token=" + ("x" * 36), "task": "run index", "repo": "toolplane", "agent": "python-test"},
+            )
+
+        self.assertEqual(response["status"], "success")
+        self.assertEqual(server.requests[0]["runName"], "python indexed run")
+        self.assertEqual(server.requests[0]["tags"], ["python", "run-index"])
+        self.assertEqual(server.requests[0]["labels"]["task"], "run index")
+        self.assertEqual(server.requests[0]["labels"]["agent"], "python-test")
+
     def test_langgraph_wrapper_accepts_caller_correlation(self) -> None:
         with FakeSidecar(
             [

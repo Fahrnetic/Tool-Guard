@@ -2,6 +2,7 @@ import { EventBus, type CoreEvent, type CoreEventType } from "./events.js";
 import { EvidenceRecorder } from "./evidence.js";
 import { createId, type StableId } from "./ids.js";
 import { exportStaticReport, type StaticReportResult } from "./report.js";
+import { buildRunIndexSeed } from "./run-index.js";
 import type { ToolRegistry } from "./registry.js";
 import { redactJsonValue } from "./redaction.js";
 import {
@@ -770,6 +771,13 @@ export class CoreSession {
     summary: string,
     options: { readonly data?: CoreEvent["data"]; readonly artifactId?: StableId } = {}
   ): Promise<CoreEvent> {
+    const data =
+      type === "run.started"
+        ? ({
+            ...(options.data && typeof options.data === "object" ? (options.data as JsonObject) : {}),
+            runIndex: buildRunIndexSeed(call, this.#recorder.runDir, this.#recorder.eventsPath) as unknown as JsonValue
+          } as JsonObject)
+        : options.data;
     const event: CoreEvent = {
       eventId: createId("event"),
       type,
@@ -786,8 +794,8 @@ export class CoreSession {
       attemptId: call.attemptId,
       policyDecisionId: call.policyDecisionId,
       ...(options.artifactId ? { artifactId: options.artifactId } : {}),
-      ...(options.data
-        ? { data: redactJsonValue(options.data as JsonValue) as NonNullable<CoreEvent["data"]> }
+      ...(data
+        ? { data: redactJsonValue(data as JsonValue) as NonNullable<CoreEvent["data"]> }
         : {})
     };
 

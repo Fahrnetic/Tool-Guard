@@ -64,7 +64,9 @@ export interface ToolCall {
   readonly traceId: StableId;
   readonly parentId?: StableId;
   readonly harnessId: StableId;
+  readonly harnessName?: string;
   readonly adapterId: StableId;
+  readonly adapterName?: string;
   readonly downstreamServerId: StableId;
   readonly toolCallId: StableId;
   readonly attemptId: StableId;
@@ -75,6 +77,14 @@ export interface ToolCall {
   readonly deadlineMs?: number;
   readonly idempotency: "idempotent" | "non-idempotent" | "unknown";
   readonly sourcePath: "non-mcp-direct" | "mcp-adapter" | "framework-adapter" | "cli-wrapper";
+  readonly runName?: string;
+  readonly tags?: readonly string[];
+  readonly labels?: {
+    readonly session?: string;
+    readonly task?: string;
+    readonly repo?: string;
+    readonly agent?: string;
+  };
 }
 
 export interface ToolResult {

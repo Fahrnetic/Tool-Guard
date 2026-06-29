@@ -4,6 +4,7 @@ import path from "node:path";
 import { createId, type StableId } from "./ids.js";
 import type { CoreEvent } from "./events.js";
 import type { EvidenceArtifact, JsonValue, SideEffectLedgerEntry } from "./types.js";
+import { RunIndexStore, type RunIndexRecord } from "./run-index.js";
 
 export interface EvidenceRecorderOptions {
   readonly rootDir: string;
@@ -12,11 +13,14 @@ export interface EvidenceRecorderOptions {
 
 export class EvidenceRecorder {
   readonly #runDir: string;
+  readonly #runIndex: RunIndexStore;
   readonly #events: CoreEvent[] = [];
   readonly #ledger: SideEffectLedgerEntry[] = [];
+  #runIndexWrites: Promise<void> = Promise.resolve();
 
   constructor(options: EvidenceRecorderOptions) {
     this.#runDir = path.join(options.rootDir, options.runId);
+    this.#runIndex = new RunIndexStore(options.rootDir);
   }
 
   get runDir(): string {
@@ -29,6 +33,19 @@ export class EvidenceRecorder {
 
   get events(): readonly CoreEvent[] {
     return this.#events;
+  }
+
+  get runIndexPath(): string {
+    return this.#runIndex.indexPath;
+  }
+
+  async listRunIndexRecords(): Promise<readonly RunIndexRecord[]> {
+    await this.flushRunIndex();
+    return await this.#runIndex.listRecords();
+  }
+
+  async flushRunIndex(): Promise<void> {
+    await this.#runIndexWrites;
   }
 
   get ledgerPath(): string {
@@ -44,6 +61,7 @@ export class EvidenceRecorder {
     this.#events.push(event);
     const jsonl = `${this.#events.map((entry) => JSON.stringify(entry)).join("\n")}\n`;
     await writeFile(this.eventsPath, jsonl, "utf8");
+    this.#runIndexWrites = this.#runIndexWrites.then(() => this.#runIndex.ingestEvent(event));
   }
 
   async appendLedgerEntry(entry: SideEffectLedgerEntry): Promise<void> {

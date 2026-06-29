@@ -129,6 +129,16 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
         return;
       }
 
+      if (url.pathname === "/api/run-index" || url.pathname === "/api/runs") {
+        const records = await session.recorder.listRunIndexRecords();
+        sendJson(response, 200, {
+          indexPath: session.recorder.runIndexPath,
+          count: records.length,
+          records
+        });
+        return;
+      }
+
       if (url.pathname === "/api/health") {
         sendJson(response, 200, buildHealthPayload(runId, session.recorder.events));
         return;
@@ -660,7 +670,9 @@ function makeSidecarToolCall(payload: SidecarToolCallRequest, runId: StableId, r
     traceId: stableIdFrom(payload.correlation?.traceId, createId("trace")),
     ...(payload.correlation?.parentId ? { parentId: stableIdFrom(payload.correlation.parentId, createId("parent")) } : {}),
     harnessId: stableIdFrom(payload.harnessId ?? payload.correlation?.harnessId, createId("harness")),
+    harnessName: stringFrom(payload.harnessName, "python-framework"),
     adapterId: stableIdFrom(payload.adapterId ?? payload.correlation?.adapterId, createId("adapter")),
+    adapterName: stringFrom(payload.adapterName, "toolguard-python-adapter"),
     downstreamServerId: stableIdFrom(
       payload.downstreamServerId ?? payload.correlation?.downstreamServerId,
       tool?.downstreamServerId ?? createId("server")
@@ -674,7 +686,10 @@ function makeSidecarToolCall(payload: SidecarToolCallRequest, runId: StableId, r
     deadlineMs: numberFrom(payload.deadlineMs, 1_000),
     idempotency:
       payload.idempotency === "non-idempotent" || payload.idempotency === "unknown" ? payload.idempotency : "idempotent",
-    sourcePath: "framework-adapter"
+    sourcePath: "framework-adapter",
+    runName: stringFrom(payload.runName, `python ${toolName}`),
+    tags: stringArrayFrom(payload.tags),
+    labels: safeLabelsFrom(payload.labels)
   };
 }
 
@@ -688,7 +703,9 @@ function makeSidecarFailureToolCall(
     traceId: stableIdFrom(payload?.correlation?.traceId, createId("trace")),
     ...(payload?.correlation?.parentId ? { parentId: stableIdFrom(payload.correlation.parentId, createId("parent")) } : {}),
     harnessId: stableIdFrom(payload?.harnessId ?? payload?.correlation?.harnessId, createId("harness")),
+    harnessName: stringFrom(payload?.harnessName, "python-framework"),
     adapterId: stableIdFrom(payload?.adapterId ?? payload?.correlation?.adapterId, createId("adapter")),
+    adapterName: stringFrom(payload?.adapterName, "toolguard-python-adapter"),
     downstreamServerId: stableIdFrom(payload?.downstreamServerId ?? payload?.correlation?.downstreamServerId, createId("server")),
     toolCallId: stableIdFrom(payload?.correlation?.toolCallId, createId("toolcall")),
     attemptId: stableIdFrom(payload?.correlation?.attemptId, createId("attempt")),
@@ -698,7 +715,10 @@ function makeSidecarFailureToolCall(
     deadlineMs: numberFrom(payload?.deadlineMs, 1_000),
     idempotency:
       payload?.idempotency === "non-idempotent" || payload?.idempotency === "unknown" ? payload.idempotency : "idempotent",
-    sourcePath: "framework-adapter"
+    sourcePath: "framework-adapter",
+    runName: stringFrom(payload?.runName, `python ${toolName}`),
+    tags: stringArrayFrom(payload?.tags),
+    labels: safeLabelsFrom(payload?.labels)
   };
 }
 
@@ -712,6 +732,10 @@ interface SidecarToolCallRequest {
   readonly harnessId?: unknown;
   readonly adapterId?: unknown;
   readonly adapterName?: unknown;
+  readonly harnessName?: unknown;
+  readonly runName?: unknown;
+  readonly tags?: unknown;
+  readonly labels?: unknown;
   readonly downstreamServerId?: unknown;
   readonly correlation?: {
     readonly runId?: unknown;
@@ -809,6 +833,22 @@ function stableIdFrom(value: unknown, fallback: StableId): StableId {
 
 function numberFrom(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function stringArrayFrom(value: unknown): readonly string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function safeLabelsFrom(value: unknown): NonNullable<ToolCall["labels"]> {
+  if (!isRecord(value)) {
+    return {};
+  }
+  return {
+    ...(typeof value.session === "string" ? { session: value.session } : {}),
+    ...(typeof value.task === "string" ? { task: value.task } : {}),
+    ...(typeof value.repo === "string" ? { repo: value.repo } : {}),
+    ...(typeof value.agent === "string" ? { agent: value.agent } : {})
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, JsonValue | unknown> {

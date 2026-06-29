@@ -33,7 +33,7 @@ import { Timeline } from "./screens/Timeline.js";
 import { TraceExplorer } from "./screens/TraceExplorer.js";
 
 const navigation: readonly NavigationItem[] = [
-  { id: "overview", label: "Overview" },
+  { id: "overview", label: "Run Health Command Center" },
   { id: "timeline", label: "Live Run Timeline" },
   { id: "topology", label: "Failure Topology Map" },
   { id: "health", label: "Tool Server Health Matrix" },
@@ -200,7 +200,16 @@ export function App() {
       onSelect={setActive}
     >
       {active === "overview" ? (
-        <Overview {...(data.run ? { run: data.run } : {})} {...(data.health ? { health: data.health } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
+        <Overview
+          {...(data.run ? { run: data.run } : {})}
+          {...(data.health ? { health: data.health } : {})}
+          {...(data.topology ? { topology: data.topology } : {})}
+          {...(data.policies ? { policies: data.policies } : {})}
+          {...(data.reports ? { reports: data.reports } : {})}
+          {...(data.bundle ? { bundle: data.bundle } : {})}
+          status={data.status}
+          {...(data.error ? { error: data.error } : {})}
+        />
       ) : active === "timeline" ? (
         <Timeline events={streamEvents.length > 0 ? streamEvents : data.run?.events ?? []} status={data.status} streamState={streamState} {...(data.error ? { error: data.error } : {})} {...(topologySelection ? { topologySelection } : {})} />
       ) : active === "topology" ? (

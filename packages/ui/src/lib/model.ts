@@ -409,6 +409,40 @@ export interface ToolOpsSummary {
   readonly correlationIds: readonly string[];
 }
 
+export interface RunHealthCommandCenterSummary {
+  readonly runId: string;
+  readonly currentStatus: {
+    readonly label: string;
+    readonly detail: string;
+    readonly tone: "healthy" | "degraded" | "failed" | "warning" | "blocked" | "retry" | "neutral" | "selected";
+  };
+  readonly topologyHealth: {
+    readonly label: string;
+    readonly detail: string;
+    readonly tone: "healthy" | "degraded" | "failed" | "warning" | "blocked" | "retry" | "neutral" | "selected";
+  };
+  readonly sideEffectRisk: {
+    readonly label: string;
+    readonly detail: string;
+    readonly tone: "healthy" | "degraded" | "failed" | "warning" | "blocked" | "retry" | "neutral" | "selected";
+  };
+  readonly retries: {
+    readonly label: string;
+    readonly detail: string;
+    readonly tone: "healthy" | "degraded" | "failed" | "warning" | "blocked" | "retry" | "neutral" | "selected";
+  };
+  readonly policyDecisions: {
+    readonly label: string;
+    readonly detail: string;
+    readonly tone: "healthy" | "degraded" | "failed" | "warning" | "blocked" | "retry" | "neutral" | "selected";
+  };
+  readonly evidenceReadiness: {
+    readonly label: string;
+    readonly detail: string;
+    readonly tone: "healthy" | "degraded" | "failed" | "warning" | "blocked" | "retry" | "neutral" | "selected";
+  };
+}
+
 export function summarizeToolOps(run: LatestRunPayload | undefined, health: HealthPayload | undefined): ToolOpsSummary {
   const events = run?.events ?? [];
   const reportLinks = [...new Set(events
@@ -440,6 +474,136 @@ export function summarizeToolOps(run: LatestRunPayload | undefined, health: Heal
     artifactCount: health?.summary.artifactCount ?? events.filter((event) => event.type === "evidence.artifact.created").length,
     reportLinks,
     correlationIds
+  };
+}
+
+export function summarizeCommandCenter(input: {
+  readonly run?: LatestRunPayload | undefined;
+  readonly health?: HealthPayload | undefined;
+  readonly topology?: TopologyPayload | undefined;
+  readonly policies?: PolicyPayload | undefined;
+  readonly reports?: ReportsPayload | undefined;
+  readonly bundle?: BundlePayload | undefined;
+  readonly status: ResourceStatus;
+}): RunHealthCommandCenterSummary {
+  const runId = input.run?.runId ?? input.health?.runId ?? input.topology?.runId ?? input.reports?.runId ?? "waiting-for-run";
+  const events = input.run?.events ?? [];
+  const failedHealthRows = input.health?.rows.filter((row) => row.status === "failed").length ?? 0;
+  const degradedHealthRows = input.health?.rows.filter((row) => row.status === "degraded").length ?? 0;
+  const retryEvents = events.filter((event) => event.type === "tool.retry.scheduled").length;
+  const retryLoopNodes = input.topology?.nodes.filter((node) => node.status === "retry-loop").length ?? 0;
+  const blockedNodes = input.topology?.nodes.filter((node) => node.status === "blocked").length ?? 0;
+  const failedNodes = input.topology?.nodes.filter((node) => node.status === "failed").length ?? 0;
+  const evidenceReady =
+    (input.bundle?.bundle.exists && input.bundle.bundle.manifestValid) ||
+    input.reports?.reports.some((report) => report.exists && report.manifestValid) ||
+    (input.health?.summary.artifactCount ?? 0) > 0 ||
+    (input.topology?.summary.artifacts ?? 0) > 0;
+
+  return {
+    runId,
+    currentStatus: statusSummary(input.status, failedHealthRows, degradedHealthRows),
+    topologyHealth: {
+      label: input.topology
+        ? failedNodes > 0
+          ? `${failedNodes} failed nodes`
+          : blockedNodes > 0
+            ? `${blockedNodes} blocked nodes`
+            : retryLoopNodes > 0
+              ? `${retryLoopNodes} retry-loop nodes`
+              : "Topology healthy"
+        : "Topology pending",
+      detail: input.topology
+        ? `${input.topology.summary.nodes} nodes, ${input.topology.summary.edges} edges, ${input.topology.generatedFrom.eventCount} source events.`
+        : "Run topology appears after Core returns `/api/topology/latest`.",
+      tone: failedNodes > 0 ? "failed" : blockedNodes > 0 ? "blocked" : retryLoopNodes > 0 ? "retry" : input.topology ? "healthy" : "neutral"
+    },
+    sideEffectRisk: {
+      label: input.topology
+        ? input.topology.summary.sideEffects === 0
+          ? "No side effects recorded"
+          : blockedNodes > 0
+            ? "Side effects contained"
+            : `${input.topology.summary.sideEffects} side-effect rows`
+        : "Risk pending",
+      detail: input.topology
+        ? `${input.topology.summary.blocked} blocked, ${input.topology.summary.sideEffects} observed or intended side-effect records.`
+        : "Side-effect ledger data is unavailable until Core responds.",
+      tone: !input.topology ? "neutral" : blockedNodes > 0 ? "blocked" : input.topology.summary.sideEffects > 0 ? "warning" : "healthy"
+    },
+    retries: {
+      label: retryLoopNodes > 0 ? "Retry loop contained" : retryEvents > 0 ? `${retryEvents} bounded retries` : "No retry loop",
+      detail: retryEvents > 0
+        ? `${retryEvents} retry event${retryEvents === 1 ? "" : "s"} recorded with Core policy evidence.`
+        : "No scheduled retry events are present in the current run.",
+      tone: retryLoopNodes > 0 ? "retry" : retryEvents > 0 ? "warning" : "healthy"
+    },
+    policyDecisions: {
+      label: `${input.health?.summary.policyDecisions ?? input.policies?.decisions.length ?? 0} policy decisions`,
+      detail: input.policies
+        ? `Preview ${input.policies.preview.decision} with ${input.policies.rules.length} visible rule summaries.`
+        : "Policy decisions will appear after Core returns policy data.",
+      tone: input.policies?.preview.decision === "block" || input.policies?.preview.decision === "fail-fast" ? "blocked" : input.policies ? "healthy" : "neutral"
+    },
+    evidenceReadiness: {
+      label: evidenceReady ? "Evidence ready" : "Evidence pending",
+      detail: input.bundle?.bundle.exists
+        ? `${input.bundle.bundle.manifestValid ? "Bundle manifest valid" : "Bundle manifest needs attention"} with replay safety ${input.bundle.bundle.replaySafe ? "ready" : "withheld"}.`
+        : input.reports?.reports.some((report) => report.exists)
+          ? "Static report metadata is available from Core loopback routes."
+          : `${input.health?.summary.artifactCount ?? input.topology?.summary.artifacts ?? 0} artifacts recorded so far.`,
+      tone: evidenceReady ? "healthy" : "degraded"
+    }
+  };
+}
+
+function statusSummary(status: ResourceStatus, failedHealthRows: number, degradedHealthRows: number): RunHealthCommandCenterSummary["currentStatus"] {
+  if (status === "loading") {
+    return {
+      label: "Loading Core data",
+      detail: "The UI is waiting for Core API responses and keeps skeleton states visible.",
+      tone: "neutral"
+    };
+  }
+  if (status === "error") {
+    return {
+      label: "Core unavailable",
+      detail: "Use `TOOLGUARD_CORE_PORT=3660 pnpm dev:core` from the mission manifest, then refresh this page.",
+      tone: "failed"
+    };
+  }
+  if (status === "degraded") {
+    return {
+      label: "Core partially degraded",
+      detail: "Some endpoints failed, but available run, topology, policy, and evidence panels remain inspectable.",
+      tone: "degraded"
+    };
+  }
+  if (status === "empty") {
+    return {
+      label: "Awaiting first run",
+      detail: "Core is reachable. Run a deterministic demo or mediated tool call to populate evidence.",
+      tone: "neutral"
+    };
+  }
+  if (failedHealthRows > 0) {
+    return {
+      label: `${failedHealthRows} failed health rows`,
+      detail: `${degradedHealthRows} degraded health rows also need review.`,
+      tone: "failed"
+    };
+  }
+  if (degradedHealthRows > 0) {
+    return {
+      label: `${degradedHealthRows} degraded health rows`,
+      detail: "Core is reachable and has surfaced partial downstream health issues.",
+      tone: "degraded"
+    };
+  }
+  return {
+    label: "Core connected",
+    detail: "Latest Core health and run endpoints are reachable.",
+    tone: "healthy"
   };
 }
 

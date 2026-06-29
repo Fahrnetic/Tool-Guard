@@ -125,6 +125,12 @@ export function DemoStoryMode({ payload, status, error }: DemoStoryModeProps) {
                   role="option"
                   aria-selected={selected}
                   onClick={() => setSelectedScenarioId(scenario.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelectedScenarioId(scenario.id);
+                    }
+                  }}
                   className={`rounded-xl border p-4 text-left transition duration-200 hover:-translate-y-0.5 hover:border-primary/45 hover:bg-primary/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${
                     selected ? "border-primary/65 bg-primary/15 shadow-lg shadow-primary/10" : "border-border bg-bg/50"
                   }`}

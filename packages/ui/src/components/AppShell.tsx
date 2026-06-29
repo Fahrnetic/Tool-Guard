@@ -41,6 +41,15 @@ export function AppShell({ active, items, coreState, runId, onSelect, children }
             <StatusChip label={`runId ${runId}`} tone="selected" />
           </div>
         </div>
+        {coreState === "degraded" ? (
+          <div className="mx-auto max-w-7xl px-4 pb-3 sm:px-6 lg:px-8" role="status" aria-live="polite">
+            <div className="rounded-2xl border border-warning/45 bg-warning/10 px-4 py-3 text-sm leading-6 text-warning">
+              Core recovery: check <code className="rounded bg-bg/50 px-1.5 py-0.5">http://127.0.0.1:3660/health</code>,
+              restart with <code className="rounded bg-bg/50 px-1.5 py-0.5">TOOLGUARD_CORE_PORT=3660 pnpm dev:core</code>,
+              then refresh. Current panels continue to show available cached, empty, or fixture-backed guidance.
+            </div>
+          </div>
+        ) : null}
         <nav className="mx-auto max-w-7xl overflow-x-auto px-4 pb-3 sm:px-6 lg:px-8" aria-label="Primary observability">
           <div className="flex min-w-max gap-2">
             {items.map((item) => {

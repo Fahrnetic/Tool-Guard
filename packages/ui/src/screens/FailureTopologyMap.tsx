@@ -562,9 +562,9 @@ function nodeStateClasses(status: TopologyNodeStatus): string {
     case "failed":
       return "border-danger/60 bg-danger/10 text-danger";
     case "blocked":
-      return "border-danger/70 bg-danger/20 text-danger";
+      return "border-blocked/70 bg-blocked/15 text-blocked";
     case "retry-loop":
-      return "border-warning/70 bg-warning/15 text-warning";
+      return "border-retry/70 bg-retry/15 text-retry";
     case "evidence-ready":
       return "border-primary/60 bg-primary/15 text-primary";
   }

@@ -9,13 +9,21 @@ interface StatePanelProps {
 
 export function StatePanel({ status, title, message, action }: StatePanelProps) {
   const label = status === "degraded" ? "Partial data" : status;
+  const tone =
+    status === "error"
+      ? "border-danger/40 bg-danger/10 text-danger"
+      : status === "degraded"
+        ? "border-warning/40 bg-warning/10 text-warning"
+        : status === "ready"
+          ? "border-success/40 bg-success/10 text-success"
+          : "border-primary/30 bg-primary/10 text-primary";
   return (
     <section
       className="rounded-2xl border border-border bg-bg-panel/80 p-5 shadow-2xl shadow-black/20"
       aria-label={`${title} ${label} state`}
     >
       <div className="flex items-start gap-4">
-        <div className="mt-1 grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-primary/30 bg-primary/10 text-primary">
+        <div className={`mt-1 grid h-10 w-10 shrink-0 place-items-center rounded-xl border ${tone}`}>
           {status === "loading" ? (
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           ) : (

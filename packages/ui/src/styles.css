@@ -16,6 +16,8 @@
   --color-success: oklch(72% 0.16 154);
   --color-warning: oklch(78% 0.17 82);
   --color-danger: oklch(66% 0.21 27);
+  --color-blocked: oklch(74% 0.16 310);
+  --color-retry: oklch(76% 0.16 55);
   --color-info: oklch(73% 0.14 222);
 }
 
@@ -70,6 +72,8 @@ select:focus-visible,
     --color-success: oklch(36% 0.12 154);
     --color-warning: oklch(42% 0.13 82);
     --color-danger: oklch(43% 0.16 27);
+    --color-blocked: oklch(39% 0.13 310);
+    --color-retry: oklch(42% 0.13 55);
     --color-info: oklch(38% 0.12 222);
     background: white;
     color: black;

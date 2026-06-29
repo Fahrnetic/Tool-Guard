@@ -217,7 +217,7 @@ function BundleCard({ bundle }: { readonly bundle: BundleView }) {
 }
 
 function BundleHealthCard({ title, status }: { readonly title: string; readonly status: BundleStatusView }) {
-  const tone = status.status === "healthy" ? "healthy" : status.status === "failed" || status.status === "blocked" ? "failed" : "degraded";
+  const tone = status.status === "healthy" ? "healthy" : status.status === "blocked" ? "blocked" : status.status === "failed" ? "failed" : "degraded";
   return (
     <section className="rounded-xl border border-border bg-bg/60 p-4">
       <StatusChip label={status.label} tone={tone} />

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell, type NavigationItem } from "./components/AppShell.js";
-import { fetchBundle, fetchFailures, fetchHealth, fetchIntegrations, fetchLatestRun, fetchNarrative, fetchPolicies, fetchReplay, fetchReports, fetchRunIndex, fetchStoryMode, fetchTopology, fetchTrace, fetchValidationDashboard, streamCoreEvents } from "./lib/api.js";
+import { fetchBundle, fetchFailures, fetchHealth, fetchImpact, fetchIntegrations, fetchLatestRun, fetchNarrative, fetchPolicies, fetchReplay, fetchReports, fetchRunIndex, fetchStoryMode, fetchTopology, fetchTrace, fetchValidationDashboard, streamCoreEvents } from "./lib/api.js";
 import type { CoreEvent } from "@toolplane/core";
 import type {
   FailureInboxPayload,
   BundlePayload,
   HealthPayload,
+  ImpactPayload,
   IntegrationsPayload,
   LatestRunPayload,
   NarrativePayload,
@@ -35,11 +36,13 @@ import { ScreenStateGallery } from "./screens/ScreenStateGallery.js";
 import { Timeline } from "./screens/Timeline.js";
 import { TraceExplorer } from "./screens/TraceExplorer.js";
 import { RunIndexWorkbench } from "./screens/RunIndexWorkbench.js";
+import { ImpactPanel } from "./screens/ImpactPanel.js";
 
 const navigation: readonly NavigationItem[] = [
   { id: "overview", label: "Run Health Command Center" },
   { id: "timeline", label: "Live Run Timeline" },
   { id: "run-index", label: "Run Index Search" },
+  { id: "impact", label: "Observed Impact" },
   { id: "topology", label: "Failure Topology Map" },
   { id: "health", label: "Tool Server Health Matrix" },
   { id: "failures", label: "Failure Inbox" },
@@ -56,6 +59,7 @@ interface DataState {
   readonly run?: LatestRunPayload | undefined;
   readonly runIndex?: RunIndexPayload | undefined;
   readonly health?: HealthPayload | undefined;
+  readonly impact?: ImpactPayload | undefined;
   readonly topology?: TopologyPayload | undefined;
   readonly narrative?: NarrativePayload | undefined;
   readonly failures?: FailureInboxPayload | undefined;
@@ -88,10 +92,11 @@ export function App() {
       controllers.add(controller);
       setData({ status: "loading" });
       try {
-        const [runResult, runIndexResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, validationResult, reportsResult, bundleResult] = await Promise.allSettled([
+        const [runResult, runIndexResult, healthResult, impactResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, validationResult, reportsResult, bundleResult] = await Promise.allSettled([
           fetchLatestRun(controller.signal),
           fetchRunIndex(controller.signal),
           fetchHealth(controller.signal),
+          fetchImpact(controller.signal),
           fetchTopology(topologyRunId, controller.signal),
           fetchNarrative(topologyRunId, controller.signal),
           fetchFailures(controller.signal),
@@ -110,6 +115,7 @@ export function App() {
         const run = runResult.status === "fulfilled" ? runResult.value : undefined;
         const runIndex = runIndexResult.status === "fulfilled" ? runIndexResult.value : undefined;
         const health = healthResult.status === "fulfilled" ? healthResult.value : undefined;
+        const impact = impactResult.status === "fulfilled" ? impactResult.value : undefined;
         const topology = topologyResult.status === "fulfilled" ? topologyResult.value : undefined;
         const narrative = narrativeResult.status === "fulfilled" ? narrativeResult.value : undefined;
         const failures = failureResult.status === "fulfilled" ? failureResult.value : undefined;
@@ -127,17 +133,18 @@ export function App() {
           return;
         }
         if (run && run.eventCount === 0) {
-          setData({ run, ...(runIndex ? { runIndex } : {}), ...(health ? { health } : {}), ...(topology ? { topology } : {}), ...(narrative ? { narrative } : {}), ...(failures ? { failures } : {}), ...(trace ? { trace } : {}), ...(policies ? { policies } : {}), ...(integrations ? { integrations } : {}), ...(replay ? { replay } : {}), ...(story ? { story } : {}), ...(validation ? { validation } : {}), ...(reports ? { reports } : {}), ...(bundle ? { bundle } : {}), status: "empty" });
+          setData({ run, ...(runIndex ? { runIndex } : {}), ...(health ? { health } : {}), ...(impact ? { impact } : {}), ...(topology ? { topology } : {}), ...(narrative ? { narrative } : {}), ...(failures ? { failures } : {}), ...(trace ? { trace } : {}), ...(policies ? { policies } : {}), ...(integrations ? { integrations } : {}), ...(replay ? { replay } : {}), ...(story ? { story } : {}), ...(validation ? { validation } : {}), ...(reports ? { reports } : {}), ...(bundle ? { bundle } : {}), status: "empty" });
           return;
         }
         const degradedError =
-          [runResult, runIndexResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, validationResult, reportsResult, bundleResult].some((result) => result.status === "rejected")
+          [runResult, runIndexResult, healthResult, impactResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, validationResult, reportsResult, bundleResult].some((result) => result.status === "rejected")
             ? "One Core endpoint returned an error."
             : undefined;
         setData({
           ...(run ? { run } : {}),
           ...(runIndex ? { runIndex } : {}),
           ...(health ? { health } : {}),
+          ...(impact ? { impact } : {}),
           ...(topology ? { topology } : {}),
           ...(narrative ? { narrative } : {}),
           ...(failures ? { failures } : {}),
@@ -149,7 +156,7 @@ export function App() {
           ...(validation ? { validation } : {}),
           ...(reports ? { reports } : {}),
           ...(bundle ? { bundle } : {}),
-          status: [runResult, runIndexResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, validationResult, reportsResult, bundleResult].every((result) => result.status === "fulfilled") ? "ready" : "degraded",
+          status: [runResult, runIndexResult, healthResult, impactResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, validationResult, reportsResult, bundleResult].every((result) => result.status === "fulfilled") ? "ready" : "degraded",
           ...(degradedError ? { error: degradedError } : {})
         });
       } finally {
@@ -228,6 +235,8 @@ export function App() {
         <Timeline events={streamEvents.length > 0 ? streamEvents : data.run?.events ?? []} status={data.status} streamState={streamState} {...(data.error ? { error: data.error } : {})} {...(topologySelection ? { topologySelection } : {})} />
       ) : active === "run-index" ? (
         <RunIndexWorkbench {...(data.runIndex ? { payload: data.runIndex } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
+      ) : active === "impact" ? (
+        <ImpactPanel {...(data.impact ? { payload: data.impact } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
       ) : active === "topology" ? (
         <FailureTopologyMap
           {...(data.topology ? { topology: data.topology } : {})}

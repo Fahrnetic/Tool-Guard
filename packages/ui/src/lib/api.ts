@@ -4,6 +4,7 @@ import type {
   BundleExportResponse,
   BundlePayload,
   HealthPayload,
+  ImpactPayload,
   IntegrationsPayload,
   LatestRunPayload,
   NarrativePayload,
@@ -40,6 +41,10 @@ export async function fetchHealth(signal?: AbortSignal): Promise<HealthPayload> 
 
 export async function fetchFailures(signal?: AbortSignal): Promise<FailureInboxPayload> {
   return await fetchJson<FailureInboxPayload>("/api/failures", signal);
+}
+
+export async function fetchImpact(signal?: AbortSignal): Promise<ImpactPayload> {
+  return await fetchJson<ImpactPayload>("/api/impact", signal);
 }
 
 export async function fetchTrace(traceId = "latest", signal?: AbortSignal): Promise<TracePayload> {

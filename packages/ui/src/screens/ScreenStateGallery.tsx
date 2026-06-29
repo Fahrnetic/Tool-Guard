@@ -15,6 +15,10 @@ const copy: Record<ScreenId, { readonly title: string; readonly description: str
     title: "Run Index Search",
     description: "Latest real failures, filtering, and correlated raw versus mediated attempt comparison."
   },
+  impact: {
+    title: "Observed Impact",
+    description: "Observed changes, safe affected paths, process children, reversibility, attribution, and rollback guidance."
+  },
   topology: {
     title: "Failure Topology Map",
     description: "Event-derived topology with node states, relationship labels, narrative, and linked evidence highlights."

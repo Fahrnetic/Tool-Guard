@@ -4,6 +4,9 @@ import type {
   EvidenceArtifact,
   EvidenceLink,
   FailureCard,
+  ObservedFileChange,
+  ObservedGitStatus,
+  ObservedProcessLifecycle,
   IntegrationCapabilityCheck,
   IntegrationRouteType,
   IntegrationVerificationReceipt,
@@ -17,6 +20,7 @@ export type ScreenId =
   | "overview"
   | "timeline"
   | "run-index"
+  | "impact"
   | "topology"
   | "health"
   | "failures"
@@ -105,6 +109,59 @@ export interface FailureInboxPayload {
   readonly runId: string;
   readonly generatedAt: string;
   readonly failures: readonly FailureCardView[];
+}
+
+export interface ImpactPayload {
+  readonly runId: string;
+  readonly generatedAt: string;
+  readonly summary: {
+    readonly entries: number;
+    readonly observedChanges: number;
+    readonly safeAffectedPaths: number;
+    readonly processChildren: number;
+    readonly rollbackSteps: number;
+    readonly reversible: number;
+    readonly blocked: number;
+  };
+  readonly entries: readonly ImpactEntryView[];
+}
+
+export interface ImpactEntryView {
+  readonly ledgerId: string;
+  readonly recordedAt: string;
+  readonly runId: string;
+  readonly traceId: string;
+  readonly toolCallId: string;
+  readonly attemptId: string;
+  readonly policyDecisionId: string;
+  readonly toolName: string;
+  readonly targetType: string;
+  readonly effectState: string;
+  readonly reversibility: string;
+  readonly operation: string;
+  readonly summary: string;
+  readonly attributionLevel: string;
+  readonly evidenceBasis: readonly string[];
+  readonly causalClaim: string;
+  readonly counterEvidence: readonly string[];
+  readonly blastRadius: {
+    readonly score: number;
+    readonly label: string;
+    readonly factors: readonly { readonly name: string; readonly score: number; readonly explanation: string }[];
+  };
+  readonly observedImpact?: {
+    readonly workspaceRoot: string;
+    readonly disposableWorkspace: boolean;
+    readonly pathContainment: "contained" | "rejected";
+    readonly gitStatus?: ObservedGitStatus;
+    readonly fileChanges: readonly ObservedFileChange[];
+    readonly safeAffectedPaths: readonly string[];
+    readonly tempArtifactWrites: readonly string[];
+    readonly processLifecycle?: ObservedProcessLifecycle;
+    readonly outcome: string;
+    readonly rollbackGuidance: readonly string[];
+    readonly bundleHashes: readonly { readonly relativePath: string; readonly sha256: string; readonly byteLength: number }[];
+  };
 }
 
 export interface FailureCardView extends FailureCard {

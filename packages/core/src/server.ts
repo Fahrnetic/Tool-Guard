@@ -28,6 +28,7 @@ import type {
   JsonValue,
   PolicyDecision,
   RecordedPolicyScenarioId,
+  SideEffectLedgerEntry,
   ToolCall
 } from "./types.js";
 
@@ -230,6 +231,11 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
 
       if (url.pathname === "/api/failures") {
         sendJson(response, 200, await buildFailuresPayload(runId, session.recorder.events, session.recorder.runDir, configuredBaseUrl(host, port, server)));
+        return;
+      }
+
+      if (url.pathname === "/api/impact") {
+        sendJson(response, 200, buildImpactPayload(runId, session.recorder.ledger));
         return;
       }
 
@@ -1762,6 +1768,67 @@ async function buildFailuresPayload(runId: StableId, events: readonly CoreEvent[
     runId,
     generatedAt: new Date().toISOString(),
     failures: failures as unknown as JsonValue
+  };
+}
+
+function buildImpactPayload(runId: StableId, ledger: readonly SideEffectLedgerEntry[]): JsonObject {
+  const entries = ledger.map((entry) => ({
+    ledgerId: entry.ledgerId,
+    recordedAt: entry.recordedAt,
+    runId: entry.runId,
+    traceId: entry.traceId,
+    toolCallId: entry.toolCallId,
+    attemptId: entry.attemptId,
+    policyDecisionId: entry.policyDecisionId,
+    toolName: entry.toolName,
+    targetType: entry.targetType,
+    effectState: entry.effectState,
+    reversibility: entry.reversibility,
+    operation: entry.operation,
+    summary: entry.summary,
+    attributionLevel: entry.attributionLevel,
+    evidenceBasis: entry.evidenceBasis,
+    causalClaim: entry.causalClaim,
+    counterEvidence: entry.counterEvidence,
+    blastRadius: entry.blastRadius,
+    ...(entry.retryLoopFinding ? { retryLoopFinding: entry.retryLoopFinding } : {}),
+    observedImpact: entry.observedImpact
+      ? {
+          workspaceRoot: entry.observedImpact.workspaceRoot,
+          disposableWorkspace: entry.observedImpact.disposableWorkspace,
+          pathContainment: entry.observedImpact.pathContainment,
+          ...(entry.observedImpact.gitStatus ? { gitStatus: entry.observedImpact.gitStatus } : {}),
+          fileChanges: entry.observedImpact.fileChanges,
+          safeAffectedPaths: [
+            ...new Set([
+              ...entry.observedImpact.fileChanges.map((change) => change.path),
+              ...entry.observedImpact.tempArtifactWrites
+            ])
+          ],
+          tempArtifactWrites: entry.observedImpact.tempArtifactWrites,
+          ...(entry.observedImpact.processLifecycle ? { processLifecycle: entry.observedImpact.processLifecycle } : {}),
+          outcome: entry.observedImpact.outcome,
+          rollbackGuidance: entry.observedImpact.rollbackGuidance,
+          bundleHashes: entry.observedImpact.bundleHashes
+        }
+      : undefined
+  }));
+  return {
+    runId,
+    generatedAt: new Date().toISOString(),
+    summary: {
+      entries: ledger.length,
+      observedChanges: ledger.reduce((count, entry) => count + (entry.observedImpact?.fileChanges.length ?? 0), 0),
+      safeAffectedPaths: ledger.reduce(
+        (count, entry) => count + new Set([...(entry.observedImpact?.fileChanges.map((change) => change.path) ?? []), ...(entry.observedImpact?.tempArtifactWrites ?? [])]).size,
+        0
+      ),
+      processChildren: ledger.filter((entry) => Boolean(entry.observedImpact?.processLifecycle)).length,
+      rollbackSteps: ledger.reduce((count, entry) => count + (entry.observedImpact?.rollbackGuidance.length ?? 0), 0),
+      reversible: ledger.filter((entry) => entry.reversibility !== "irreversible-risk").length,
+      blocked: ledger.filter((entry) => entry.effectState === "blocked").length
+    },
+    entries: entries as unknown as JsonValue
   };
 }
 

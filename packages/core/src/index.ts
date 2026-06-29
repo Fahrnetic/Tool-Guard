@@ -29,6 +29,15 @@ export {
   type FailureClassification
 } from "./classifier.js";
 export { createChaosFixtures, registerChaosFixtures, type ChaosFixtureOptions } from "./chaos-fixtures.js";
+export {
+  buildCallFingerprint,
+  classifyRetryLoop,
+  inferSideEffect,
+  labelBlastRadius,
+  mergeFailureIntelligence,
+  scoreBlastRadius,
+  sideEffectSummary
+} from "./side-effects.js";
 export type {
   AdapterDescriptor,
   AdapterKind,
@@ -36,6 +45,9 @@ export type {
   EvidenceLink,
   FailureCard,
   FailureType,
+  BlastRadiusFactor,
+  BlastRadiusLabel,
+  BlastRadiusResult,
   HarnessDescriptor,
   HarnessKind,
   JsonSchema,
@@ -46,8 +58,13 @@ export type {
   PreflightFinding,
   PreflightProbeResult,
   PolicyDecision,
+  RetryLoopFinding,
   RegisteredTool,
   ReportManifest,
+  SideEffectLedgerEntry,
+  SideEffectReversibility,
+  SideEffectState,
+  SideEffectTargetType,
   ToolCall,
   ToolExecutionContext,
   ToolDefinition,

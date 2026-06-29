@@ -114,6 +114,11 @@ export interface FailureCard {
   readonly humanFix?: string;
   readonly evidenceLinks: readonly EvidenceLink[];
   readonly safeSummary: string;
+  readonly sideEffectSummary?: string;
+  readonly retryLoopFinding?: RetryLoopFinding;
+  readonly blastRadiusScore?: number;
+  readonly blastRadiusLabel?: BlastRadiusLabel;
+  readonly blastRadiusFactors?: readonly BlastRadiusFactor[];
   readonly rawDetailsSeparated: true;
 }
 
@@ -142,6 +147,64 @@ export interface PolicyDecision {
   readonly retryable: boolean;
 }
 
+export type SideEffectState = "none" | "planned" | "blocked" | "simulated" | "completed" | "partial" | "unknown";
+export type SideEffectReversibility = "reversible" | "fixture-only" | "manual-review" | "irreversible-risk";
+export type SideEffectTargetType =
+  | "none"
+  | "fixture"
+  | "workspace"
+  | "filesystem"
+  | "process"
+  | "network"
+  | "mcp-server"
+  | "browser"
+  | "system"
+  | "unknown";
+
+export type BlastRadiusLabel = "contained" | "limited" | "workspace-risk" | "system-risk";
+
+export interface BlastRadiusFactor {
+  readonly name: string;
+  readonly score: number;
+  readonly explanation: string;
+}
+
+export interface BlastRadiusResult {
+  readonly score: number;
+  readonly label: BlastRadiusLabel;
+  readonly factors: readonly BlastRadiusFactor[];
+}
+
+export interface RetryLoopFinding {
+  readonly fingerprint: string;
+  readonly repeatedFailures: number;
+  readonly classification: "none" | "recovery-retry" | "loop-detected";
+  readonly explanation: string;
+}
+
+export interface SideEffectLedgerEntry {
+  readonly ledgerId: StableId;
+  readonly recordedAt: string;
+  readonly runId: StableId;
+  readonly traceId: StableId;
+  readonly parentId?: StableId;
+  readonly harnessId: StableId;
+  readonly adapterId: StableId;
+  readonly downstreamServerId: StableId;
+  readonly toolCallId: StableId;
+  readonly attemptId: StableId;
+  readonly policyDecisionId: StableId;
+  readonly artifactIds: readonly StableId[];
+  readonly toolName: string;
+  readonly targetType: SideEffectTargetType;
+  readonly effectState: SideEffectState;
+  readonly reversibility: SideEffectReversibility;
+  readonly operation: "call-completed" | "call-failed" | "call-blocked" | "retry-planned";
+  readonly summary: string;
+  readonly blastRadius: BlastRadiusResult;
+  readonly retryLoopFinding?: RetryLoopFinding;
+}
+
 export interface TraceSummary {
   readonly runId: StableId;
   readonly traceId: StableId;
@@ -161,6 +224,8 @@ export interface ReportManifest {
   readonly reportFile: string;
   readonly artifactHashFile: string;
   readonly redactionSummaryFile: string;
+  readonly ledgerFile?: string;
+  readonly ledgerSha256?: string;
   readonly artifacts: readonly EvidenceArtifact[];
   readonly redactionSummary: {
     readonly redactionCount: number;

@@ -1,5 +1,14 @@
 import type { StableId } from "./ids.js";
-import type { EvidenceArtifact, FailureCard, JsonObject, PolicyDecision, ToolResult } from "./types.js";
+import type {
+  BlastRadiusResult,
+  EvidenceArtifact,
+  FailureCard,
+  JsonObject,
+  PolicyDecision,
+  RetryLoopFinding,
+  SideEffectLedgerEntry,
+  ToolResult
+} from "./types.js";
 
 export type CoreEventType =
   | "run.started"
@@ -12,6 +21,9 @@ export type CoreEventType =
   | "tool.call.completed"
   | "tool.call.failed"
   | "tool.retry.scheduled"
+  | "side_effect.recorded"
+  | "blast_radius.scored"
+  | "retry_loop.detected"
   | "circuit.opened"
   | "circuit.closed"
   | "output.sanitized"
@@ -37,7 +49,15 @@ export interface CoreEvent extends CorrelationFields {
   readonly occurredAt: string;
   readonly sequence: number;
   readonly summary: string;
-  readonly data?: JsonObject | ToolResult | FailureCard | EvidenceArtifact | PolicyDecision;
+  readonly data?:
+    | JsonObject
+    | ToolResult
+    | FailureCard
+    | EvidenceArtifact
+    | PolicyDecision
+    | SideEffectLedgerEntry
+    | BlastRadiusResult
+    | RetryLoopFinding;
 }
 
 export type EventListener = (event: CoreEvent) => void;

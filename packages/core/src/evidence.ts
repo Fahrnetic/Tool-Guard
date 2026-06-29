@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createId, type StableId } from "./ids.js";
 import type { CoreEvent } from "./events.js";
-import type { EvidenceArtifact, JsonValue } from "./types.js";
+import type { EvidenceArtifact, JsonValue, SideEffectLedgerEntry } from "./types.js";
 
 export interface EvidenceRecorderOptions {
   readonly rootDir: string;
@@ -13,6 +13,7 @@ export interface EvidenceRecorderOptions {
 export class EvidenceRecorder {
   readonly #runDir: string;
   readonly #events: CoreEvent[] = [];
+  readonly #ledger: SideEffectLedgerEntry[] = [];
 
   constructor(options: EvidenceRecorderOptions) {
     this.#runDir = path.join(options.rootDir, options.runId);
@@ -30,11 +31,26 @@ export class EvidenceRecorder {
     return this.#events;
   }
 
+  get ledgerPath(): string {
+    return path.join(this.#runDir, "ledger.jsonl");
+  }
+
+  get ledger(): readonly SideEffectLedgerEntry[] {
+    return this.#ledger;
+  }
+
   async appendEvent(event: CoreEvent): Promise<void> {
     await mkdir(this.#runDir, { recursive: true });
     this.#events.push(event);
     const jsonl = `${this.#events.map((entry) => JSON.stringify(entry)).join("\n")}\n`;
     await writeFile(this.eventsPath, jsonl, "utf8");
+  }
+
+  async appendLedgerEntry(entry: SideEffectLedgerEntry): Promise<void> {
+    await mkdir(this.#runDir, { recursive: true });
+    this.#ledger.push(entry);
+    const jsonl = `${this.#ledger.map((row) => JSON.stringify(row)).join("\n")}\n`;
+    await writeFile(this.ledgerPath, jsonl, "utf8");
   }
 
   async writeArtifact(input: {

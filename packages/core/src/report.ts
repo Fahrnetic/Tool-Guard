@@ -22,6 +22,7 @@ export interface ManifestValidationResult {
 export async function exportStaticReport(input: { readonly runDir: string }): Promise<StaticReportResult> {
   await mkdir(input.runDir, { recursive: true });
   const eventsPath = path.join(input.runDir, "events.jsonl");
+  const ledgerPath = path.join(input.runDir, "ledger.jsonl");
   const events = await readEvents(eventsPath);
   const runId = events[0]?.runId ?? (path.basename(input.runDir) as ReportManifest["runId"]);
   const artifacts = extractArtifacts(events);
@@ -50,6 +51,7 @@ export async function exportStaticReport(input: { readonly runDir: string }): Pr
     redactionCount: safeEventsResult.count + safeNarrative.count + safeRemediation.count,
     reasons: [...new Set([...safeEventsResult.reasons, ...safeNarrative.reasons, ...safeRemediation.reasons])]
   };
+  const ledgerHash = await hashOptionalFile(ledgerPath);
 
   const manifest: ReportManifest = {
     reportId,
@@ -59,6 +61,7 @@ export async function exportStaticReport(input: { readonly runDir: string }): Pr
     reportFile: "report.html",
     artifactHashFile: "artifact-hashes.json",
     redactionSummaryFile: "redaction-summary.json",
+    ...(ledgerHash ? { ledgerFile: "ledger.jsonl", ledgerSha256: ledgerHash } : {}),
     artifacts,
     redactionSummary
   };
@@ -98,11 +101,29 @@ export async function validateReportManifest(input: { readonly runDir: string })
     return { valid: false, errors: [error instanceof Error ? error.message : "manifest read failed"] };
   }
 
-  for (const file of [manifest.eventFile, manifest.reportFile, manifest.artifactHashFile, manifest.redactionSummaryFile]) {
+  for (const file of [
+    manifest.eventFile,
+    manifest.reportFile,
+    manifest.artifactHashFile,
+    manifest.redactionSummaryFile,
+    ...(manifest.ledgerFile ? [manifest.ledgerFile] : [])
+  ]) {
     try {
       await readFile(path.join(input.runDir, file), "utf8");
     } catch {
       errors.push(`Missing manifest file reference: ${file}`);
+    }
+  }
+
+  if (manifest.ledgerFile && manifest.ledgerSha256) {
+    try {
+      const content = await readFile(path.join(input.runDir, manifest.ledgerFile), "utf8");
+      const sha256 = createHash("sha256").update(content).digest("hex");
+      if (sha256 !== manifest.ledgerSha256) {
+        errors.push("Hash mismatch for side-effect ledger");
+      }
+    } catch {
+      errors.push(`Missing side-effect ledger: ${manifest.ledgerFile}`);
     }
   }
 
@@ -120,6 +141,15 @@ export async function validateReportManifest(input: { readonly runDir: string })
   }
 
   return { valid: errors.length === 0, errors };
+}
+
+async function hashOptionalFile(filePath: string): Promise<string | undefined> {
+  try {
+    const content = await readFile(filePath, "utf8");
+    return createHash("sha256").update(content).digest("hex");
+  } catch {
+    return undefined;
+  }
 }
 
 async function readEvents(eventsPath: string): Promise<CoreEvent[]> {

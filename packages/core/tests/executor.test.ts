@@ -106,6 +106,8 @@ describe("safe executor preflight and evidence", () => {
       "server.preflight.started",
       "server.preflight.completed",
       "evidence.artifact.created",
+      "side_effect.recorded",
+      "blast_radius.scored",
       "tool.call.failed",
       "run.completed"
     ]);

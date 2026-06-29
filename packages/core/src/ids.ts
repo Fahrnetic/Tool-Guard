@@ -11,6 +11,7 @@ export type StableId =
   | `attempt_${string}`
   | `policy_${string}`
   | `artifact_${string}`
+  | `ledger_${string}`
   | `event_${string}`
   | `report_${string}`;
 

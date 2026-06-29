@@ -20,9 +20,18 @@ import type {
   PolicyDecision,
   PreflightFinding,
   RegisteredTool,
+  SideEffectLedgerEntry,
   ToolCall,
   ToolResult
 } from "./types.js";
+import {
+  buildCallFingerprint,
+  classifyRetryLoop,
+  inferSideEffect,
+  mergeFailureIntelligence,
+  scoreBlastRadius,
+  sideEffectSummary
+} from "./side-effects.js";
 
 export interface CoreSessionOptions {
   readonly evidenceRoot: string;
@@ -54,6 +63,7 @@ export class CoreSession {
   readonly #circuitOpenMs: number;
   readonly #circuit = new Map<string, CircuitState>();
   readonly #failures = new Map<string, number>();
+  readonly #retryFingerprints = new Map<string, number>();
   #sequence = 0;
 
   constructor(options: CoreSessionOptions) {
@@ -213,6 +223,15 @@ export class CoreSession {
           nextAttemptId: nextCall.attemptId
         }
       });
+      const fingerprint = buildCallFingerprint(attemptCall, result.failureType);
+      const repeatedFailures = this.#retryFingerprints.get(fingerprint) ?? 1;
+      await this.#recordSideEffect(nextCall, {
+        tool,
+        outcome: "retry",
+        failureType: result.failureType,
+        artifactIds: result.evidenceLinks.map((link) => link.artifactId),
+        retryLoopFinding: classifyRetryLoop({ fingerprint, repeatedFailures, scheduledRetry: true })
+      });
       attemptCall = nextCall;
     }
   }
@@ -282,7 +301,7 @@ export class CoreSession {
     const circuitDecision = await this.#evaluateCircuit(call);
     if (circuitDecision.decision === "fail-fast") {
       await this.#emitPolicyDecision(call, circuitDecision);
-      return await this.#recordFailure(call, "circuit_open", ["Circuit breaker is open for this downstream target."]);
+      return await this.#recordFailure(call, "circuit_open", ["Circuit breaker is open for this downstream target."], [], tool);
     }
 
     const policy = this.#evaluatePolicy(tool, call);
@@ -291,7 +310,9 @@ export class CoreSession {
       return await this.#recordFailure(
         call,
         tool.destructiveRisk === "high" ? "destructive_action_blocked" : "policy_blocked",
-        [policy.reason]
+        [policy.reason],
+        [],
+        tool
       );
     }
 
@@ -339,7 +360,7 @@ export class CoreSession {
         });
         const failure = await this.#recordFailure(call, suspicious, ["Unsafe downstream output stored as raw evidence."], [
           artifact
-        ]);
+        ], tool);
         await this.#recordTargetFailure(call, failure.failureType);
         return failure;
       }
@@ -361,6 +382,7 @@ export class CoreSession {
         artifactIds: [artifact.artifactId]
       };
       await this.#emit("tool.call.completed", call, `Tool call completed: ${call.toolName}`, { data: result });
+      await this.#recordSideEffect(call, { tool, outcome: "completed", artifactIds: [artifact.artifactId] });
       await this.#recordTargetSuccess(call, targetKey);
       return result;
     } catch (error) {
@@ -373,7 +395,9 @@ export class CoreSession {
       const failure = await this.#recordFailure(
         call,
         classifyFailure(controller.signal.aborted ? { error, failureType } : { error }),
-        getRawFailureDetails(error)
+        getRawFailureDetails(error),
+        [],
+        tool
       );
       await this.#recordTargetFailure(call, failure.failureType);
       return failure;
@@ -429,6 +453,7 @@ export class CoreSession {
       artifactIds: [artifact.artifactId]
     };
     await this.#emit("tool.call.completed", call, `Tool call completed: ${call.toolName}`, { data: result });
+    await this.#recordSideEffect(call, { outcome: "completed", artifactIds: [artifact.artifactId] });
     await this.#emit("run.completed", call, "Run completed");
 
     return result;
@@ -438,7 +463,8 @@ export class CoreSession {
     call: ToolCall,
     failureTypeOrClassification: FailureCard["failureType"] | FailureClassification,
     rawDetails: readonly string[],
-    existingArtifacts: readonly EvidenceArtifact[] = []
+    existingArtifacts: readonly EvidenceArtifact[] = [],
+    tool?: RegisteredTool
   ): Promise<FailureCard> {
     const classification =
       typeof failureTypeOrClassification === "string"
@@ -468,10 +494,91 @@ export class CoreSession {
       }
     ];
 
-    const failure = buildFailureCard({ call, classification, evidenceLinks: links });
+    const baseFailure = buildFailureCard({ call, classification, evidenceLinks: links });
+    const fingerprint = buildCallFingerprint(call, classification.failureType);
+    const repeatedFailures = (this.#retryFingerprints.get(fingerprint) ?? 0) + 1;
+    this.#retryFingerprints.set(fingerprint, repeatedFailures);
+    const retryLoopFinding = classifyRetryLoop({ fingerprint, repeatedFailures, scheduledRetry: false });
+    const ledgerEntry = await this.#recordSideEffect(call, {
+      tool,
+      outcome:
+        classification.failureType === "destructive_action_blocked" ||
+        classification.failureType === "policy_blocked" ||
+        classification.failureType === "circuit_open"
+          ? "blocked"
+          : "failed",
+      failureType: classification.failureType,
+      artifactIds: links.map((link) => link.artifactId),
+      retryLoopFinding
+    });
+    const failure = mergeFailureIntelligence(
+      {
+        ...baseFailure,
+        safeSummary: `${baseFailure.safeSummary} Side effects: ${sideEffectSummary(ledgerEntry)}`
+      },
+      ledgerEntry,
+      retryLoopFinding
+    );
+
+    if (retryLoopFinding.classification === "loop-detected") {
+      await this.#emit("retry_loop.detected", call, `Retry loop detected for ${call.toolName}`, {
+        data: retryLoopFinding
+      });
+    }
 
     await this.#emit("tool.call.failed", call, `Tool call failed: ${call.toolName}`, { data: failure });
     return failure;
+  }
+
+  async #recordSideEffect(
+    call: ToolCall,
+    input: {
+      readonly tool?: RegisteredTool | undefined;
+      readonly outcome: "completed" | "failed" | "blocked" | "retry";
+      readonly failureType?: FailureType | undefined;
+      readonly artifactIds: readonly StableId[];
+      readonly retryLoopFinding?: ReturnType<typeof classifyRetryLoop>;
+    }
+  ): Promise<SideEffectLedgerEntry> {
+    const sideEffect = inferSideEffect({
+      tool: input.tool,
+      call,
+      failureType: input.failureType,
+      outcome: input.outcome
+    });
+    const blastRadius = scoreBlastRadius({
+      targetType: sideEffect.targetType,
+      effectState: sideEffect.effectState,
+      reversibility: sideEffect.reversibility,
+      destructiveRisk: sideEffect.destructiveRisk,
+      failureType: input.failureType
+    });
+    const entry: SideEffectLedgerEntry = {
+      ledgerId: createId("ledger"),
+      recordedAt: this.#clock().toISOString(),
+      runId: call.runId,
+      traceId: call.traceId,
+      ...(call.parentId ? { parentId: call.parentId } : {}),
+      harnessId: call.harnessId,
+      adapterId: call.adapterId,
+      downstreamServerId: call.downstreamServerId,
+      toolCallId: call.toolCallId,
+      attemptId: call.attemptId,
+      policyDecisionId: call.policyDecisionId,
+      artifactIds: input.artifactIds,
+      toolName: call.toolName,
+      targetType: sideEffect.targetType,
+      effectState: sideEffect.effectState,
+      reversibility: sideEffect.reversibility,
+      operation: sideEffect.operation,
+      summary: sideEffect.summary,
+      blastRadius,
+      ...(input.retryLoopFinding ? { retryLoopFinding: input.retryLoopFinding } : {})
+    };
+    await this.#recorder.appendLedgerEntry(entry);
+    await this.#emit("side_effect.recorded", call, `Side effect recorded: ${entry.effectState}`, { data: entry });
+    await this.#emit("blast_radius.scored", call, `Blast radius scored: ${blastRadius.score}`, { data: blastRadius });
+    return entry;
   }
 
   #evaluatePolicy(tool: RegisteredTool, call: ToolCall): PolicyDecision {

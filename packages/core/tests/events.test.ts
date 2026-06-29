@@ -47,6 +47,8 @@ describe("core event lifecycle", () => {
       "tool.call.started",
       "evidence.artifact.created",
       "tool.call.completed",
+      "side_effect.recorded",
+      "blast_radius.scored",
       "run.completed"
     ]);
     expect(streamed.map((event) => event.eventId)).toEqual(persisted.map((event) => event.eventId));

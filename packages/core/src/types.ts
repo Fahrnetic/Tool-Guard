@@ -35,6 +35,10 @@ export interface ToolDefinition {
   readonly downstreamServerId: StableId;
   readonly inputSchema: JsonSchema;
   readonly destructiveRisk: "none" | "low" | "medium" | "high";
+  readonly routeMetadata?: {
+    readonly workspaceRoot?: string;
+    readonly sandboxRoot?: string;
+  };
 }
 
 export interface ToolExecutionContext {
@@ -84,6 +88,10 @@ export interface ToolCall {
     readonly task?: string;
     readonly repo?: string;
     readonly agent?: string;
+  };
+  readonly routeMetadata?: {
+    readonly workspaceRoot?: string;
+    readonly sandboxRoot?: string;
   };
 }
 

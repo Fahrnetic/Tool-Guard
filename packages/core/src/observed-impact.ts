@@ -29,9 +29,23 @@ export interface ObservedImpactStart {
   readonly snapshot?: WorkspaceSnapshot;
 }
 
-export function workspaceRootFromCall(call: ToolCall): string | undefined {
-  const candidate = call.arguments.cwd;
-  return typeof candidate === "string" && candidate.length > 0 ? candidate : undefined;
+export interface ObservedImpactRouteMetadata {
+  readonly workspaceRoot?: string;
+  readonly sandboxRoot?: string;
+}
+
+export function workspaceRootFromCall(
+  call: ToolCall,
+  routeMetadata?: ObservedImpactRouteMetadata | undefined
+): string | undefined {
+  const candidate = firstNonEmptyString(
+    call.arguments.cwd,
+    call.routeMetadata?.workspaceRoot,
+    call.routeMetadata?.sandboxRoot,
+    routeMetadata?.workspaceRoot,
+    routeMetadata?.sandboxRoot
+  );
+  return candidate;
 }
 
 export function observedProcessLifecycleFromValue(value: unknown): ObservedProcessLifecycle | undefined {
@@ -55,8 +69,11 @@ export function observedProcessLifecycleFromValue(value: unknown): ObservedProce
   };
 }
 
-export async function startObservedImpact(call: ToolCall): Promise<ObservedImpactStart> {
-  const workspaceRoot = workspaceRootFromCall(call);
+export async function startObservedImpact(
+  call: ToolCall,
+  routeMetadata?: ObservedImpactRouteMetadata | undefined
+): Promise<ObservedImpactStart> {
+  const workspaceRoot = workspaceRootFromCall(call, routeMetadata);
   if (!workspaceRoot) return {};
   const resolved = path.resolve(workspaceRoot);
   const disposableWorkspace = isDisposableWorkspace(resolved);
@@ -79,9 +96,10 @@ export async function finishObservedImpact(input: {
   readonly outcome: SideEffectState;
   readonly tempArtifactWrites: readonly string[];
   readonly processLifecycle?: ObservedProcessLifecycle | undefined;
+  readonly routeMetadata?: ObservedImpactRouteMetadata | undefined;
 }): Promise<ObservedLocalImpact | undefined> {
   const before = input.start?.snapshot;
-  const workspaceRoot = before?.workspaceRoot ?? workspaceRootFromCall(input.call);
+  const workspaceRoot = before?.workspaceRoot ?? workspaceRootFromCall(input.call, input.routeMetadata);
   if (!workspaceRoot || !before || before.pathContainment !== "contained") return undefined;
 
   const afterGitStatus = await readGitStatus(before.workspaceRoot);
@@ -141,9 +159,13 @@ export function impactAttribution(input: {
   if (input.impact?.gitStatus) basis.push("git-status-diff");
   if (input.impact?.processLifecycle) basis.push("process-lifecycle");
   if (input.impact?.tempArtifactWrites.length) basis.push("artifact-write");
-  if (input.impact && input.impact.fileChanges.length === 0 && input.impact.gitStatus?.changed === false) {
+  if (input.impact && input.impact.fileChanges.length === 0 && input.impact.gitStatus?.changed !== true) {
     basis.push("postflight-no-mutation");
-    counterEvidence.push("Postflight filesystem/git observation found no workspace mutation.");
+    counterEvidence.push(
+      input.impact.gitStatus
+        ? "Postflight filesystem/git observation found no workspace mutation."
+        : "Postflight filesystem observation found no workspace mutation."
+    );
   }
   if (!input.impact && input.outcome === "unknown") basis.push("timeout-no-postflight");
 
@@ -167,7 +189,9 @@ function chooseImpactOutcome(
   afterGitStatus: readonly string[] | undefined
 ): SideEffectState {
   const gitChanged = Boolean(beforeGitStatus || afterGitStatus) && (beforeGitStatus ?? []).join("\n") !== (afterGitStatus ?? []).join("\n");
-  if (outcome === "unknown") return "unknown";
+  if (outcome === "unknown") {
+    return fileChanges.length === 0 && !gitChanged ? "none" : "unknown";
+  }
   if (fileChanges.length > 0 || gitChanged) return "completed";
   return outcome;
 }
@@ -268,6 +292,13 @@ function isDisposableWorkspace(workspaceRoot: string): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function firstNonEmptyString(...values: readonly unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  return undefined;
 }
 
 function numberOrNull(value: unknown): number | null {

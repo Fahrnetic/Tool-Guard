@@ -23,7 +23,8 @@ export function createChaosFixtures(options: ChaosFixtureOptions): readonly Regi
     protocol: "fixture" as const,
     downstreamServerId: serverId,
     inputSchema: EMPTY_OBJECT_SCHEMA,
-    destructiveRisk: "none" as const
+    destructiveRisk: "none" as const,
+    routeMetadata: { sandboxRoot: options.sandboxRoot }
   };
 
   return [

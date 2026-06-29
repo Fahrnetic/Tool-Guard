@@ -1,4 +1,5 @@
 import { access, mkdtemp, readFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -43,6 +44,16 @@ async function readJsonl<T>(filePath: string): Promise<T[]> {
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line) as T);
+}
+
+async function gitInit(cwd: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = execFile("git", ["init"], { cwd }, (error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+    child.stdin?.end();
+  });
 }
 
 async function fixtureSession(
@@ -137,7 +148,7 @@ describe("side-effect ledger, blast radius, and retry-loop intelligence", () => 
     const events = await readJsonl<CoreEvent>(session.recorder.eventsPath);
 
     expect(ledger.map((row) => row.effectState)).toEqual(
-      expect.arrayContaining(["completed", "blocked", "planned", "unknown"])
+      expect.arrayContaining(["completed", "blocked", "planned", "none"])
     );
     expect(ledger.every((row) => row.runId === runId && row.traceId && row.toolCallId && row.attemptId)).toBe(true);
     expect(ledger.every((row) => row.policyDecisionId && row.blastRadius.score >= 0 && row.blastRadius.score <= 100)).toBe(
@@ -146,6 +157,39 @@ describe("side-effect ledger, blast radius, and retry-loop intelligence", () => 
     expect(events.map((event) => event.type)).toEqual(
       expect.arrayContaining(["side_effect.recorded", "blast_radius.scored"])
     );
+  });
+
+  it("captures observed impact for fixture routes using registered sandbox metadata when cwd is absent", async () => {
+    const { runId, session, registry, root } = await fixtureSession();
+
+    await session.executeToolCall(registry, makeCall({ runId, toolName: "fixture.good", arguments: {} }));
+    const ledger = await readJsonl<SideEffectLedgerEntry>(session.recorder.ledgerPath);
+    const row = ledger.find((entry) => entry.toolName === "fixture.good");
+
+    expect(row?.observedImpact?.workspaceRoot).toBe(root);
+    expect(row?.observedImpact?.fileChanges).toContainEqual(
+      expect.objectContaining({ path: "fixture-sandbox", changeType: "created" })
+    );
+    expect(row?.evidenceBasis).toContain("filesystem-diff");
+    expect(row?.attributionLevel).toBe("observed-after");
+  });
+
+  it("resolves timeout impact to no observed local mutation when postflight file and git checks are unchanged", async () => {
+    const { runId, session, registry, root } = await fixtureSession({ maxRetries: 0 });
+    await gitInit(root);
+
+    await session.executeToolCall(registry, makeCall({ runId, toolName: "fixture.slow", arguments: {}, deadlineMs: 5 }));
+    const ledger = await readJsonl<SideEffectLedgerEntry>(session.recorder.ledgerPath);
+    const row = ledger.find((entry) => entry.toolName === "fixture.slow");
+
+    expect(row?.effectState).toBe("none");
+    expect(row?.observedImpact?.outcome).toBe("none");
+    expect(row?.observedImpact?.fileChanges).toEqual([]);
+    expect(row?.observedImpact?.gitStatus?.changed).toBe(false);
+    expect(row?.observedImpact?.gitStatus?.after).toEqual(row?.observedImpact?.gitStatus?.before);
+    expect(row?.evidenceBasis).toContain("postflight-no-mutation");
+    expect(row?.attributionLevel).toBe("observed-caused");
+    expect(row?.causalClaim).toMatch(/No local mutation was observed/i);
   });
 
   it("classifies destructive fixture attempts as blocked or simulated without workspace mutation", async () => {

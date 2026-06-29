@@ -8,6 +8,7 @@ import {
   impactAttribution,
   observedProcessLifecycleFromValue,
   startObservedImpact,
+  type ObservedImpactRouteMetadata,
   type ObservedImpactStart
 } from "./observed-impact.js";
 import type { ToolRegistry } from "./registry.js";
@@ -371,7 +372,7 @@ export class CoreSession {
     if (!startedAlready) {
       await this.#emit("tool.call.started", call, `Tool call started: ${call.toolName}`);
     }
-    const impactStart = await startObservedImpact(call);
+    const impactStart = await startObservedImpact(call, tool.routeMetadata);
     const targetKey = this.#targetKey(call);
     const circuitDecision = await this.#evaluateCircuit(call);
     if (circuitDecision.decision === "fail-fast") {
@@ -382,7 +383,7 @@ export class CoreSession {
         ["Circuit breaker is open for this downstream target."],
         [],
         tool,
-        await this.#observedImpact(impactStart, call, "blocked", [])
+        await this.#observedImpact(impactStart, call, "blocked", [], undefined, tool.routeMetadata)
       );
     }
 
@@ -395,7 +396,7 @@ export class CoreSession {
         [policy.reason],
         [],
         tool,
-        await this.#observedImpact(impactStart, call, "blocked", [])
+        await this.#observedImpact(impactStart, call, "blocked", [], undefined, tool.routeMetadata)
       );
     }
 
@@ -469,7 +470,14 @@ export class CoreSession {
         tool,
         outcome: "completed",
         artifactIds: [artifact.artifactId],
-        observedImpact: await this.#observedImpact(impactStart, call, "completed", [artifact.relativePath], rawOutput)
+        observedImpact: await this.#observedImpact(
+          impactStart,
+          call,
+          "completed",
+          [artifact.relativePath],
+          rawOutput,
+          tool.routeMetadata
+        )
       });
       await this.#recordTargetSuccess(call, targetKey);
       return result;
@@ -494,7 +502,8 @@ export class CoreSession {
           call,
           observedOutcome,
           [],
-          getRawFailureDetails(error)
+          getRawFailureDetails(error),
+          tool.routeMetadata
         )
       );
       await this.#recordTargetFailure(call, failure.failureType);
@@ -647,9 +656,15 @@ export class CoreSession {
       failureType: input.failureType,
       outcome: input.outcome
     });
+    const effectState =
+      sideEffect.effectState === "unknown" && input.observedImpact?.outcome === "none" ? "none" : sideEffect.effectState;
+    const summary =
+      sideEffect.effectState === "unknown" && effectState === "none"
+        ? `Call failed for ${call.toolName}; postflight checks found no observed local mutation.`
+        : sideEffect.summary;
     const blastRadius = scoreBlastRadius({
       targetType: sideEffect.targetType,
-      effectState: sideEffect.effectState,
+      effectState,
       reversibility: sideEffect.reversibility,
       destructiveRisk: sideEffect.destructiveRisk,
       failureType: input.failureType
@@ -669,11 +684,11 @@ export class CoreSession {
       artifactIds: input.artifactIds,
       toolName: call.toolName,
       targetType: sideEffect.targetType,
-      effectState: sideEffect.effectState,
+      effectState,
       reversibility: sideEffect.reversibility,
       operation: sideEffect.operation,
-      summary: sideEffect.summary,
-      ...impactAttribution({ outcome: sideEffect.effectState, impact: input.observedImpact }),
+      summary,
+      ...impactAttribution({ outcome: effectState, impact: input.observedImpact }),
       ...(input.observedImpact ? { observedImpact: input.observedImpact } : {}),
       blastRadius,
       ...(input.retryLoopFinding ? { retryLoopFinding: input.retryLoopFinding } : {})
@@ -689,14 +704,16 @@ export class CoreSession {
     call: ToolCall,
     outcome: SideEffectLedgerEntry["effectState"],
     tempArtifactWrites: readonly string[],
-    processValue?: unknown
+    processValue?: unknown,
+    routeMetadata?: ObservedImpactRouteMetadata | undefined
   ): Promise<ObservedLocalImpact | undefined> {
     return await finishObservedImpact({
       start,
       call,
       outcome,
       tempArtifactWrites,
-      ...(observedProcessLifecycleFromValue(processValue) ? { processLifecycle: observedProcessLifecycleFromValue(processValue) } : {})
+      ...(observedProcessLifecycleFromValue(processValue) ? { processLifecycle: observedProcessLifecycleFromValue(processValue) } : {}),
+      ...(routeMetadata ? { routeMetadata } : {})
     });
   }
 

@@ -100,6 +100,21 @@ describe("policy simulator and integration verification core", () => {
       "cli-supervised"
     ]);
     expect(receipts.every((receipt) => receipt.timestamp && receipt.checkedCapabilities.length >= 3)).toBe(true);
+    expect(receipts.flatMap((receipt) => receipt.checkedCapabilities.map((capability) => capability.status))).not.toContain(
+      "not-yet-verified"
+    );
+    expect(receipts.flatMap((receipt) => receipt.checkedCapabilities.map((capability) => capability.evidence))).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^Executed adapter import probe/),
+        expect.stringMatching(/^Executed config generation probe/),
+        expect.stringMatching(/^Executed MCP router probe/),
+        expect.stringMatching(/^Executed Python adapter import probe/),
+        expect.stringMatching(/^Executed Python loopback safety probe/),
+        expect.stringMatching(/^Executed CLI process probe/),
+        expect.stringMatching(/^Executed CLI argv probe/),
+        expect.stringMatching(/^Executed CLI destructive guard probe/)
+      ])
+    );
     expect(receipts.flatMap((receipt) => receipt.checkedCapabilities.map((capability) => capability.capability))).toEqual(
       expect.arrayContaining([
         "adapter availability",

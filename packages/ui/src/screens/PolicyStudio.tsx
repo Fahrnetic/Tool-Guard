@@ -60,6 +60,7 @@ export function PolicyStudio({ payload, status, error, onSaved }: PolicyStudioPr
   async function simulate() {
     if (validation) return;
     setSimulating(true);
+    setSimulation(undefined);
     setSimulationError(undefined);
     try {
       setSimulation(await simulatePolicy({
@@ -72,6 +73,7 @@ export function PolicyStudio({ payload, status, error, onSaved }: PolicyStudioPr
         }
       }));
     } catch (caught) {
+      setSimulation(undefined);
       setSimulationError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setSimulating(false);

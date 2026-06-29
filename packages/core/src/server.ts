@@ -23,7 +23,8 @@ import type {
   ToolCall
 } from "./types.js";
 
-export const SIDECAR_PROTOCOL_VERSION = "toolguard.sidecar.v1";
+import { SIDECAR_PROTOCOL_VERSION } from "./sidecar-protocol.js";
+export { SIDECAR_PROTOCOL_VERSION } from "./sidecar-protocol.js";
 
 export interface CoreApiServerOptions {
   readonly host?: string;

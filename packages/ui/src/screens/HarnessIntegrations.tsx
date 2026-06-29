@@ -38,7 +38,7 @@ export function HarnessIntegrations({ payload, status, error }: HarnessIntegrati
     try {
       const receipt = await verifyIntegration({ routeType });
       setReceipts((current) => [receipt, ...current.filter((candidate) => candidate.receiptId !== receipt.receiptId)].slice(0, 6));
-      setExportMessage("Receipt recorded as a redacted evidence artifact and ready for evidence bundle export.");
+      setExportMessage("Receipt recorded as a redacted evidence artifact and ready for report export.");
     } catch (caught) {
       setVerifyError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -51,7 +51,7 @@ export function HarnessIntegrations({ payload, status, error }: HarnessIntegrati
     setExportMessage(undefined);
     try {
       const report = await exportReport();
-      setExportMessage(`Evidence bundle export ready: ${report.manifestValid ? "manifest valid" : "manifest has warnings"} at ${report.manifestUrl}. Verification receipts are included as redacted evidence artifacts.`);
+      setExportMessage(`Report export ready: ${report.manifestValid ? "manifest valid" : "manifest has warnings"} at ${report.manifestUrl}. Verification receipts are recorded as redacted evidence artifacts.`);
     } catch (caught) {
       setVerifyError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -157,7 +157,7 @@ function WizardPanel({ integration, receipts, verifying, onVerify, exporting, on
           onClick={onExport}
           className="rounded-xl border border-border bg-bg px-4 py-2 text-sm font-semibold text-text-muted transition hover:border-primary/40 hover:text-text active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {exporting ? "Exporting evidence..." : "Export receipts to evidence bundle"}
+          {exporting ? "Exporting report..." : "Export receipts to report"}
         </button>
       </div>
 

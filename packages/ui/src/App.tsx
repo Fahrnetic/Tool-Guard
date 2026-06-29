@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell, type NavigationItem } from "./components/AppShell.js";
-import { fetchBundle, fetchFailures, fetchHealth, fetchIntegrations, fetchLatestRun, fetchNarrative, fetchPolicies, fetchReplay, fetchReports, fetchStoryMode, fetchTopology, fetchTrace, streamCoreEvents } from "./lib/api.js";
+import { fetchBundle, fetchFailures, fetchHealth, fetchIntegrations, fetchLatestRun, fetchNarrative, fetchPolicies, fetchReplay, fetchReports, fetchStoryMode, fetchTopology, fetchTrace, fetchValidationDashboard, streamCoreEvents } from "./lib/api.js";
 import type { CoreEvent } from "@toolplane/core";
 import type {
   FailureInboxPayload,
@@ -17,7 +17,8 @@ import type {
   StoryModePayload,
   TopologyPayload,
   TopologySelection,
-  TracePayload
+  TracePayload,
+  ValidationDashboardPayload
 } from "./lib/model.js";
 import { FailureInbox } from "./screens/FailureInbox.js";
 import { FailureTopologyMap } from "./screens/FailureTopologyMap.js";
@@ -28,6 +29,7 @@ import { PolicyStudio } from "./screens/PolicyStudio.js";
 import { ReplayLab } from "./screens/ReplayLab.js";
 import { EvidenceReportViewer } from "./screens/EvidenceReportViewer.js";
 import { DemoStoryMode } from "./screens/DemoStoryMode.js";
+import { ValidationDashboard } from "./screens/ValidationDashboard.js";
 import { ScreenStateGallery } from "./screens/ScreenStateGallery.js";
 import { Timeline } from "./screens/Timeline.js";
 import { TraceExplorer } from "./screens/TraceExplorer.js";
@@ -41,6 +43,7 @@ const navigation: readonly NavigationItem[] = [
   { id: "traces", label: "Trace Explorer" },
   { id: "replay", label: "Replay Lab" },
   { id: "story", label: "Demo Story Mode" },
+  { id: "validation", label: "Validation Dashboard" },
   { id: "policy", label: "Policy Studio" },
   { id: "integrations", label: "Harness Integrations" },
   { id: "reports", label: "Evidence Bundle Viewer" }
@@ -57,6 +60,7 @@ interface DataState {
   readonly integrations?: IntegrationsPayload | undefined;
   readonly replay?: ReplayPayload | undefined;
   readonly story?: StoryModePayload | undefined;
+  readonly validation?: ValidationDashboardPayload | undefined;
   readonly reports?: ReportsPayload | undefined;
   readonly bundle?: BundlePayload | undefined;
   readonly status: ResourceStatus;
@@ -80,7 +84,7 @@ export function App() {
       controllers.add(controller);
       setData({ status: "loading" });
       try {
-        const [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, reportsResult, bundleResult] = await Promise.allSettled([
+        const [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, validationResult, reportsResult, bundleResult] = await Promise.allSettled([
           fetchLatestRun(controller.signal),
           fetchHealth(controller.signal),
           fetchTopology(topologyRunId, controller.signal),
@@ -91,6 +95,7 @@ export function App() {
           fetchIntegrations(controller.signal),
           fetchReplay(controller.signal),
           fetchStoryMode(controller.signal),
+          fetchValidationDashboard(controller.signal),
           fetchReports(controller.signal),
           fetchBundle(controller.signal)
         ]);
@@ -107,6 +112,7 @@ export function App() {
         const integrations = integrationResult.status === "fulfilled" ? integrationResult.value : undefined;
         const replay = replayResult.status === "fulfilled" ? replayResult.value : undefined;
         const story = storyResult.status === "fulfilled" ? storyResult.value : undefined;
+        const validation = validationResult.status === "fulfilled" ? validationResult.value : undefined;
         const reports = reportsResult.status === "fulfilled" ? reportsResult.value : undefined;
         const bundle = bundleResult.status === "fulfilled" ? bundleResult.value : undefined;
         if (!run && !health) {
@@ -115,11 +121,11 @@ export function App() {
           return;
         }
         if (run && run.eventCount === 0) {
-          setData({ run, ...(health ? { health } : {}), ...(topology ? { topology } : {}), ...(narrative ? { narrative } : {}), ...(failures ? { failures } : {}), ...(trace ? { trace } : {}), ...(policies ? { policies } : {}), ...(integrations ? { integrations } : {}), ...(replay ? { replay } : {}), ...(story ? { story } : {}), ...(reports ? { reports } : {}), ...(bundle ? { bundle } : {}), status: "empty" });
+          setData({ run, ...(health ? { health } : {}), ...(topology ? { topology } : {}), ...(narrative ? { narrative } : {}), ...(failures ? { failures } : {}), ...(trace ? { trace } : {}), ...(policies ? { policies } : {}), ...(integrations ? { integrations } : {}), ...(replay ? { replay } : {}), ...(story ? { story } : {}), ...(validation ? { validation } : {}), ...(reports ? { reports } : {}), ...(bundle ? { bundle } : {}), status: "empty" });
           return;
         }
         const degradedError =
-          [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, reportsResult, bundleResult].some((result) => result.status === "rejected")
+          [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, validationResult, reportsResult, bundleResult].some((result) => result.status === "rejected")
             ? "One Core endpoint returned an error."
             : undefined;
         setData({
@@ -133,9 +139,10 @@ export function App() {
           ...(integrations ? { integrations } : {}),
           ...(replay ? { replay } : {}),
           ...(story ? { story } : {}),
+          ...(validation ? { validation } : {}),
           ...(reports ? { reports } : {}),
           ...(bundle ? { bundle } : {}),
-          status: [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, reportsResult, bundleResult].every((result) => result.status === "fulfilled") ? "ready" : "degraded",
+          status: [runResult, healthResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, validationResult, reportsResult, bundleResult].every((result) => result.status === "fulfilled") ? "ready" : "degraded",
           ...(degradedError ? { error: degradedError } : {})
         });
       } finally {
@@ -245,6 +252,8 @@ export function App() {
         <ReplayLab {...(data.replay ? { payload: data.replay } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
       ) : active === "story" ? (
         <DemoStoryMode {...(data.story ? { payload: data.story } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
+      ) : active === "validation" ? (
+        <ValidationDashboard {...(data.validation ? { payload: data.validation } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
       ) : active === "policy" ? (
         <PolicyStudio
           {...(data.policies ? { payload: data.policies } : {})}

@@ -357,8 +357,8 @@ export function buildDemoStoryModePayload(): DemoStoryModePayload {
         "UI on http://127.0.0.1:3661",
         "Fixture stack is in-process or loopback-only on approved ports 3662-3664"
       ],
-      cleanupOnScenarioReset: "Reset uses deterministic fixture IDs and clears only ToolGuard-owned scenario state.",
-      cleanupOnExit: "demo:serve traps SIGINT/SIGTERM and closes Core/API plus the owned UI child process by PID.",
+      cleanupOnScenarioReset: "Reset uses deterministic fixture IDs, resets the fixture stack, and clears only ToolGuard-owned scenario state.",
+      cleanupOnExit: "demo:serve traps SIGINT/SIGTERM and closes Core/API, the owned UI child process by PID, and fixture stack handles.",
       noExternalServices: true
     }
   };
@@ -399,7 +399,7 @@ function makeScenario(input: {
     deterministicOutcome: input.deterministicOutcome,
     cleanup: {
       afterScenario: `Reset ${input.fixtureId} deterministic state and close any scenario-owned process handles.`,
-      onExit: "Close Core/API, UI child process, and any loopback fixture handles started by demo:serve.",
+      onExit: "Close Core/API, UI child process, and fixture stack loopback handles started by demo:serve.",
       ownedPorts: [3660, 3661, 3662, 3663, 3664]
     },
     resetControl: {

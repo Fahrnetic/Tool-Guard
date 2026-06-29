@@ -5,6 +5,7 @@ import { runPortfolioDemo } from "../src/portfolio-demo.js";
 describe("portfolio demo orchestration", () => {
   it("validates final acceptance surfaces without starting UI in unit mode", async () => {
     const result = await runPortfolioDemo({ startUi: false, holdMs: 0 });
+    const repeated = await runPortfolioDemo({ startUi: false, holdMs: 0 });
 
     expect(result.coreUrl).toBe("http://127.0.0.1:3660");
     expect(result.uiUrl).toBeUndefined();
@@ -46,7 +47,26 @@ describe("portfolio demo orchestration", () => {
     expect(result.redactionScanPassed).toBe(true);
     expect(result.noOverclaimScanPassed).toBe(true);
     expect(result.cleanupVerified).toBe(true);
+    expect(result.scenarioList).toEqual([
+      "raw failure",
+      "ToolGuard mediation",
+      "topology map",
+      "policy simulation",
+      "integration verification",
+      "evidence bundle export"
+    ]);
+    expect(repeated.scenarioList).toEqual(result.scenarioList);
+    expect(repeated.evidenceDir).toBe(result.evidenceDir);
+    expect(repeated.reportHtml).toBe(result.reportHtml);
+    expect(repeated.manifestJson).toBe(result.manifestJson);
+    expect(result.evidenceBundleManifest).toBeDefined();
     expect(result.transcript).toContain("cleanupProbe: portsClosed=3660");
+    expect(result.transcript).toContain("deterministicSeed: toolguard-flagship-demo-v0.11");
+    expect(result.transcript).toContain("fixtureReset: cleared deterministic run directory");
+    expect(result.transcript).toContain("topologyMap: nodes=");
+    expect(result.transcript).toContain("policySimulation: decisions=");
+    expect(result.transcript).toContain("integrationVerification: route=mcp-routed");
+    expect(result.transcript).toContain("bundleManifestJson:");
     expect(result.integrationClaimLevels).toEqual(
       expect.arrayContaining([
         "Cline:MCP-routed:available",
@@ -73,5 +93,5 @@ describe("portfolio demo orchestration", () => {
     expect(result.manifestJson).toBeDefined();
     await expect(access(result.reportHtml ?? "")).resolves.toBeUndefined();
     await expect(access(result.manifestJson ?? "")).resolves.toBeUndefined();
-  }, 20_000);
+  }, 40_000);
 });

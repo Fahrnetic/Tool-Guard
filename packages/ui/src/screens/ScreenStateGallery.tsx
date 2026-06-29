@@ -35,6 +35,10 @@ const copy: Record<ScreenId, { readonly title: string; readonly description: str
     title: "Demo Story Mode",
     description: "Guided raw-to-ToolGuard story flow with deterministic scenarios and cleanup controls."
   },
+  validation: {
+    title: "Validation Dashboard",
+    description: "Local gate checks for tests, typecheck, lint, demo readiness, evidence export, no-secret scan, and process hygiene."
+  },
   policy: {
     title: "Policy Studio",
     description: "Timeouts, retry bounds, circuit thresholds, output limits, and sanitizer gates."

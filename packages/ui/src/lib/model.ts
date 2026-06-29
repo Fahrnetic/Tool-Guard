@@ -22,6 +22,7 @@ export type ScreenId =
   | "traces"
   | "replay"
   | "story"
+  | "validation"
   | "policy"
   | "integrations"
   | "reports";
@@ -153,6 +154,29 @@ export type PolicySimulation = PolicySimulationResult;
 export type PolicyDraft = ProposedPolicy;
 
 export type StoryModePayload = DemoStoryModePayload;
+
+export interface ValidationDashboardPayload {
+  readonly runId: string;
+  readonly generatedAt: string;
+  readonly deterministicSeed: string;
+  readonly approvedPorts: readonly number[];
+  readonly artifactCoverage: {
+    readonly ledger: boolean;
+    readonly topology: boolean;
+    readonly narrative: boolean;
+    readonly report: boolean;
+    readonly manifest: boolean;
+    readonly bundleManifest: boolean;
+  };
+  readonly checks: readonly ValidationCheckView[];
+}
+
+export interface ValidationCheckView {
+  readonly id: string;
+  readonly label: string;
+  readonly status: "pass" | "fail" | "warn";
+  readonly detail: string;
+}
 
 export interface IntegrationsPayload {
   readonly runId: string;

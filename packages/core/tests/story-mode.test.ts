@@ -27,6 +27,8 @@ describe("demo story mode data", () => {
     expect(story.scenarios.every((scenario) => scenario.route === "fixture-only" || scenario.route === "loopback-only")).toBe(true);
     expect(story.processHygiene.noExternalServices).toBe(true);
     expect(story.processHygiene.approvedPorts.every((port) => port >= 3660 && port <= 3669)).toBe(true);
+    expect(story.processHygiene.cleanupOnScenarioReset).toMatch(/fixture stack/i);
+    expect(story.processHygiene.cleanupOnExit).toMatch(/Core\/API.*UI.*fixture stack/i);
   });
 
   it("uses the same deterministic fixture input for raw and mediated comparisons", () => {
@@ -45,7 +47,7 @@ describe("demo story mode data", () => {
       expect(scenario.comparison.mediated.scenarioInput).toEqual(scenario.scenarioInput);
       expect(scenario.resetControl.endpoint).toBe("/api/story/reset");
       expect(scenario.cleanup.afterScenario).toMatch(/Reset|Close/i);
-      expect(scenario.cleanup.onExit).toMatch(/Close Core\/API/);
+      expect(scenario.cleanup.onExit).toMatch(/Close Core\/API.*UI.*fixture stack/i);
     }
   });
 

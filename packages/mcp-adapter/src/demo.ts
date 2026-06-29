@@ -20,6 +20,7 @@ export interface McpAdapterDemoOptions {
   readonly evidenceRoot?: string;
   readonly session?: CoreSession;
   readonly coreRegistry?: ToolRegistry;
+  readonly runId?: string;
 }
 
 export interface McpAdapterDemoResult {
@@ -44,7 +45,7 @@ export async function runMcpAdapterDemo(options: McpAdapterDemoOptions = {}): Pr
     options.session ??
     new CoreSession({
       evidenceRoot,
-      runId: createId("run"),
+      runId: (options.runId ?? createId("run")) as ReturnType<typeof createId>,
       retry: { maxRetries: 0 },
       circuitBreaker: { failureThreshold: 2, openMs: 500 }
     });
@@ -121,12 +122,13 @@ export async function createMcpAdapterDemoApiServer(options: {
   readonly host?: string;
   readonly port?: number;
   readonly evidenceRoot?: string;
+  readonly runId?: string;
   readonly storyScenarioRuntime?: DemoStoryScenarioRuntime;
 } = {}): Promise<McpAdapterDemoApiServerHandle> {
   const evidenceRoot = options.evidenceRoot ?? (await mkdtemp(path.join(os.tmpdir(), "toolguard-mcp-demo-api-")));
   const session = new CoreSession({
     evidenceRoot,
-    runId: createId("run"),
+    runId: (options.runId ?? createId("run")) as ReturnType<typeof createId>,
     retry: { maxRetries: 1 },
     circuitBreaker: { failureThreshold: 2, openMs: 500 }
   });
@@ -141,7 +143,7 @@ export async function createMcpAdapterDemoApiServer(options: {
     ...(options.storyScenarioRuntime === undefined ? {} : { storyScenarioRuntime: options.storyScenarioRuntime })
   });
   await api.ready;
-  const result = await runMcpAdapterDemo({ evidenceRoot, session, coreRegistry });
+  const result = await runMcpAdapterDemo({ evidenceRoot, session, coreRegistry, ...(options.runId ? { runId: options.runId } : {}) });
   await session.exportReport();
 
   return {

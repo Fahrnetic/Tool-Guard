@@ -14,6 +14,13 @@ export const DEMO_FAILURE_SCENARIO = {
   fixtureId: "fixture.malformed-json",
   input: {}
 } as const;
+const TOOLPLANE_DEMO_RUN_ID = "run_demo_toolplane_seed_v011" as const;
+const DEMO_SCENARIO_LIST = [
+  "raw failure",
+  "ToolGuard mediation",
+  "report export",
+  "manifest export"
+] as const;
 
 async function main(): Promise<void> {
   const command = process.argv[2] ?? "toolplane";
@@ -36,6 +43,8 @@ async function rawFailureDemo(): Promise<void> {
   }
 
   console.log("ToolGuard raw failure demo");
+  console.log("deterministicSeed: toolguard-core-demo-v0.11");
+  console.log(`scenarioList: ${DEMO_SCENARIO_LIST.join(" -> ")}`);
   console.log(`fixtureId: ${DEMO_FAILURE_SCENARIO.fixtureId}`);
   console.log(`scenarioId: ${DEMO_FAILURE_SCENARIO.scenarioId}`);
   console.log(`input: ${JSON.stringify(DEMO_FAILURE_SCENARIO.input)}`);
@@ -53,7 +62,7 @@ async function rawFailureDemo(): Promise<void> {
 
 async function toolplaneDemo(): Promise<void> {
   const root = path.join(process.cwd(), "runs");
-  const runId = createId("run");
+  const runId = TOOLPLANE_DEMO_RUN_ID;
   const session = new CoreSession({ evidenceRoot: root, runId, retry: { maxRetries: 1 } });
   const registry = new ToolRegistry();
   registerChaosFixtures(registry, { sandboxRoot: root });
@@ -66,6 +75,8 @@ async function toolplaneDemo(): Promise<void> {
   const report = await session.exportReport();
 
   console.log("ToolGuard mediated failure demo");
+  console.log("deterministicSeed: toolguard-core-demo-v0.11");
+  console.log(`scenarioList: ${DEMO_SCENARIO_LIST.join(" -> ")}`);
   console.log(`fixtureId: ${DEMO_FAILURE_SCENARIO.fixtureId}`);
   console.log(`scenarioId: ${DEMO_FAILURE_SCENARIO.scenarioId}`);
   console.log(`input: ${JSON.stringify(DEMO_FAILURE_SCENARIO.input)}`);

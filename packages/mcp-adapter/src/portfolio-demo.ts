@@ -1,6 +1,6 @@
 import { execFile as execFileCallback, spawn, type ChildProcess } from "node:child_process";
 import { createConnection } from "node:net";
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
@@ -18,6 +18,16 @@ import { createMcpAdapterDemoApiServer, type McpAdapterDemoApiServerHandle } fro
 const CORE_URL = "http://127.0.0.1:3660";
 const UI_URL = "http://127.0.0.1:3661";
 const APPROVED_PORTS = "3660-3669";
+const FLAGSHIP_DEMO_SEED = "toolguard-flagship-demo-v0.11";
+const FLAGSHIP_DEMO_RUN_ID = "run_demo_flagship_seed_v011";
+const FLAGSHIP_SCENARIO_LIST = [
+  "raw failure",
+  "ToolGuard mediation",
+  "topology map",
+  "policy simulation",
+  "integration verification",
+  "evidence bundle export"
+] as const;
 const execFile = promisify(execFileCallback);
 const REQUIRED_CHAOS_FIXTURES = [
   "fixture.good",
@@ -51,6 +61,8 @@ export interface PortfolioDemoResult {
   readonly noOverclaimScanPassed: boolean;
   readonly cleanupVerified: boolean;
   readonly integrationClaimLevels: readonly string[];
+  readonly scenarioList: readonly string[];
+  readonly evidenceBundleManifest?: string;
   readonly transcript: string;
 }
 
@@ -62,14 +74,43 @@ export async function runPortfolioDemo(options: PortfolioDemoOptions = {}): Prom
   let result: Omit<PortfolioDemoResult, "cleanupVerified" | "transcript"> & { readonly transcriptLines: readonly string[] } | undefined;
   const transcript: string[] = [
     "ToolGuard portfolio demo",
+    `deterministicSeed: ${FLAGSHIP_DEMO_SEED}`,
+    `scenarioList: ${FLAGSHIP_SCENARIO_LIST.join(" -> ")}`,
     `approvedPorts: ${APPROVED_PORTS}`,
     `coreApi: ${CORE_URL}`
   ];
+  assertApprovedPorts([3660, ...(startUi ? [3661] : [])]);
 
   try {
-    handle = await createMcpAdapterDemoApiServer({ host: "127.0.0.1", port: 3660 });
+    const repoRoot = process.env.INIT_CWD ?? path.resolve(new URL("../../..", import.meta.url).pathname);
+    const evidenceRoot = path.join(repoRoot, "runs");
+    const deterministicRunDir = path.join(evidenceRoot, FLAGSHIP_DEMO_RUN_ID);
+    await rm(deterministicRunDir, { recursive: true, force: true });
+    transcript.push(`fixtureReset: cleared deterministic run directory ${deterministicRunDir}`);
+
+    handle = await createMcpAdapterDemoApiServer({
+      host: "127.0.0.1",
+      port: 3660,
+      evidenceRoot,
+      runId: FLAGSHIP_DEMO_RUN_ID
+    });
     await assertJson(`${CORE_URL}/health`, "Core/API health");
     const finalAcceptanceTranscript = await exercisePortfolioAcceptanceSurfaces(handle);
+    const topology = await assertJson<{ readonly nodes: readonly unknown[]; readonly edges: readonly unknown[] }>(
+      `${CORE_URL}/api/topology/latest`,
+      "topology map"
+    );
+    const narrative = await assertJson<{ readonly text: string }>(`${CORE_URL}/api/narrative/latest`, "run health narrative");
+    const simulation = await postJson<{ readonly previewDecisions: readonly unknown[]; readonly evidenceLinks: readonly unknown[] }>(
+      `${CORE_URL}/api/policy/simulate`,
+      { scenarioId: "retry-loop-failure", proposedPolicy: { retryLimit: 1, timeoutMs: 250 } },
+      "policy simulation"
+    );
+    const verification = await postJson<{ readonly routeType: string; readonly evidenceLinks: readonly unknown[] }>(
+      `${CORE_URL}/api/integrations/verify`,
+      { routeType: "mcp-routed" },
+      "integration verification"
+    );
     const replay = await assertJson<{ readonly replayableRuns: readonly unknown[] }>(`${CORE_URL}/api/replay`, "replay metadata");
     const replayResult = await postJson<{ readonly status: string }>(
       `${CORE_URL}/api/replay`,
@@ -85,6 +126,19 @@ export async function runPortfolioDemo(options: PortfolioDemoOptions = {}): Prom
     }>(`${CORE_URL}/api/reports/export`, "report export");
     if (!report.manifestValid) {
       throw new Error(`Portfolio demo report manifest did not validate: ${report.validationErrors.join("; ")}`);
+    }
+    const bundle = await postJson<{
+      readonly manifestJson: string;
+      readonly manifestUrl: string;
+      readonly manifestValid: boolean;
+      readonly validationErrors: readonly string[];
+    }>(
+      `${CORE_URL}/api/bundle/export`,
+      { replaySafety: { fixtureOnly: true, safeLoopback: true } },
+      "evidence bundle export"
+    );
+    if (!bundle.manifestValid) {
+      throw new Error(`Evidence bundle manifest did not validate: ${bundle.validationErrors.join("; ")}`);
     }
 
     if (startUi) {
@@ -107,6 +161,11 @@ export async function runPortfolioDemo(options: PortfolioDemoOptions = {}): Prom
     const reportText = await readFile(report.reportHtml, "utf8");
     const manifestText = await readFile(report.manifestJson, "utf8");
     const redactionSummaryText = await readFile(report.redactionSummary, "utf8");
+    const ledgerText = await readFile(path.join(handle.result.evidenceDir, "ledger.jsonl"), "utf8");
+    const topologyText = await readFile(path.join(handle.result.evidenceDir, "topology.json"), "utf8");
+    const narrativeText = await readFile(path.join(handle.result.evidenceDir, "narrative.json"), "utf8");
+    const bundleManifestText = await readFile(bundle.manifestJson, "utf8");
+    const storyText = JSON.stringify(await assertJson<unknown>(`${CORE_URL}/api/story`, "story mode payload"));
     const userVisibleText = [
       handle.result.transcript,
       JSON.stringify(latest.events),
@@ -114,7 +173,12 @@ export async function runPortfolioDemo(options: PortfolioDemoOptions = {}): Prom
       JSON.stringify(integrations),
       reportText,
       manifestText,
-      redactionSummaryText
+      redactionSummaryText,
+      ledgerText,
+      topologyText,
+      narrativeText,
+      bundleManifestText,
+      storyText
     ].join("\n");
     assertNoSecrets(userVisibleText);
     assertNoUnsupportedOverclaims(userVisibleText);
@@ -135,7 +199,12 @@ export async function runPortfolioDemo(options: PortfolioDemoOptions = {}): Prom
       `evidenceDir: ${handle.result.evidenceDir}`,
       `reportHtml: ${report.reportHtml}`,
       `manifestJson: ${report.manifestJson}`,
+      `bundleManifestJson: ${bundle.manifestJson}`,
       `redactionSummary: ${report.redactionSummary}`,
+      `topologyMap: nodes=${topology.nodes.length} edges=${topology.edges.length}`,
+      `runHealthNarrative: ${narrative.text.split(/\r?\n/)[0] ?? "generated"}`,
+      `policySimulation: decisions=${simulation.previewDecisions.length} evidenceLinks=${simulation.evidenceLinks.length}`,
+      `integrationVerification: route=${verification.routeType} evidenceLinks=${verification.evidenceLinks.length}`,
       `replayableRuns: ${replay.replayableRuns.length}`,
       `replayStatus: ${replayResult.status}`,
       `eventCount: ${latest.eventCount}`,
@@ -179,6 +248,8 @@ export async function runPortfolioDemo(options: PortfolioDemoOptions = {}): Prom
       integrationClaimLevels: integrations.integrations.map(
         (integration) => `${integration.name}:${integration.route}:${integration.claimLevel}`
       ),
+      scenarioList: FLAGSHIP_SCENARIO_LIST,
+      evidenceBundleManifest: bundle.manifestJson,
       transcriptLines: transcript
     };
   } finally {
@@ -208,6 +279,13 @@ export async function runPortfolioDemo(options: PortfolioDemoOptions = {}): Prom
     cleanupVerified: true,
     transcript: transcriptWithCleanup.join("\n")
   };
+}
+
+function assertApprovedPorts(ports: readonly number[]): void {
+  const outside = ports.filter((port) => port < 3660 || port > 3669);
+  if (outside.length > 0) {
+    throw new Error(`Portfolio demo attempted to use ports outside ${APPROVED_PORTS}: ${outside.join(", ")}`);
+  }
 }
 
 function startUiDevServer(): ChildProcess {
@@ -406,7 +484,7 @@ async function exerciseCliWrapper(evidenceRoot: string): Promise<string[]> {
   assertNoSecrets(rendered);
   return [
     `  - toolplane run exitCode: ${result.exitCode}`,
-    `  - evidenceDir: ${result.evidenceDir}`,
+    `  - evidenceRoot: ${evidenceRoot}`,
     `  - redactionReasons: ${result.process?.redactionReasons.join(",") ?? "none"}`
   ];
 }

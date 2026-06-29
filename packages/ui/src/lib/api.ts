@@ -18,6 +18,7 @@ import type {
   StoryModePayload,
   TopologyPayload,
   TracePayload,
+  ValidationDashboardPayload,
   VerificationReceipt,
   VerificationRouteType
 } from "./model.js";
@@ -86,6 +87,10 @@ export async function fetchReplay(signal?: AbortSignal): Promise<ReplayPayload> 
 
 export async function fetchStoryMode(signal?: AbortSignal): Promise<StoryModePayload> {
   return await fetchJson<StoryModePayload>("/api/story", signal);
+}
+
+export async function fetchValidationDashboard(signal?: AbortSignal): Promise<ValidationDashboardPayload> {
+  return await fetchJson<ValidationDashboardPayload>("/api/validation-dashboard", signal);
 }
 
 export async function resetStoryScenario(input: { scenarioId: string }, signal?: AbortSignal): Promise<unknown> {

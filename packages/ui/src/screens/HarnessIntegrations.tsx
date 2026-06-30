@@ -2,7 +2,15 @@ import { useMemo, useState } from "react";
 import { StatePanel } from "../components/StatePanel.js";
 import { StatusChip } from "../components/StatusChip.js";
 import { exportReport, verifyIntegration } from "../lib/api.js";
-import type { IntegrationView, IntegrationsPayload, ResourceStatus, VerificationReceipt, VerificationRouteType } from "../lib/model.js";
+import type {
+  IntegrationEvidenceFreshness,
+  IntegrationRouteCoverageView,
+  IntegrationView,
+  IntegrationsPayload,
+  ResourceStatus,
+  VerificationReceipt,
+  VerificationRouteType
+} from "../lib/model.js";
 
 interface HarnessIntegrationsProps {
   readonly payload?: IntegrationsPayload;
@@ -21,6 +29,7 @@ export function HarnessIntegrations({ payload, status, error }: HarnessIntegrati
     () => payload?.integrations.find((integration) => integration.id === selectedId) ?? payload?.integrations[0],
     [payload?.integrations, selectedId]
   );
+  const coverageRows = useMemo(() => mergeCoverageRows(payload?.routeCoverage ?? [], receipts), [payload?.routeCoverage, receipts]);
 
   if (status === "loading") {
     return <StatePanel status="loading" title="Loading Harness Integrations" message="Fetching supported routes and claim levels from `/api/integrations`." />;
@@ -71,6 +80,8 @@ export function HarnessIntegrations({ payload, status, error }: HarnessIntegrati
         </p>
       </div>
 
+      <CoverageMatrix rows={coverageRows} />
+
       <div className="grid gap-4 lg:grid-cols-[0.92fr_1.08fr]">
         <section className="grid gap-4 md:grid-cols-2">
         {payload.integrations.map((integration) => (
@@ -107,6 +118,153 @@ export function HarnessIntegrations({ payload, status, error }: HarnessIntegrati
       </div>
     </section>
   );
+}
+
+function CoverageMatrix({ rows }: { readonly rows: readonly IntegrationRouteCoverageView[] }) {
+  const warnings = rows.filter((row) => row.warning);
+  return (
+    <section className="rounded-3xl border border-border bg-bg-panel/90 p-5" aria-label="Route coverage matrix">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <StatusChip label="Route coverage matrix" tone="selected" />
+          <h3 className="mt-3 text-xl font-semibold text-text">Coverage honesty by integration route</h3>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-text-muted">
+            The matrix separates mediated, supervised, observed, and not-covered paths. Availability is only claimed when
+            local evidence exists, and stale or missing evidence is shown as a warning instead of false confidence.
+          </p>
+        </div>
+        <StatusChip label={`${warnings.length} evidence warning${warnings.length === 1 ? "" : "s"}`} tone={warnings.length > 0 ? "warning" : "healthy"} />
+      </div>
+
+      <div className="mt-5 overflow-x-auto">
+        <table className="min-w-full border-separate border-spacing-0 text-left text-sm">
+          <thead>
+            <tr className="text-xs uppercase tracking-[0.2em] text-text-subtle">
+              <th className="border-b border-border px-3 py-3 font-semibold">Route</th>
+              <th className="border-b border-border px-3 py-3 font-semibold">Coverage label</th>
+              <th className="border-b border-border px-3 py-3 font-semibold">Configured</th>
+              <th className="border-b border-border px-3 py-3 font-semibold">Available</th>
+              <th className="border-b border-border px-3 py-3 font-semibold">Recent evidence</th>
+              <th className="border-b border-border px-3 py-3 font-semibold">Warning / limitation</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.routeType} className="group">
+                <td className="border-b border-border/70 px-3 py-4 align-top">
+                  <p className="font-semibold text-text">{row.label}</p>
+                  <p className="mt-1 text-xs text-text-subtle">{row.routeType}</p>
+                </td>
+                <td className="border-b border-border/70 px-3 py-4 align-top">
+                  <StatusChip label={row.claim} tone={toneForClaim(row.claim)} />
+                </td>
+                <td className="border-b border-border/70 px-3 py-4 align-top">
+                  <StatusChip label={row.configured ? "configured" : "not configured"} tone={row.configured ? "healthy" : "degraded"} />
+                </td>
+                <td className="border-b border-border/70 px-3 py-4 align-top">
+                  <StatusChip label={row.available ? "available" : "not verified"} tone={row.available ? "healthy" : "degraded"} />
+                </td>
+                <td className="border-b border-border/70 px-3 py-4 align-top">
+                  <StatusChip label={freshnessLabel(row.evidenceFreshness)} tone={toneForFreshness(row.evidenceFreshness)} />
+                  {row.lastEvidenceAt ? <p className="mt-2 text-xs text-text-subtle">{new Date(row.lastEvidenceAt).toLocaleString()}</p> : null}
+                </td>
+                <td className="border-b border-border/70 px-3 py-4 align-top">
+                  {row.warning ? <p className="rounded-xl border border-warning/35 bg-warning/10 p-3 text-xs leading-5 text-warning">{row.warning}</p> : null}
+                  <p className="mt-2 text-xs leading-5 text-text-muted">{row.limitation}</p>
+                  <details className="mt-2 rounded-lg border border-border/70 bg-bg/45 p-2 text-xs text-text-muted">
+                    <summary className="cursor-pointer font-semibold text-text">Evidence checks</summary>
+                    <ul className="mt-2 space-y-2">
+                      {row.checks.map((check) => (
+                        <li key={`${check.label}-${check.state}`}>
+                          <span className="font-semibold text-text">{check.label}</span>: {check.state}. {check.evidence}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function mergeCoverageRows(
+  baseRows: readonly IntegrationRouteCoverageView[],
+  receipts: readonly VerificationReceipt[]
+): readonly IntegrationRouteCoverageView[] {
+  const fallbackRows = baseRows.length > 0 ? baseRows : defaultCoverageRows();
+  return fallbackRows.map((row) => {
+    if (row.routeType === "native-host-tools") return row;
+    const latestReceipt = receipts.find((receipt) => receipt.routeType === row.routeType);
+    if (!latestReceipt) return row;
+    return {
+      routeType: row.routeType,
+      label: row.label,
+      claim: row.claim,
+      configured: latestReceipt.checkedCapabilities.some((check) => check.status === "configured"),
+      available: latestReceipt.checkedCapabilities.some((check) => check.status === "available"),
+      evidenceFreshness: "recent",
+      lastEvidenceAt: latestReceipt.timestamp,
+      limitation: row.limitation,
+      checks: latestReceipt.routeCoverage.map((entry) => ({
+        label: entry.label,
+        state: entry.state,
+        evidence: entry.evidence
+      }))
+    };
+  });
+}
+
+function defaultCoverageRows(): readonly IntegrationRouteCoverageView[] {
+  return [
+    {
+      routeType: "mcp-routed",
+      label: "MCP routed adapter path",
+      claim: "mediated",
+      configured: false,
+      available: false,
+      evidenceFreshness: "missing",
+      warning: "No recent evidence has been recorded for this configured route in the active Core session.",
+      limitation: "Covered only when calls route through the ToolGuard MCP proxy.",
+      checks: [{ label: "Evidence receipt", state: "not-verified", evidence: "No integration.verified receipt is present." }]
+    },
+    {
+      routeType: "cli-supervised",
+      label: "CLI supervised process path",
+      claim: "supervised",
+      configured: false,
+      available: false,
+      evidenceFreshness: "missing",
+      warning: "No recent evidence has been recorded for this configured route in the active Core session.",
+      limitation: "Covered at the process boundary through `toolguard run --`.",
+      checks: [{ label: "Evidence receipt", state: "not-verified", evidence: "No integration.verified receipt is present." }]
+    },
+    {
+      routeType: "sdk-wrapped-python",
+      label: "Python SDK-wrapped sidecar path",
+      claim: "observed",
+      configured: false,
+      available: false,
+      evidenceFreshness: "missing",
+      warning: "No recent evidence has been recorded for this configured route in the active Core session.",
+      limitation: "Observed only for explicit wrapper and loopback sidecar usage.",
+      checks: [{ label: "Evidence receipt", state: "not-verified", evidence: "No integration.verified receipt is present." }]
+    },
+    {
+      routeType: "native-host-tools",
+      label: "Native host tools without a ToolGuard route",
+      claim: "not-covered",
+      configured: false,
+      available: false,
+      evidenceFreshness: "missing",
+      warning: "Not covered. Route calls through MCP, SDK wrappers, CLI shim, or ToolGuard API before claiming protection.",
+      limitation: "ToolGuard does not claim native host interception for unrouted host tools.",
+      checks: [{ label: "Coverage claim", state: "not-covered", evidence: "No routed ToolGuard boundary is configured for this row." }]
+    }
+  ];
 }
 
 function WizardPanel({ integration, receipts, verifying, onVerify, exporting, onExport }: {
@@ -242,4 +400,24 @@ function toneFor(status: string): "healthy" | "degraded" | "failed" | "neutral" 
   if (status === "unsupported") return "failed";
   if (status === "not-yet-verified") return "degraded";
   return "neutral";
+}
+
+function toneForClaim(claim: string): "healthy" | "degraded" | "failed" | "neutral" | "selected" {
+  if (claim === "mediated") return "healthy";
+  if (claim === "supervised") return "selected";
+  if (claim === "observed") return "degraded";
+  if (claim === "not-covered") return "failed";
+  return "neutral";
+}
+
+function freshnessLabel(freshness: IntegrationEvidenceFreshness): string {
+  if (freshness === "recent") return "recent evidence";
+  if (freshness === "stale") return "stale evidence";
+  return "no recent evidence";
+}
+
+function toneForFreshness(freshness: IntegrationEvidenceFreshness): "healthy" | "warning" | "degraded" {
+  if (freshness === "recent") return "healthy";
+  if (freshness === "stale") return "warning";
+  return "degraded";
 }

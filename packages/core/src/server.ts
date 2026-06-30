@@ -300,7 +300,7 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
       }
 
       if (url.pathname === "/api/integrations") {
-        sendJson(response, 200, buildIntegrationsPayload(runId));
+        sendJson(response, 200, buildIntegrationsPayload(runId, session.recorder.events));
         return;
       }
 
@@ -2168,10 +2168,12 @@ function buildPolicyPayload(runId: StableId, events: readonly CoreEvent[], draft
   };
 }
 
-function buildIntegrationsPayload(runId: StableId): JsonObject {
+function buildIntegrationsPayload(runId: StableId, events: readonly CoreEvent[]): JsonObject {
+  const routeCoverage = buildIntegrationCoverageMatrix(events);
   return {
     runId,
     generatedAt: new Date().toISOString(),
+    routeCoverage,
     integrations: [
       {
         id: "cline",
@@ -2231,6 +2233,115 @@ function buildIntegrationsPayload(runId: StableId): JsonObject {
       }
     ]
   };
+}
+
+function buildIntegrationCoverageMatrix(events: readonly CoreEvent[]): JsonObject[] {
+  const receipts = events
+    .filter((event) => event.type === "integration.verified" && isRecord(event.data))
+    .map((event) => ({ event, receipt: event.data as JsonObject }))
+    .filter(({ receipt }) => parseRouteType(receipt.routeType) !== undefined);
+  return [
+    buildRouteCoverageRow({
+      routeType: "mcp-routed",
+      label: "MCP routed adapter path",
+      claim: "mediated",
+      limitation: "Covered only when calls route through the ToolGuard MCP proxy. Native host tools remain outside the claim.",
+      receipts
+    }),
+    buildRouteCoverageRow({
+      routeType: "cli-supervised",
+      label: "CLI supervised process path",
+      claim: "supervised",
+      limitation: "Covered at the process boundary through `toolguard run --`; native agent tool calls still need MCP, SDK wrapper, or API routing.",
+      receipts
+    }),
+    buildRouteCoverageRow({
+      routeType: "sdk-wrapped-python",
+      label: "Python SDK-wrapped sidecar path",
+      claim: "observed",
+      limitation: "Observed only for explicit wrapper and loopback sidecar usage. Direct framework tools are not intercepted.",
+      receipts
+    }),
+    {
+      routeType: "native-host-tools",
+      label: "Native host tools without a ToolGuard route",
+      claim: "not-covered",
+      configured: false,
+      available: false,
+      evidenceFreshness: "missing",
+      warning: "Not covered. Route calls through MCP, SDK wrappers, CLI shim, or ToolGuard API before claiming protection.",
+      limitation: "ToolGuard does not claim native host interception for unrouted host tools.",
+      checks: [
+        {
+          label: "Coverage claim",
+          state: "not-covered",
+          evidence: "No routed, wrapped, or supervised ToolGuard boundary is configured for this row."
+        }
+      ]
+    }
+  ];
+}
+
+function buildRouteCoverageRow(input: {
+  readonly routeType: IntegrationRouteType;
+  readonly label: string;
+  readonly claim: "mediated" | "supervised" | "observed";
+  readonly limitation: string;
+  readonly receipts: readonly { readonly event: CoreEvent; readonly receipt: JsonObject }[];
+}): JsonObject {
+  const matchingReceipts = input.receipts.filter(({ receipt }) => receipt.routeType === input.routeType);
+  const latestReceipt = matchingReceipts.at(-1);
+  const checks = latestReceipt ? checksFromReceipt(latestReceipt.receipt) : [];
+  const configured = checks.some((check) => check.state === "configured");
+  const available = checks.some((check) => check.state === "available");
+  const lastEvidenceAt = latestReceipt?.event.occurredAt;
+  const evidenceFreshness = lastEvidenceAt ? evidenceFreshnessFor(lastEvidenceAt) : "missing";
+  return {
+    routeType: input.routeType,
+    label: input.label,
+    claim: input.claim,
+    configured,
+    available,
+    evidenceFreshness,
+    ...(lastEvidenceAt ? { lastEvidenceAt } : {}),
+    ...(evidenceFreshness === "recent"
+      ? {}
+      : {
+          warning:
+            evidenceFreshness === "missing"
+              ? "No recent evidence has been recorded for this configured route in the active Core session."
+              : "Route evidence is older than the recent-evidence window. Re-run a local probe before claiming availability."
+        }),
+    limitation: input.limitation,
+    checks:
+      checks.length > 0
+        ? checks
+        : [
+            {
+              label: "Evidence receipt",
+              state: "not-verified",
+              evidence: "No integration.verified receipt is present in the active Core session."
+            }
+          ]
+  };
+}
+
+function checksFromReceipt(receipt: JsonObject): JsonObject[] {
+  const routeCoverage = Array.isArray(receipt.routeCoverage) ? receipt.routeCoverage : [];
+  return routeCoverage
+    .filter((entry): entry is JsonObject => isRecord(entry))
+    .map((entry) => ({
+      label: typeof entry.label === "string" ? entry.label : "Route check",
+      state: typeof entry.state === "string" ? entry.state : "not-verified",
+      evidence: typeof entry.evidence === "string" ? entry.evidence : "No non-sensitive evidence summary was recorded."
+    }));
+}
+
+function evidenceFreshnessFor(occurredAt: string): "recent" | "stale" {
+  const timestamp = Date.parse(occurredAt);
+  if (!Number.isFinite(timestamp)) return "stale";
+  const oneHourMs = 60 * 60 * 1000;
+  return Date.now() - timestamp <= oneHourMs ? "recent" : "stale";
 }
 
 function parseScenarioId(value: unknown): RecordedPolicyScenarioId | undefined {

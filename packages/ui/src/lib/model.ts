@@ -268,6 +268,7 @@ export interface IntegrationsPayload {
   readonly runId: string;
   readonly generatedAt: string;
   readonly integrations: readonly IntegrationView[];
+  readonly routeCoverage?: readonly IntegrationRouteCoverageView[];
 }
 
 export type VerificationRouteType = IntegrationRouteType;
@@ -473,6 +474,26 @@ export interface IntegrationView {
   readonly claimLevel: "configured" | "available" | "unsupported" | "not-yet-verified";
   readonly status: "configured" | "available" | "unsupported" | "not-yet-verified";
   readonly limitation: string;
+}
+
+export type IntegrationCoverageClaim = "mediated" | "supervised" | "observed" | "not-covered";
+export type IntegrationEvidenceFreshness = "recent" | "stale" | "missing";
+
+export interface IntegrationRouteCoverageView {
+  readonly routeType: VerificationRouteType | "native-host-tools";
+  readonly label: string;
+  readonly claim: IntegrationCoverageClaim;
+  readonly configured: boolean;
+  readonly available: boolean;
+  readonly evidenceFreshness: IntegrationEvidenceFreshness;
+  readonly lastEvidenceAt?: string;
+  readonly warning?: string;
+  readonly limitation: string;
+  readonly checks: readonly {
+    readonly label: string;
+    readonly state: string;
+    readonly evidence: string;
+  }[];
 }
 
 export interface CorrelationContext {

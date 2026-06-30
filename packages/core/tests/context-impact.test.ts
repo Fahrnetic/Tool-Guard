@@ -148,6 +148,25 @@ describe("context and token waste accounting", () => {
     expect(failure.contextImpact.retryAmplification.contextMultiplier).toBe(3);
   });
 
+  it("counts the final returned Failure Card safe summary as model-facing context", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-context-final-summary-"));
+    const runId = createId("run");
+    const session = new CoreSession({ evidenceRoot: root, runId });
+
+    const failure = await session.failToolCall(
+      makeCall({ runId, toolName: "fixture.final-summary" }),
+      "timeout",
+      ["deadline exceeded after model-facing side-effect accounting"]
+    );
+
+    expect(failure.safeSummary).toContain("Side effects:");
+    expect(failure.contextImpact.modelFacingContent.bytes).toBe(Buffer.byteLength(failure.safeSummary, "utf8"));
+    expect(failure.contextImpact.modelFacingContent.chars).toBe([...failure.safeSummary].length);
+    expect(failure.contextImpact.tokenEstimate.estimatedTokens).toBe(
+      failure.contextImpact.modelFacingContent.estimatedTokens
+    );
+  });
+
   it("adds context waste deltas to policy simulation and estimation notes to reports", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "toolguard-context-report-"));
     const runId = createId("run");

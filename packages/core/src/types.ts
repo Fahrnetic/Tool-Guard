@@ -249,13 +249,15 @@ export interface PolicyDecision {
 }
 
 export type PolicyPreviewDecision = "allow" | "block" | "retry" | "fail-fast" | "open circuit" | "close circuit";
-export type RecordedPolicyScenarioId = "safe-success" | "blocked-destructive" | "retry-loop-failure";
+export type RecordedPolicyScenarioId = "safe-success" | "blocked-destructive" | "retry-loop-failure" | "output-budget-flood";
 
 export interface ProposedPolicy {
   readonly retryLimit?: number;
   readonly circuitFailureThreshold?: number;
   readonly destructiveAction?: "allow-fixture-only" | "block";
   readonly timeoutMs?: number;
+  readonly outputLimitBytes?: number;
+  readonly outputBudgetBytes?: number;
 }
 
 export interface PolicySimulationResult {

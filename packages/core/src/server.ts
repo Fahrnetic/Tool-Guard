@@ -2098,7 +2098,10 @@ function buildIntegrationsPayload(runId: StableId): JsonObject {
 }
 
 function parseScenarioId(value: unknown): RecordedPolicyScenarioId | undefined {
-  return value === "safe-success" || value === "blocked-destructive" || value === "retry-loop-failure"
+  return value === "safe-success" ||
+    value === "blocked-destructive" ||
+    value === "retry-loop-failure" ||
+    value === "output-budget-flood"
     ? value
     : undefined;
 }

@@ -83,6 +83,28 @@ describe("policy simulator and integration verification core", () => {
     expect(events.filter((event) => event.type === "evidence.artifact.created").length).toBeGreaterThanOrEqual(3);
   });
 
+  it("supports output-limit policy knobs and reports before/after context waste deltas", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-policy-output-"));
+    const runId = createId("run");
+    const session = new CoreSession({ evidenceRoot: root, runId });
+
+    const simulation = await simulatePolicy({
+      session,
+      scenarioId: "output-budget-flood",
+      proposedPolicy: { outputLimitBytes: 256, outputBudgetBytes: 256 }
+    });
+
+    expect(simulation.scenarioId).toBe("output-budget-flood");
+    expect(simulation.previewDecisions).toContain("fail-fast");
+    expect(simulation.proposedPolicy.outputLimitBytes).toBe(256);
+    expect(simulation.proposedPolicy.outputBudgetBytes).toBe(256);
+    expect(simulation.contextDelta.before.bytes).toBeGreaterThan(simulation.contextDelta.after.bytes);
+    expect(simulation.contextDelta.delta.bytes).toBeLessThan(0);
+    expect(simulation.contextDelta.delta.estimatedTokens).toBeLessThan(0);
+    expect(simulation.contextDelta.notes.join(" ")).toMatch(/output/i);
+    expect(simulation.dryRun.downstreamExecuted).toBe(false);
+  });
+
   it("verifies MCP, Python, and CLI routes with local-only probes and receipt artifacts", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "toolguard-verify-"));
     const runId = createId("run");
@@ -146,14 +168,15 @@ describe("policy simulator and integration verification core", () => {
     const baseUrl = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
 
     const simulation = await postJson<PolicySimulationResult>(`${baseUrl}/api/policy/simulate`, {
-      scenarioId: "blocked-destructive",
-      proposedPolicy: { destructiveAction: "block" }
+      scenarioId: "output-budget-flood",
+      proposedPolicy: { outputBudgetBytes: 128 }
     });
     const verification = await postJson<IntegrationVerificationReceipt>(`${baseUrl}/api/integrations/verify`, {
       routeType: "cli-supervised"
     });
 
-    expect(simulation.previewDecisions).toContain("block");
+    expect(simulation.previewDecisions).toContain("fail-fast");
+    expect(simulation.contextDelta.delta.bytes).toBeLessThan(0);
     expect(simulation.dryRun.downstreamExecuted).toBe(false);
     expect(verification.routeType).toBe("cli-supervised");
     expect(verification.checkedCapabilities.map((capability) => capability.capability)).toEqual(

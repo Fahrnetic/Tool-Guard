@@ -16,6 +16,7 @@ export function PolicyStudio({ payload, status, error, onSaved }: PolicyStudioPr
   const [timeoutMs, setTimeoutMs] = useState(1000);
   const [retryLimit, setRetryLimit] = useState(1);
   const [circuitFailureThreshold, setCircuitFailureThreshold] = useState(2);
+  const [outputLimitBytes, setOutputLimitBytes] = useState(4096);
   const [destructiveAction, setDestructiveAction] = useState<"block" | "allow-fixture-only">("block");
   const [scenarioId, setScenarioId] = useState<PolicyScenarioId>("blocked-destructive");
   const [saving, setSaving] = useState(false);
@@ -23,15 +24,22 @@ export function PolicyStudio({ payload, status, error, onSaved }: PolicyStudioPr
   const [simulating, setSimulating] = useState(false);
   const [simulation, setSimulation] = useState<PolicySimulation | undefined>();
   const [simulationError, setSimulationError] = useState<string | undefined>();
-  const dirty = timeoutMs !== 1000 || retryLimit !== 1 || circuitFailureThreshold !== 2 || destructiveAction !== "block";
+  const dirty =
+    timeoutMs !== 1000 ||
+    retryLimit !== 1 ||
+    circuitFailureThreshold !== 2 ||
+    outputLimitBytes !== 4096 ||
+    destructiveAction !== "block";
   const validation = useMemo(() => {
     if (timeoutMs < 1) return "Timeout must be at least 1 ms.";
     if (retryLimit < 0) return "Retry limit cannot be negative.";
     if (retryLimit > 5) return "Retry limit must remain bounded at 5 or fewer.";
     if (circuitFailureThreshold < 1) return "Circuit failure threshold must be at least 1.";
     if (circuitFailureThreshold > 10) return "Circuit failure threshold must remain bounded at 10 or fewer.";
+    if (outputLimitBytes < 1) return "Output limit must be at least 1 byte.";
+    if (outputLimitBytes > 1024 * 1024) return "Output limit must remain bounded at 1 MiB or fewer.";
     return undefined;
-  }, [circuitFailureThreshold, retryLimit, timeoutMs]);
+  }, [circuitFailureThreshold, outputLimitBytes, retryLimit, timeoutMs]);
 
   if (status === "loading") {
     return <StatePanel status="loading" title="Loading Policy Studio" message="Fetching retry, circuit, timeout, output-limit, sanitizer, and preflight policy." />;
@@ -69,6 +77,8 @@ export function PolicyStudio({ payload, status, error, onSaved }: PolicyStudioPr
           timeoutMs,
           retryLimit,
           circuitFailureThreshold,
+          outputLimitBytes,
+          outputBudgetBytes: outputLimitBytes,
           destructiveAction
         }
       }));
@@ -153,6 +163,17 @@ export function PolicyStudio({ payload, status, error, onSaved }: PolicyStudioPr
               />
             </label>
             <label className="block text-sm font-medium text-text-muted">
+              Output limit / budget (bytes)
+              <input
+                type="number"
+                min={1}
+                max={1024 * 1024}
+                value={outputLimitBytes}
+                onChange={(event) => setOutputLimitBytes(Number(event.target.value))}
+                className="mt-2 w-full rounded-xl border border-border bg-bg px-3 py-2 text-text hover:border-primary/40 focus:border-primary"
+              />
+            </label>
+            <label className="block text-sm font-medium text-text-muted">
               Destructive action policy
               <select
                 value={destructiveAction}
@@ -173,7 +194,7 @@ export function PolicyStudio({ payload, status, error, onSaved }: PolicyStudioPr
               <button type="submit" disabled={Boolean(validation) || saving} className="rounded-xl border border-primary/50 bg-primary/15 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/25 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50">
                 {saving ? "Saving preview..." : "Save preview"}
               </button>
-              <button type="button" onClick={() => { setTimeoutMs(1000); setRetryLimit(1); setCircuitFailureThreshold(2); setDestructiveAction("block"); }} className="rounded-xl border border-border bg-bg px-4 py-2 text-sm font-semibold text-text-muted transition hover:border-primary/40 hover:text-text active:scale-[0.98]">
+              <button type="button" onClick={() => { setTimeoutMs(1000); setRetryLimit(1); setCircuitFailureThreshold(2); setOutputLimitBytes(4096); setDestructiveAction("block"); }} className="rounded-xl border border-border bg-bg px-4 py-2 text-sm font-semibold text-text-muted transition hover:border-primary/40 hover:text-text active:scale-[0.98]">
                 Reset
               </button>
               <button type="button" onClick={() => setSaveError(undefined)} className="rounded-xl border border-border bg-bg px-4 py-2 text-sm font-semibold text-text-muted transition hover:border-primary/40 hover:text-text active:scale-[0.98]">
@@ -229,7 +250,8 @@ export function PolicyStudio({ payload, status, error, onSaved }: PolicyStudioPr
 const scenarioOptions: readonly { id: PolicyScenarioId; label: string; description: string }[] = [
   { id: "safe-success", label: "Safe success", description: "A healthy recorded call that can close a circuit after a recovery signal." },
   { id: "blocked-destructive", label: "Blocked destructive fixture", description: "A high-risk filesystem scenario that should move from allowed risk to pre-execution block." },
-  { id: "retry-loop-failure", label: "Retry-loop containment", description: "A repeated process failure where the proposed policy can fail fast and open a scoped circuit." }
+  { id: "retry-loop-failure", label: "Retry-loop containment", description: "A repeated process failure where the proposed policy can fail fast and open a scoped circuit." },
+  { id: "output-budget-flood", label: "Output-budget flood", description: "An oversized output scenario where output-limit policy can reduce model-facing context waste." }
 ];
 
 function SimulationPanel({ simulation, loading }: { readonly simulation: PolicySimulation | undefined; readonly loading: boolean }) {
@@ -275,7 +297,8 @@ function SimulationPanel({ simulation, loading }: { readonly simulation: PolicyS
         <h4 className="text-sm font-semibold text-text">Policy change and evidence</h4>
         <p className="mt-2 text-sm text-text-muted">
           Proposed retry limit {simulation.proposedPolicy.retryLimit}, circuit threshold {simulation.proposedPolicy.circuitFailureThreshold},
-          timeout {simulation.proposedPolicy.timeoutMs} ms, destructive action {simulation.proposedPolicy.destructiveAction}.
+          timeout {simulation.proposedPolicy.timeoutMs} ms, output limit {simulation.proposedPolicy.outputLimitBytes} bytes,
+          destructive action {simulation.proposedPolicy.destructiveAction}.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           {simulation.evidenceLinks.map((link) => (

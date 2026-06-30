@@ -635,14 +635,15 @@ export class CoreSession {
       observedImpact,
       retryLoopFinding
     });
+    const finalSafeSummary = `${baseFailure.safeSummary} Side effects: ${sideEffectSummary(ledgerEntry)}`;
     const failure = mergeFailureIntelligence(
       {
         ...baseFailure,
-        safeSummary: `${baseFailure.safeSummary} Side effects: ${sideEffectSummary(ledgerEntry)}`,
+        safeSummary: finalSafeSummary,
         contextImpact: buildContextImpact({
           rawContent: rawContentForContext ?? [rawDetails.join("\n"), ...existingArtifacts.map((existing) => `artifact:${existing.kind}:${existing.byteLength}`)].join("\n"),
-          modelFacingContent: baseFailure.safeSummary,
-          safeDisplayedContent: `${baseFailure.safeSummary} Side effects: ${sideEffectSummary(ledgerEntry)}`,
+          modelFacingContent: finalSafeSummary,
+          safeDisplayedContent: finalSafeSummary,
           fingerprint,
           repeatedFingerprintCount: repeatedFailures
         })

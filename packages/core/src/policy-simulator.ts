@@ -104,8 +104,34 @@ export const RECORDED_POLICY_SCENARIOS: readonly RecordedScenario[] = [
       (policy.retryLimit ?? 1) <= 0
         ? "The proposed policy would fail fast instead of replaying the same failing call, then keep the scoped circuit open for containment."
         : "The proposed policy would permit a bounded recovery retry, then fail fast and open the circuit when the retry-loop threshold is reached."
+  },
+  {
+    scenarioId: "output-budget-flood",
+    scenarioName: "Output-budget flood",
+    baselineDecisions: ["allow"],
+    proposedDecisions: (policy) => (outputBudget(policy) < OUTPUT_FLOOD_BYTES ? ["fail-fast"] : ["allow"]),
+    before: scoreBlastRadius({
+      targetType: "process",
+      effectState: "completed",
+      reversibility: "manual-review",
+      destructiveRisk: "medium"
+    }),
+    after: (policy) =>
+      scoreBlastRadius({
+        targetType: "process",
+        effectState: outputBudget(policy) < OUTPUT_FLOOD_BYTES ? "blocked" : "completed",
+        reversibility: "manual-review",
+        destructiveRisk: outputBudget(policy) < OUTPUT_FLOOD_BYTES ? "low" : "medium",
+        failureType: outputBudget(policy) < OUTPUT_FLOOD_BYTES ? "output_limit_exceeded" : undefined
+      }),
+    explanation: (policy) =>
+      outputBudget(policy) < OUTPUT_FLOOD_BYTES
+        ? `The proposed output budget of ${outputBudget(policy)} bytes would fail fast before forwarding the recorded ${OUTPUT_FLOOD_BYTES}-byte flood into model context.`
+        : `The proposed output budget of ${outputBudget(policy)} bytes would still allow the recorded output flood, so context waste remains high.`
   }
 ];
+
+const OUTPUT_FLOOD_BYTES = 16_384;
 
 export async function simulatePolicy(input: PolicySimulationInput): Promise<PolicySimulationResult> {
   const scenario = RECORDED_POLICY_SCENARIOS.find((candidate) => candidate.scenarioId === input.scenarioId);
@@ -133,7 +159,12 @@ export async function simulatePolicy(input: PolicySimulationInput): Promise<Poli
     contextDelta: buildContextWasteDelta({
       beforeContent: scenarioContextSummary(scenario, proposedPolicy, "before"),
       afterContent: scenarioContextSummary(scenario, proposedPolicy, "after"),
-      notes: ["Negative deltas mean the proposed policy would reduce model-facing context."]
+      notes: [
+        "Negative deltas mean the proposed policy would reduce model-facing context.",
+        ...(scenario.scenarioId === "output-budget-flood"
+          ? ["Output-limit and output-budget policy knobs are included in this dry-run context delta."]
+          : [])
+      ]
     }),
     explanation: scenario.explanation(proposedPolicy),
     dryRun: {
@@ -169,17 +200,35 @@ function scenarioContextSummary(
 ): string {
   const decisions = phase === "before" ? scenario.baselineDecisions : scenario.proposedDecisions(policy);
   const repeat = scenario.scenarioId === "retry-loop-failure" && phase === "before" ? 3 : decisions.length;
+  if (scenario.scenarioId === "output-budget-flood") {
+    if (phase === "before") {
+      return `Output flood allowed into model-facing context.\n${"x".repeat(OUTPUT_FLOOD_BYTES)}`;
+    }
+    return `Output flood contained by output budget ${outputBudget(policy)} bytes. Decision: ${decisions.join(", ")}. ${scenario.explanation(policy)}`;
+  }
   const unit = `${scenario.scenarioName}: ${decisions.join(", ")}. ${scenario.explanation(policy)}`;
   return Array.from({ length: Math.max(1, repeat) }, () => unit).join("\n");
 }
 
 function normalizeProposedPolicy(policy: ProposedPolicy | undefined): ProposedPolicy {
+  const outputLimitBytes = clampInteger(
+    policy?.outputLimitBytes ?? policy?.outputBudgetBytes,
+    4096,
+    1,
+    1024 * 1024
+  );
   return {
     retryLimit: clampInteger(policy?.retryLimit, 1, 0, 5),
     circuitFailureThreshold: clampInteger(policy?.circuitFailureThreshold, 2, 1, 10),
     destructiveAction: policy?.destructiveAction ?? "block",
-    timeoutMs: clampInteger(policy?.timeoutMs, 1000, 1, 60_000)
+    timeoutMs: clampInteger(policy?.timeoutMs, 1000, 1, 60_000),
+    outputLimitBytes,
+    outputBudgetBytes: clampInteger(policy?.outputBudgetBytes ?? outputLimitBytes, outputLimitBytes, 1, 1024 * 1024)
   };
+}
+
+function outputBudget(policy: ProposedPolicy): number {
+  return policy.outputBudgetBytes ?? policy.outputLimitBytes ?? 4096;
 }
 
 function clampInteger(value: number | undefined, fallback: number, min: number, max: number): number {

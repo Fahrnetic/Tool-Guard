@@ -283,7 +283,11 @@ export async function validateEvidenceBundleManifest(input: { readonly bundleDir
   }
 
   errors.push(...(await validateContainedLinks(input.bundleDir, requiredFiles)));
-  errors.push(...(await validateReproducibilityFile(input.bundleDir, manifest.files.reproducibilityJson)));
+  errors.push(...(await validateReproducibilityFile(
+    input.bundleDir,
+    manifest.files.reproducibilityJson,
+    manifest.files.ledgerJsonl
+  )));
 
   const hashedPaths = new Set(manifest.artifactHashes.map((artifact) => artifact.relativePath));
   for (const relativePath of await listBundleFiles(input.bundleDir)) {
@@ -599,9 +603,13 @@ function isLoopbackReplayEntry(entry: SideEffectLedgerEntry): boolean {
   if (endpoint.protocol !== "http" && endpoint.protocol !== "https") return false;
   if (!isLoopbackHost(endpoint.host)) return false;
   if (!Number.isInteger(endpoint.port) || endpoint.port < 3660 || endpoint.port > 3669) return false;
-  const routeMatches = !endpoint.routeId || endpoint.routeId === entry.routeConfig.routeId;
-  const toolMatches = !endpoint.toolName || endpoint.toolName === entry.toolName;
+  const routeMatches = hasNonEmptyString(endpoint.routeId) && endpoint.routeId === entry.routeConfig.routeId;
+  const toolMatches = hasNonEmptyString(endpoint.toolName) && endpoint.toolName === entry.toolName;
   return entry.reversibility === "reversible" && routeMatches && toolMatches;
+}
+
+function hasNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 function isLoopbackHost(host: string): boolean {
@@ -629,23 +637,45 @@ async function validateContainedLinks(bundleDir: string, relativePaths: readonly
   return errors;
 }
 
-async function validateReproducibilityFile(bundleDir: string, relativePath: string | undefined): Promise<string[]> {
+async function validateReproducibilityFile(
+  bundleDir: string,
+  relativePath: string | undefined,
+  ledgerRelativePath: string | undefined
+): Promise<string[]> {
   if (!relativePath) return [];
   try {
     const parsed = JSON.parse(await readFile(path.join(bundleDir, relativePath), "utf8")) as {
       readonly expected?: Partial<Record<keyof ReproducibilityInputs, unknown>>;
       readonly checks?: readonly { readonly name?: unknown; readonly expected?: unknown; readonly status?: unknown }[];
     };
-    const actual = currentReproducibilityInputs();
+    const actualLedger = await readBundleLedger(bundleDir, ledgerRelativePath);
+    const actual = currentReproducibilityInputs(actualLedger);
     const expected = expectedReproducibilityInputs(parsed);
     const errors = (["cwd", "packageManager", "fixtureSeed"] as const)
       .filter((name) => expected[name] !== actual[name])
       .map((name) => `Reproducibility mismatch for ${name}`);
-    const recomputedRouteConfigHash = hashRecordedRouteConfigs(expected.recordedRouteConfigs);
-    if (expected.routeConfigHash !== recomputedRouteConfigHash) {
+    const selfConsistentRouteConfigHash = hashRecordedRouteConfigs(expected.recordedRouteConfigs);
+    if (expected.routeConfigHash !== selfConsistentRouteConfigHash || expected.routeConfigHash !== actual.routeConfigHash) {
       errors.push("Reproducibility mismatch for routeConfigHash");
     }
     return errors;
+  } catch {
+    return [];
+  }
+}
+
+async function readBundleLedger(
+  bundleDir: string,
+  relativePath: string | undefined
+): Promise<readonly SideEffectLedgerEntry[]> {
+  if (!relativePath || !isContainedRelativePath(relativePath)) return [];
+  try {
+    return (await readFile(path.join(bundleDir, relativePath), "utf8"))
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as unknown)
+      .filter(isSideEffectLedgerEntry);
   } catch {
     return [];
   }
@@ -694,6 +724,16 @@ function isRecordedRouteConfig(value: unknown): value is RecordedRouteConfig {
     typeof value.routeId === "string" &&
     typeof value.downstreamTargetIdentity === "string" &&
     isRecord(value.toolRoute)
+  );
+}
+
+function isSideEffectLedgerEntry(value: unknown): value is SideEffectLedgerEntry {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.toolName === "string" &&
+    typeof value.effectState === "string" &&
+    typeof value.reversibility === "string" &&
+    isRecordedRouteConfig(value.routeConfig)
   );
 }
 

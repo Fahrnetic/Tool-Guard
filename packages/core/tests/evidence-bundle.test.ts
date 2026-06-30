@@ -15,6 +15,7 @@ import {
   type EvidenceArtifact,
   type CoreApiServerHandle,
   type CoreEvent,
+  type LoopbackEndpointMetadata,
   type ToolCall
 } from "../src/index.js";
 
@@ -391,7 +392,9 @@ describe("evidence bundle export", () => {
       downstreamServerId: changedRegistry.get("http.route")?.downstreamServerId ?? createId("server")
     });
     const changedBundle = await exportEvidenceBundle({ session: changedSession });
-    const changedReproducibility = await readJson<{ expected: { routeConfigHash: string } }>(
+    const changedReproducibility = await readJson<{
+      expected: { routeConfigHash: string; recordedRouteConfigs: Array<Record<string, unknown>> };
+    }>(
       path.join(changedBundle.bundleDir, "reproducibility-checks.json")
     );
     expect(changedReproducibility.expected.routeConfigHash).not.toBe(reproducibility.expected.routeConfigHash);
@@ -400,10 +403,8 @@ describe("evidence bundle export", () => {
       ...reproducibility,
       expected: {
         ...reproducibility.expected,
-        recordedRouteConfigs: reproducibility.expected.recordedRouteConfigs.map((config) => ({
-          ...config,
-          downstreamTargetIdentity: "fixture-http-beta"
-        }))
+        routeConfigHash: changedReproducibility.expected.routeConfigHash,
+        recordedRouteConfigs: changedReproducibility.expected.recordedRouteConfigs
       }
     };
     await writeFile(reproducibilityPath, `${JSON.stringify(drifted, null, 2)}\n`, "utf8");
@@ -480,6 +481,59 @@ describe("evidence bundle export", () => {
     expect(verifiedBundle.manifest.replay.safe).toBe(true);
     expect(verifiedBundle.manifest.replay.reason).toMatch(/safe loopback/i);
     expect(verifiedBundle.manifest.replay.instructionsFile).toBe("replay-instructions.json");
+
+    const exportLoopbackBundle = async (
+      prefix: string,
+      loopbackEndpoint: LoopbackEndpointMetadata
+    ) => {
+      const { session } = await makeSeededSession(prefix);
+      const registry = new ToolRegistry();
+      registry.register({
+        toolName: "http.loopback.identity",
+        title: "Loopback identity",
+        description: "Records loopback endpoint metadata for replay identity checks.",
+        protocol: "http",
+        downstreamServerId: createId("server"),
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        destructiveRisk: "none",
+        routeMetadata: {
+          routeType: "direct-http",
+          routeId: "identity-route",
+          downstreamTargetIdentity: "identity-loopback",
+          endpoint: { protocol: "http", host: "127.0.0.1", port: 3662, path: "/identity" },
+          loopbackEndpoint
+        },
+        execute: () => ({ ok: true })
+      });
+      await session.executeToolCall(registry, {
+        ...makeToolCall(session.runId),
+        toolName: "http.loopback.identity",
+        downstreamServerId: registry.get("http.loopback.identity")?.downstreamServerId ?? createId("server")
+      });
+      return exportEvidenceBundle({ session });
+    };
+
+    const missingRouteIdBundle = await exportLoopbackBundle("toolguard-bundle-loopback-missing-route-", {
+      protocol: "http",
+      host: "127.0.0.1",
+      port: 3662,
+      toolName: "http.loopback.identity",
+      verificationStatus: "verified",
+      verified: true
+    });
+    expect(missingRouteIdBundle.manifest.replay.safe).toBe(false);
+    expect(missingRouteIdBundle.manifest.replay.instructionsFile).toBeUndefined();
+
+    const missingToolNameBundle = await exportLoopbackBundle("toolguard-bundle-loopback-missing-tool-", {
+      protocol: "http",
+      host: "127.0.0.1",
+      port: 3662,
+      routeId: "identity-route",
+      verificationStatus: "verified",
+      verified: true
+    });
+    expect(missingToolNameBundle.manifest.replay.safe).toBe(false);
+    expect(missingToolNameBundle.manifest.replay.instructionsFile).toBeUndefined();
   });
 
   it("recomputes reproducibility inputs during validation so environment drift is detected", async () => {

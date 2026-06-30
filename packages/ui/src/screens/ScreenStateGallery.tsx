@@ -15,6 +15,10 @@ const copy: Record<ScreenId, { readonly title: string; readonly description: str
     title: "Run Index Search",
     description: "Latest real failures, filtering, and correlated raw versus mediated attempt comparison."
   },
+  triage: {
+    title: "Diagnosis / Incident",
+    description: "Grouped failure fingerprints, severity, five-question diagnosis answers, and safe issue packet export."
+  },
   impact: {
     title: "Observed Impact",
     description: "Observed changes, safe affected paths, process children, reversibility, attribution, and rollback guidance."

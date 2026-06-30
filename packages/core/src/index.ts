@@ -70,6 +70,7 @@ export {
   estimateContextSize,
   heuristicTokenEstimate
 } from "./context-impact.js";
+export { buildTriagePayload, exportIssuePacket } from "./triage.js";
 export {
   buildRunNarrative,
   buildRunTopology,
@@ -148,7 +149,13 @@ export type {
   PolicySimulationResult,
   ProposedPolicy,
   RecordedPolicyScenarioId,
+  IssuePacketExport,
   RetryLoopFinding,
+  TriageFailureGroup,
+  TriagePayload,
+  TriageQuestionAnswer,
+  TriageSeverity,
+  TriageState,
   ObservedFileChange,
   ObservedGitStatus,
   ObservedLocalImpact,

@@ -284,6 +284,66 @@ export interface PolicySimulationResult {
   readonly evidenceLinks: readonly EvidenceLink[];
 }
 
+export type TriageSeverity = "low" | "medium" | "high" | "critical";
+export type TriageState = "new" | "grouped" | "ready-to-file" | "actioned";
+
+export interface TriageQuestionAnswer {
+  readonly question: "what failed" | "why" | "impact" | "waste" | "next safe action";
+  readonly answer: string;
+  readonly evidence: readonly EvidenceLink[];
+}
+
+export interface TriageFailureGroup {
+  readonly fingerprint: string;
+  readonly count: number;
+  readonly lastOccurrence: string;
+  readonly severity: TriageSeverity;
+  readonly state: TriageState;
+  readonly toolName: string;
+  readonly failureType: FailureType;
+  readonly title: string;
+  readonly summary: string;
+  readonly answers: readonly TriageQuestionAnswer[];
+  readonly nextSafeActions: readonly string[];
+  readonly topologyLinks: readonly EvidenceLink[];
+  readonly timelineLinks: readonly EvidenceLink[];
+  readonly evidenceLinks: readonly EvidenceLink[];
+  readonly rawArtifactLabels: readonly string[];
+  readonly issuePacketPreview: string;
+  readonly factors: readonly string[];
+}
+
+export interface TriagePayload {
+  readonly runId: StableId;
+  readonly generatedAt: string;
+  readonly groups: readonly TriageFailureGroup[];
+  readonly summary: {
+    readonly groups: number;
+    readonly failures: number;
+    readonly critical: number;
+    readonly high: number;
+    readonly medium: number;
+    readonly low: number;
+  };
+  readonly states: readonly TriageState[];
+  readonly links: {
+    readonly topology: EvidenceLink;
+    readonly timeline: EvidenceLink;
+    readonly evidenceBundle: EvidenceLink;
+  };
+}
+
+export interface IssuePacketExport {
+  readonly runId: StableId;
+  readonly generatedAt: string;
+  readonly issuePacketPath: string;
+  readonly issuePacketUrl: string;
+  readonly markdown: string;
+  readonly noSecretFindings: readonly string[];
+  readonly containedLinks: true;
+  readonly groups: readonly string[];
+}
+
 export type TokenEstimateMethod = "heuristic-chars-div-4" | "provider-reported" | "local-tokenizer";
 export type TokenEstimateConfidence = "high" | "medium" | "low";
 

@@ -13,13 +13,15 @@ import type {
   PolicyDecision,
   PolicySimulationResult,
   ProposedPolicy,
-  RecordedPolicyScenarioId
+  RecordedPolicyScenarioId,
+  TriagePayload
 } from "@toolplane/core";
 
 export type ScreenId =
   | "overview"
   | "timeline"
   | "run-index"
+  | "triage"
   | "impact"
   | "topology"
   | "health"
@@ -69,6 +71,8 @@ export interface RunComparisonGroup {
 export type TopologyPayload = RunTopology;
 
 export type NarrativePayload = RunNarrative;
+
+export type FailureTriagePayload = TriagePayload;
 
 export interface HealthPayload {
   readonly runId: string;

@@ -12,6 +12,7 @@ import { redactStringWithSummary } from "./redaction.js";
 import { buildRunNarrative, buildRunTopology, generateAndPersistNarrative, generateAndPersistTopology } from "./topology.js";
 import { simulatePolicy } from "./policy-simulator.js";
 import { verifyIntegrationRoute } from "./integration-verification.js";
+import { buildTriagePayload, exportIssuePacket } from "./triage.js";
 import {
   buildDemoStoryModePayload,
   defaultDemoStoryScenarioRuntime,
@@ -236,6 +237,25 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
 
       if (url.pathname === "/api/impact") {
         sendJson(response, 200, buildImpactPayload(runId, session.recorder.ledger));
+        return;
+      }
+
+      if (url.pathname === "/api/triage") {
+        sendJson(response, 200, buildTriagePayload({ runId, events: session.recorder.events, ledger: session.recorder.ledger, baseUrl: configuredBaseUrl(host, port, server) }));
+        return;
+      }
+
+      if (url.pathname === "/api/triage/export") {
+        if (request.method !== "POST") {
+          sendJson(response, 405, { error: "method_not_allowed" });
+          return;
+        }
+        sendJson(response, 200, await exportIssuePacket({ runId, runDir: session.recorder.runDir, events: session.recorder.events, ledger: session.recorder.ledger, baseUrl: configuredBaseUrl(host, port, server) }));
+        return;
+      }
+
+      if (url.pathname === "/api/triage/issue-packet") {
+        await serveRunFile(response, session.recorder.runDir, "issue-packet.md", "text/markdown; charset=utf-8");
         return;
       }
 

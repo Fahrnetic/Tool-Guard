@@ -1,6 +1,7 @@
 import type { CoreEvent } from "@toolplane/core";
 import type {
   FailureInboxPayload,
+  FailureTriagePayload,
   BundleExportResponse,
   BundlePayload,
   HealthPayload,
@@ -45,6 +46,14 @@ export async function fetchFailures(signal?: AbortSignal): Promise<FailureInboxP
 
 export async function fetchImpact(signal?: AbortSignal): Promise<ImpactPayload> {
   return await fetchJson<ImpactPayload>("/api/impact", signal);
+}
+
+export async function fetchTriage(signal?: AbortSignal): Promise<FailureTriagePayload> {
+  return await fetchJson<FailureTriagePayload>("/api/triage", signal);
+}
+
+export async function exportIssuePacket(signal?: AbortSignal): Promise<unknown> {
+  return await fetchJson<unknown>("/api/triage/export", signal, { method: "POST" });
 }
 
 export async function fetchTrace(traceId = "latest", signal?: AbortSignal): Promise<TracePayload> {

@@ -1,4 +1,5 @@
 import { CorrelationGrid } from "../components/CorrelationGrid.js";
+import { ContextImpactBadge } from "../components/ContextImpactBadge.js";
 import { StatePanel } from "../components/StatePanel.js";
 import { StatusChip } from "../components/StatusChip.js";
 import { selectionMatchesValues, type FailureCardView, type FailureInboxPayload, type RawArtifactView, type ResourceStatus, type TopologySelection } from "../lib/model.js";
@@ -79,6 +80,10 @@ export function FailureInbox({ payload, status, error, topologySelection }: Fail
           </div>
 
           <DiagnosisPanel failure={failure} />
+
+          <div className="mt-5">
+            <ContextImpactBadge impact={failure.contextImpact} />
+          </div>
 
           <div className="mt-5">
             <h4 className="text-sm font-semibold text-text">Evidence links</h4>

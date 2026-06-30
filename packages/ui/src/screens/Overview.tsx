@@ -1,3 +1,4 @@
+import type { ContextImpactMetrics } from "@toolplane/core";
 import {
   summarizeCommandCenter,
   summarizeToolOps,
@@ -9,6 +10,7 @@ import {
   type ResourceStatus,
   type TopologyPayload
 } from "../lib/model.js";
+import { ContextImpactBadge } from "../components/ContextImpactBadge.js";
 import { StatePanel } from "../components/StatePanel.js";
 import { StatusChip } from "../components/StatusChip.js";
 
@@ -26,6 +28,7 @@ interface OverviewProps {
 export function Overview({ run, health, topology, policies, reports, bundle, status, error }: OverviewProps) {
   const summary = summarizeToolOps(run, health);
   const commandCenter = summarizeCommandCenter({ run, health, topology, policies, reports, bundle, status });
+  const latestContextImpact = latestContextImpactFromRun(run);
   const commandCenterCards = [
     { label: "Current status", item: commandCenter.currentStatus },
     { label: "Topology health", item: commandCenter.topologyHealth },
@@ -80,6 +83,12 @@ export function Overview({ run, health, topology, policies, reports, bundle, sta
             </article>
           ))}
         </div>
+
+        {latestContextImpact ? (
+          <div className="relative mt-4">
+            <ContextImpactBadge impact={latestContextImpact} compact />
+          </div>
+        ) : null}
       </section>
 
       {status === "loading" ? (
@@ -153,4 +162,23 @@ export function Overview({ run, health, topology, policies, reports, bundle, sta
       </section>
     </div>
   );
+}
+
+function latestContextImpactFromRun(run: LatestRunPayload | undefined): ContextImpactMetrics | undefined {
+  const events = [...(run?.events ?? [])].reverse();
+  for (const event of events) {
+    const data = event.data;
+    if (hasContextImpact(data)) {
+      return data.contextImpact;
+    }
+  }
+  return undefined;
+}
+
+function hasContextImpact(data: unknown): data is { readonly contextImpact: ContextImpactMetrics } {
+  if (!data || typeof data !== "object" || !("contextImpact" in data)) return false;
+  const impact = (data as { readonly contextImpact?: unknown }).contextImpact;
+  if (!impact || typeof impact !== "object" || !("tokenEstimate" in impact)) return false;
+  const tokenEstimate = (impact as { readonly tokenEstimate?: unknown }).tokenEstimate;
+  return Boolean(tokenEstimate && typeof tokenEstimate === "object" && "estimatedTokens" in tokenEstimate && "provenance" in tokenEstimate);
 }

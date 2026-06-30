@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import type { ContextImpactMetrics, ToolResult } from "@toolplane/core";
 import { Overview } from "../src/screens/Overview.js";
 import type { BundlePayload, HealthPayload, LatestRunPayload, PolicyPayload, ReportsPayload, TopologyPayload } from "../src/lib/model.js";
 
@@ -28,6 +29,10 @@ describe("Run Health Command Center", () => {
     expect(html).toContain("Retry loop contained");
     expect(html).toContain("Side effects contained");
     expect(html).toContain("Evidence ready");
+    expect(html).toContain("Estimated context impact");
+    expect(html).toContain("768 tokens");
+    expect(html).toContain("heuristic-chars-div-4");
+    expect(html).toContain("Provider token usage unavailable; estimated locally from character count divided by four.");
   });
 
   it("shows clear offline Core recovery instructions without overclaiming integrations", () => {
@@ -78,6 +83,18 @@ const runPayload: LatestRunPayload = {
       runId: "run_command_center",
       traceId: "trace_command_center",
       data: { reportHtml: "/runs/run_command_center/report.html" }
+    },
+    {
+      eventId: "event_failed",
+      type: "tool.call.failed",
+      occurredAt: "2026-06-29T00:00:03.000Z",
+      sequence: 4,
+      summary: "Failure card with context impact",
+      runId: "run_command_center",
+      traceId: "trace_command_center",
+      toolCallId: "toolcall_command_center",
+      attemptId: "attempt_failed",
+      data: makeToolResult()
     }
   ]
 };
@@ -200,3 +217,48 @@ const bundlePayload: BundlePayload = {
     replaySafetyStatus: { status: "healthy", label: "Replay safe", summary: "Fixture-only replay." }
   }
 };
+
+function makeContextImpact(): ContextImpactMetrics {
+  return {
+    modelFacingContent: { bytes: 3072, chars: 3072, estimatedTokens: 768 },
+    rawContentEstimate: { bytes: 8192, chars: 8192, estimatedTokens: 2048 },
+    safeDisplayedEstimate: { bytes: 1536, chars: 1536, estimatedTokens: 384 },
+    tokenEstimate: {
+      estimatedTokens: 768,
+      method: "heuristic-chars-div-4",
+      provenance: "Provider token usage unavailable; estimated locally from character count divided by four.",
+      confidence: "low"
+    },
+    preventedContextFlood: {
+      rawEstimate: { bytes: 8192, chars: 8192, estimatedTokens: 2048 },
+      safeDisplayedEstimate: { bytes: 1536, chars: 1536, estimatedTokens: 384 },
+      saved: { bytes: 6656, chars: 6656, estimatedTokens: 1664 }
+    },
+    redactionSavings: { bytes: 768, chars: 768, estimatedTokens: 192 },
+    truncationSavings: { bytes: 256, chars: 256, estimatedTokens: 64 },
+    duplicateRetryContext: {
+      fingerprint: "timeout:fixture",
+      repeatedFingerprintCount: 1,
+      estimatedDuplicateBytes: 0,
+      estimatedDuplicateChars: 0,
+      estimatedDuplicateTokens: 0
+    },
+    retryAmplification: {
+      attemptCount: 1,
+      contextMultiplier: 1,
+      estimatedAmplifiedBytes: 3072,
+      estimatedAmplifiedTokens: 768
+    },
+    notes: ["Safe aggregate context metrics only."]
+  };
+}
+
+function makeToolResult(): ToolResult {
+  return {
+    toolName: "fixture.timeout",
+    output: { status: "failed" },
+    safeSummary: "Failure card safe summary with aggregate context impact.",
+    artifactIds: [],
+    contextImpact: makeContextImpact()
+  };
+}

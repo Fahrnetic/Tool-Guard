@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { StableId } from "@toolplane/core";
+import type { ContextImpactMetrics, StableId } from "@toolplane/core";
 import { FailureInbox } from "../src/screens/FailureInbox.js";
 import type { FailureInboxPayload } from "../src/lib/model.js";
 
@@ -19,6 +19,10 @@ describe("Failure Inbox root-cause diagnosis panel", () => {
     expect(html).toContain("href=\"#anchor_safe_env\"");
     expect(html).toContain("Missing binary stderr");
     expect(html).toContain("Safe environment facts");
+    expect(html).toContain("Estimated context impact");
+    expect(html).toContain("1,024 tokens");
+    expect(html).toContain("heuristic-chars-div-4");
+    expect(html).toContain("Provider token usage unavailable; estimated locally from character count divided by four.");
   });
 });
 
@@ -86,6 +90,7 @@ const payload: FailureInboxPayload = {
         }
       ],
       safeSummary: "The command failed before downstream work started.",
+      contextImpact: makeContextImpact(),
       rawDetailsSeparated: true,
       correlation: {
         runId: "run_diag",
@@ -104,4 +109,39 @@ const payload: FailureInboxPayload = {
 
 function stableId(value: string): StableId {
   return value as StableId;
+}
+
+function makeContextImpact(): ContextImpactMetrics {
+  return {
+    modelFacingContent: { bytes: 4096, chars: 4096, estimatedTokens: 1024 },
+    rawContentEstimate: { bytes: 16384, chars: 16384, estimatedTokens: 4096 },
+    safeDisplayedEstimate: { bytes: 2048, chars: 2048, estimatedTokens: 512 },
+    tokenEstimate: {
+      estimatedTokens: 1024,
+      method: "heuristic-chars-div-4",
+      provenance: "Provider token usage unavailable; estimated locally from character count divided by four.",
+      confidence: "low"
+    },
+    preventedContextFlood: {
+      rawEstimate: { bytes: 16384, chars: 16384, estimatedTokens: 4096 },
+      safeDisplayedEstimate: { bytes: 2048, chars: 2048, estimatedTokens: 512 },
+      saved: { bytes: 14336, chars: 14336, estimatedTokens: 3584 }
+    },
+    redactionSavings: { bytes: 1024, chars: 1024, estimatedTokens: 256 },
+    truncationSavings: { bytes: 512, chars: 512, estimatedTokens: 128 },
+    duplicateRetryContext: {
+      fingerprint: "spawn_failure:missing-binary",
+      repeatedFingerprintCount: 1,
+      estimatedDuplicateBytes: 0,
+      estimatedDuplicateChars: 0,
+      estimatedDuplicateTokens: 0
+    },
+    retryAmplification: {
+      attemptCount: 1,
+      contextMultiplier: 1,
+      estimatedAmplifiedBytes: 4096,
+      estimatedAmplifiedTokens: 1024
+    },
+    notes: ["Raw unsafe content is counted for estimates but not copied into model-facing fields."]
+  };
 }

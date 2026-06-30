@@ -123,20 +123,20 @@ function buildRouteCoverage(
 }
 
 async function buildCapabilityChecks(input: IntegrationVerificationInput): Promise<readonly IntegrationCapabilityCheck[]> {
-  const workspaceRoot = input.workspaceRoot ?? (await findWorkspaceRoot(process.cwd()));
+  const workspaceRoot = await findWorkspaceRoot(input.workspaceRoot ?? process.cwd());
   const timeoutMs = input.probeTimeoutMs ?? 5_000;
   if (input.routeType === "mcp-routed") {
     return await Promise.all([
       probeCapability("adapter availability", "available", async () => probeMcpAdapterAvailability(workspaceRoot, timeoutMs)),
       probeCapability("config snippet validity", "configured", async () => probeMcpConfigSnippetValidity(workspaceRoot, timeoutMs)),
-      probeCapability("tool exposure", "available", async () => probeMcpToolExposure(workspaceRoot, timeoutMs))
+      probeCapability("virtual routed tool evidence", "available", async () => probeMcpRoutedToolEvidence(workspaceRoot, timeoutMs))
     ]);
   }
   if (input.routeType === "sdk-wrapped-python") {
     return await Promise.all([
       probeCapability("sidecar compatibility", "available", async () => probePythonSidecarCompatibility(workspaceRoot, timeoutMs)),
       probeCapability("loopback URL safety", "available", async () => probePythonLoopbackSafety(workspaceRoot, timeoutMs)),
-      probeCapability("wrapper route", "configured", async () => probePythonWrapperRoute(workspaceRoot))
+      probeCapability("wrapper sidecar evidence", "configured", async () => probePythonWrapperRouteEvidence(workspaceRoot, timeoutMs))
     ]);
   }
   return await Promise.all([
@@ -225,7 +225,7 @@ async function probeMcpConfigSnippetValidity(workspaceRoot: string, timeoutMs: n
   return `Executed config generation probe and parsed ${output} loopback MCP snippets with no secret-shaped values.`;
 }
 
-async function probeMcpToolExposure(workspaceRoot: string, timeoutMs: number): Promise<string> {
+async function probeMcpRoutedToolEvidence(workspaceRoot: string, timeoutMs: number): Promise<string> {
   const output = await runNodeProbe(
     workspaceRoot,
     `
@@ -241,19 +241,29 @@ async function probeMcpToolExposure(workspaceRoot: string, timeoutMs: number): P
         serverId: core.createId("server"),
         name: "probe-downstream",
         tools: [{ name: "echo", description: "probe", inputSchema: { type: "object", properties: {} } }],
-        handler: async () => ({ ok: true })
+        handler: async ({ args }) => ({ ok: true, echoed: args.message ?? "toolguard-mcp-routed-ok" })
       });
       const router = await adapter.ToolGuardMcpRouter.create({ session, coreRegistry: registry, downstreamServers: [downstream] });
       const tools = router.listVirtualTools();
       if (tools.length !== 1 || !tools[0].name.startsWith("tg__") || tools[0].originalToolName !== "echo") {
         throw new Error("virtual tool exposure failed");
       }
+      const result = await router.callVirtualTool(tools[0].name, { message: "toolguard-mcp-routed-ok" }, { deadlineMs: 1000 });
+      if (result.isError) throw new Error("virtual routed tool call failed");
+      const eventTypes = session.recorder.events.map((event) => event.type);
+      if (!eventTypes.includes("tool.call.completed")) throw new Error("missing completed routed tool event");
+      if (!eventTypes.includes("evidence.artifact.created")) throw new Error("missing routed evidence artifact");
+      const artifactCount = session.recorder.events.filter((event) => event.type === "evidence.artifact.created").length;
       await router.close();
-      console.log(tools[0].name);
+      console.log(JSON.stringify({ virtualTool: tools[0].name, artifactCount }));
     `,
     timeoutMs
   );
-  return `Executed MCP router probe and observed virtual ToolGuard tool exposure: ${output}.`;
+  const result = parseProbeJson<{ virtualTool?: string; artifactCount?: number }>(output);
+  if (!result.virtualTool || !result.virtualTool.startsWith("tg__") || !result.artifactCount) {
+    throw new Error("MCP routed probe did not report correlated artifact evidence");
+  }
+  return `Executed MCP virtual routed tool probe via ${result.virtualTool} and observed ${String(result.artifactCount)} correlated evidence artifact(s).`;
 }
 
 async function probePythonSidecarCompatibility(workspaceRoot: string, timeoutMs: number): Promise<string> {
@@ -291,13 +301,91 @@ else:
   return `Executed Python loopback safety probe: ${output}.`;
 }
 
-async function probePythonWrapperRoute(workspaceRoot: string): Promise<string> {
+async function probePythonWrapperRouteEvidence(workspaceRoot: string, timeoutMs: number): Promise<string> {
   const langgraph = await readFile(path.join(workspaceRoot, "packages/python-adapters/toolguard_adapters/langgraph.py"), "utf8");
   const crewai = await readFile(path.join(workspaceRoot, "packages/python-adapters/toolguard_adapters/crewai.py"), "utf8");
   if (!langgraph.includes("ToolGuardSidecarClient") || !crewai.includes("ToolGuardSidecarClient")) {
     throw new Error("framework wrappers do not route through ToolGuardSidecarClient");
   }
-  return "Read local framework wrappers and verified they route calls through ToolGuardSidecarClient.";
+  const output = await runNodeProbe(
+    workspaceRoot,
+    `
+      const child_process = await import("node:child_process");
+      const util = await import("node:util");
+      const os = await import("node:os");
+      const path = await import("node:path");
+      const fs = await import("node:fs/promises");
+      const execFile = util.promisify(child_process.execFile);
+      const core = await import(${JSON.stringify(pathToFileUrl(path.join(workspaceRoot, "packages/core/dist/index.js")))});
+      const evidenceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "toolguard-python-sidecar-probe-"));
+      const session = new core.CoreSession({ evidenceRoot, runId: core.createId("run") });
+      const registry = new core.ToolRegistry();
+      registry.register({
+        toolName: "fixture.echo",
+        title: "Python sidecar echo",
+        description: "Local sidecar probe fixture",
+        protocol: "fixture",
+        downstreamServerId: core.createId("server"),
+        inputSchema: { type: "object", properties: { message: { type: "string" } } },
+        destructiveRisk: "none",
+        preflight: () => ({ status: "healthy", summary: "Python sidecar probe fixture ready." }),
+        execute: ({ call }) => ({ echoed: String(call.arguments.message ?? "") })
+      });
+      const handle = await listenOnApprovedPort(core, { evidenceRoot, session, registry });
+      try {
+        const address = handle.server.address();
+        const port = typeof address === "object" && address ? address.port : 0;
+        const script = ${JSON.stringify(`
+from toolguard_adapters import ToolGuardConfig, ToolGuardSidecarClient, Correlation
+import json
+client = ToolGuardSidecarClient(ToolGuardConfig(sidecar_endpoint="__ENDPOINT__", timeout_seconds=2.0))
+result = client.call_tool("fixture.echo", {"message": "toolguard-python-routed-ok"}, correlation=Correlation(run_id="__RUN_ID__"))
+if result.get("status") != "success":
+    raise SystemExit(str(result))
+print(json.dumps(result))
+        `)}
+          .replace("__ENDPOINT__", "http://127.0.0.1:" + String(port) + "/api/sidecar/v1/tool-calls")
+          .replace("__RUN_ID__", session.runId);
+        const python = await execFile("python3", ["-c", script], {
+          cwd: ${JSON.stringify(workspaceRoot)},
+          timeout: ${JSON.stringify(timeoutMs)},
+          maxBuffer: 1024 * 1024,
+          env: { ...process.env, PYTHONPATH: ${JSON.stringify(path.join(workspaceRoot, "packages/python-adapters"))} }
+        }).catch((error) => {
+          throw new Error(String(error.stderr || error.stdout || error.message || "python sidecar probe failed").trim());
+        });
+        if (!python.stdout.includes("toolguard-python-routed-ok")) throw new Error("python sidecar response mismatch");
+        const eventTypes = session.recorder.events.map((event) => event.type);
+        if (!eventTypes.includes("tool.call.completed")) throw new Error("missing python sidecar completed tool event");
+        if (!eventTypes.includes("evidence.artifact.created")) throw new Error("missing python sidecar evidence artifact");
+        const artifactCount = session.recorder.events.filter((event) => event.type === "evidence.artifact.created").length;
+        console.log(JSON.stringify({ port, artifactCount }));
+      } finally {
+        await handle.close();
+      }
+
+      async function listenOnApprovedPort(core, options) {
+        let lastError;
+        for (const port of [3665, 3666, 3667, 3668, 3669]) {
+          const handle = core.createCoreApiServer({ host: "127.0.0.1", port, ...options });
+          try {
+            await handle.ready;
+            return handle;
+          } catch (error) {
+            lastError = error;
+            await handle.close().catch(() => {});
+          }
+        }
+        throw lastError ?? new Error("no approved ToolGuard sidecar probe port was available");
+      }
+    `,
+    timeoutMs + 1_000
+  );
+  const result = parseProbeJson<{ port?: number; artifactCount?: number }>(output);
+  if (!result.port || result.port < 3665 || result.port > 3669 || !result.artifactCount) {
+    throw new Error("Python sidecar probe did not report approved-loopback artifact evidence");
+  }
+  return `Executed Python wrapper sidecar route on 127.0.0.1:${String(result.port)} and observed ${String(result.artifactCount)} correlated evidence artifact(s).`;
 }
 
 async function probeCliProcess(workspaceRoot: string, timeoutMs: number): Promise<string> {
@@ -386,6 +474,16 @@ function pathToFileUrl(filePath: string): string {
 
 function isExecError(error: unknown): error is { stdout?: unknown; stderr?: unknown } {
   return typeof error === "object" && error !== null && "stdout" in error;
+}
+
+function parseProbeJson<T extends Record<string, unknown>>(output: string): T {
+  const line = output
+    .split(/\r?\n/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .at(-1);
+  if (!line) throw new Error("probe did not print JSON");
+  return JSON.parse(line) as T;
 }
 
 function messageFromError(error: unknown): string {

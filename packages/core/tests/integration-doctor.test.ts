@@ -23,7 +23,7 @@ async function readJsonl<T>(filePath: string): Promise<T[]> {
 }
 
 describe("integration doctor route coverage", () => {
-  it("emits MCP, CLI, and Python route receipts, smoke diagnostics, and hashed bundle entries", async () => {
+  it("emits MCP, CLI, and Python route receipts with real routed probe evidence and hashed bundle entries", async () => {
     const evidenceRoot = await mkdtemp(path.join(tmpdir(), "toolguard-integration-doctor-"));
     const result = await runIntegrationDoctor({
       evidenceRoot,
@@ -54,11 +54,14 @@ describe("integration doctor route coverage", () => {
 
     const events = await readJsonl<CoreEvent>(result.eventsPath);
     expect(events.filter((event) => event.type === "integration.verified")).toHaveLength(3);
-    expect(events.filter((event) => event.type === "tool.call.failed").map((event) => event.summary)).toEqual(
+    expect(events.filter((event) => event.type === "tool.call.failed").map((event) => event.summary)).not.toEqual(
+      expect.arrayContaining([expect.stringContaining("doctor.smoke.")])
+    );
+    expect(result.receipts.flatMap((receipt) => receipt.checkedCapabilities.map((capability) => capability.evidence))).toEqual(
       expect.arrayContaining([
-        expect.stringContaining("doctor.smoke.mcp-routed"),
-        expect.stringContaining("doctor.smoke.cli-supervised"),
-        expect.stringContaining("doctor.smoke.sdk-wrapped-python")
+        expect.stringMatching(/^Executed MCP virtual routed tool probe/),
+        expect.stringMatching(/^Executed Python wrapper sidecar route/),
+        expect.stringMatching(/^Executed CLI process probe/)
       ])
     );
 
@@ -71,18 +74,8 @@ describe("integration doctor route coverage", () => {
       expect.arrayContaining(["producing-evidence", "unsupported", "not-verified"])
     );
 
-    const diagnostics = await readJson<{ failures: Array<{ toolName: string }> }>(
-      path.join(bundleDir, "diagnostics.json")
-    );
-    const smokeDiagnostics = diagnostics.failures.filter((failure) => failure.toolName.startsWith("doctor.smoke."));
-    expect(smokeDiagnostics.map((failure) => failure.toolName)).toEqual(
-      expect.arrayContaining([
-        "doctor.smoke.mcp-routed",
-        "doctor.smoke.cli-supervised",
-        "doctor.smoke.sdk-wrapped-python"
-      ])
-    );
-    expect(smokeDiagnostics).toHaveLength(3);
+    const diagnostics = await readJson<{ failures: Array<{ toolName: string }> }>(path.join(bundleDir, "diagnostics.json"));
+    expect(diagnostics.failures.some((failure) => failure.toolName.startsWith("doctor.smoke."))).toBe(false);
 
     const manifest = await readJson<{ artifactHashes: Array<{ relativePath: string; sha256: string }> }>(
       result.bundleManifest

@@ -70,8 +70,8 @@ describe("portfolio demo orchestration", () => {
     expect(result.integrationClaimLevels).toEqual(
       expect.arrayContaining([
         "Cline:MCP-routed:available",
-        "Python framework adapters:SDK-wrapped:configured",
-        "Aider / Crush-style CLIs:CLI-supervised:available",
+        "Python framework adapters:SDK-wrapped:not-yet-verified",
+        "Aider / Crush-style CLIs:CLI-supervised:not-yet-verified",
         "Unrouted native host tools:unsupported:unsupported"
       ])
     );

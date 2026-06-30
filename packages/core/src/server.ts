@@ -2170,6 +2170,7 @@ function buildPolicyPayload(runId: StableId, events: readonly CoreEvent[], draft
 
 function buildIntegrationsPayload(runId: StableId, events: readonly CoreEvent[]): JsonObject {
   const routeCoverage = buildIntegrationCoverageMatrix(events);
+  const routeRows = new Map(routeCoverage.map((row) => [String(row.routeType), row]));
   return {
     runId,
     generatedAt: new Date().toISOString(),
@@ -2179,48 +2180,42 @@ function buildIntegrationsPayload(runId: StableId, events: readonly CoreEvent[])
         id: "cline",
         name: "Cline",
         route: "MCP-routed",
-        claimLevel: "available",
-        status: "available",
+        ...integrationClaimFromRoute(routeRows.get("mcp-routed")),
         limitation: "ToolGuard protects calls routed through the MCP proxy only, not native host tools."
       },
       {
         id: "roo-code",
         name: "Roo Code",
         route: "MCP-routed",
-        claimLevel: "available",
-        status: "available",
+        ...integrationClaimFromRoute(routeRows.get("mcp-routed")),
         limitation: "Use generated MCP config snippets with local ToolGuard Core on loopback."
       },
       {
         id: "claude-desktop-code",
         name: "Claude Desktop / Code",
         route: "MCP-routed",
-        claimLevel: "available",
-        status: "available",
+        ...integrationClaimFromRoute(routeRows.get("mcp-routed")),
         limitation: "Native host tools are outside ToolGuard unless configured through MCP."
       },
       {
         id: "cursor-windsurf",
         name: "Cursor / Windsurf",
         route: "MCP-routed",
-        claimLevel: "not-yet-verified",
-        status: "not-yet-verified",
+        ...integrationClaimFromRoute(routeRows.get("mcp-routed")),
         limitation: "MCP route is the supported claim. Native IDE tool interception is not claimed."
       },
       {
         id: "python-framework-adapters",
         name: "Python framework adapters",
         route: "SDK-wrapped",
-        claimLevel: "configured",
-        status: "configured",
+        ...integrationClaimFromRoute(routeRows.get("sdk-wrapped-python")),
         limitation: "Framework support requires installing and using ToolGuard wrapper functions rather than direct tools."
       },
       {
         id: "aider-crush",
         name: "Aider / Crush-style CLIs",
         route: "CLI-supervised",
-        claimLevel: "available",
-        status: "available",
+        ...integrationClaimFromRoute(routeRows.get("cli-supervised")),
         limitation: "Process-level supervision only unless a stable native tool-router boundary is proven."
       },
       {
@@ -2233,6 +2228,21 @@ function buildIntegrationsPayload(runId: StableId, events: readonly CoreEvent[])
       }
     ]
   };
+}
+
+function integrationClaimFromRoute(row: JsonObject | undefined): { readonly claimLevel: string; readonly status: string } {
+  if (!row) return { claimLevel: "not-yet-verified", status: "not-yet-verified" };
+  const configured = row.configured === true;
+  const available = row.available === true;
+  const producingEvidence = row.producingEvidence === true;
+  const recent = row.evidenceFreshness === "recent";
+  if (available && producingEvidence && recent) {
+    return { claimLevel: "available", status: "available" };
+  }
+  if (configured && producingEvidence && recent) {
+    return { claimLevel: "configured", status: "configured" };
+  }
+  return { claimLevel: "not-yet-verified", status: "not-yet-verified" };
 }
 
 function buildIntegrationCoverageMatrix(events: readonly CoreEvent[]): JsonObject[] {
@@ -2268,6 +2278,7 @@ function buildIntegrationCoverageMatrix(events: readonly CoreEvent[]): JsonObjec
       claim: "not-covered",
       configured: false,
       available: false,
+      producingEvidence: false,
       evidenceFreshness: "missing",
       warning: "Not covered. Route calls through MCP, SDK wrappers, CLI shim, or ToolGuard API before claiming protection.",
       limitation: "ToolGuard does not claim native host interception for unrouted host tools.",
@@ -2292,8 +2303,14 @@ function buildRouteCoverageRow(input: {
   const matchingReceipts = input.receipts.filter(({ receipt }) => receipt.routeType === input.routeType);
   const latestReceipt = matchingReceipts.at(-1);
   const checks = latestReceipt ? checksFromReceipt(latestReceipt.receipt) : [];
-  const configured = checks.some((check) => check.state === "configured");
-  const available = checks.some((check) => check.state === "available");
+  const capabilityChecks = latestReceipt ? capabilityChecksFromReceipt(latestReceipt.receipt) : [];
+  const configured = capabilityChecks.some((check) => check.status === "configured");
+  const available = capabilityChecks.some((check) => check.status === "available");
+  const producingEvidence =
+    latestReceipt !== undefined &&
+    capabilityChecks.some((check) => check.status === "configured" || check.status === "available") &&
+    Array.isArray(latestReceipt.receipt.evidenceLinks) &&
+    latestReceipt.receipt.evidenceLinks.some((link) => isRecord(link) && typeof link.artifactId === "string");
   const lastEvidenceAt = latestReceipt?.event.occurredAt;
   const evidenceFreshness = lastEvidenceAt ? evidenceFreshnessFor(lastEvidenceAt) : "missing";
   return {
@@ -2302,6 +2319,7 @@ function buildRouteCoverageRow(input: {
     claim: input.claim,
     configured,
     available,
+    producingEvidence,
     evidenceFreshness,
     ...(lastEvidenceAt ? { lastEvidenceAt } : {}),
     ...(evidenceFreshness === "recent"
@@ -2324,6 +2342,13 @@ function buildRouteCoverageRow(input: {
             }
           ]
   };
+}
+
+function capabilityChecksFromReceipt(receipt: JsonObject): Array<{ readonly status: string }> {
+  const checkedCapabilities = Array.isArray(receipt.checkedCapabilities) ? receipt.checkedCapabilities : [];
+  return checkedCapabilities.filter((entry): entry is JsonObject => isRecord(entry)).map((entry) => ({
+    status: typeof entry.status === "string" ? entry.status : "not-yet-verified"
+  }));
 }
 
 function checksFromReceipt(receipt: JsonObject): JsonObject[] {

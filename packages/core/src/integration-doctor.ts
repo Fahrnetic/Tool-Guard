@@ -5,7 +5,7 @@ import { CoreSession } from "./session.js";
 import { createId } from "./ids.js";
 import { exportEvidenceBundle } from "./bundle.js";
 import { verifyIntegrationRoute } from "./integration-verification.js";
-import type { FailureType, IntegrationRouteType, IntegrationVerificationReceipt, ToolCall } from "./types.js";
+import type { IntegrationRouteType, IntegrationVerificationReceipt } from "./types.js";
 
 export const INTEGRATION_DOCTOR_ROUTES: readonly IntegrationRouteType[] = [
   "mcp-routed",
@@ -46,7 +46,6 @@ export async function runIntegrationDoctor(input: {
         ...(input.probeTimeoutMs === undefined ? {} : { probeTimeoutMs: input.probeTimeoutMs })
       })
     );
-    await emitRouteSmokeDiagnostic(session, routeType);
   }
 
   const bundle = await exportEvidenceBundle({ session });
@@ -80,62 +79,6 @@ async function findWorkspaceRoot(startDir: string): Promise<string> {
 
 function createIdFromInput(runId: string | undefined): ReturnType<typeof createId> {
   return runId === undefined ? createId("run") : (runId as ReturnType<typeof createId>);
-}
-
-async function emitRouteSmokeDiagnostic(session: CoreSession, routeType: IntegrationRouteType): Promise<void> {
-  const { failureType, rawDetails } = smokeFailure(routeType);
-  await session.failToolCall(makeSmokeCall(session.runId, routeType), failureType, rawDetails);
-}
-
-function smokeFailure(routeType: IntegrationRouteType): { readonly failureType: FailureType; readonly rawDetails: readonly string[] } {
-  if (routeType === "mcp-routed") {
-    return {
-      failureType: "malformed_json",
-      rawDetails: ["doctor mcp smoke: safe malformed fixture response was contained"]
-    };
-  }
-  if (routeType === "sdk-wrapped-python") {
-    return {
-      failureType: "sidecar_unavailable",
-      rawDetails: ["doctor python smoke: loopback sidecar unavailable path returned a failure card"]
-    };
-  }
-  return {
-    failureType: "non_zero_exit",
-    rawDetails: ["doctor cli smoke: safe supervised process returned exit code 2"]
-  };
-}
-
-function makeSmokeCall(runId: ToolCall["runId"], routeType: IntegrationRouteType): ToolCall {
-  return {
-    runId,
-    traceId: createId("trace"),
-    parentId: createId("parent"),
-    harnessId: createId("harness"),
-    harnessName: `doctor-${routeType}`,
-    adapterId: createId("adapter"),
-    adapterName: routeType,
-    downstreamServerId: createId("server"),
-    toolCallId: createId("toolcall"),
-    attemptId: createId("attempt"),
-    policyDecisionId: createId("policy"),
-    toolName: `doctor.smoke.${routeType}`,
-    arguments: {},
-    idempotency: "idempotent",
-    sourcePath: sourcePathFor(routeType),
-    routeMetadata: {
-      routeType,
-      routeId: `doctor-${routeType}`,
-      downstreamTargetIdentity: `local-doctor-${routeType}`,
-      toolRoute: { smoke: true, routeType }
-    }
-  };
-}
-
-function sourcePathFor(routeType: IntegrationRouteType): ToolCall["sourcePath"] {
-  if (routeType === "mcp-routed") return "mcp-adapter";
-  if (routeType === "sdk-wrapped-python") return "framework-adapter";
-  return "cli-wrapper";
 }
 
 async function main(): Promise<void> {

@@ -38,6 +38,12 @@ async function postJson<T>(url: string, payload: unknown): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function getJson<T>(url: string): Promise<T> {
+  const response = await fetch(url);
+  expect(response.ok).toBe(true);
+  return (await response.json()) as T;
+}
+
 describe("policy simulator and integration verification core", () => {
   it("dry-runs recorded scenarios without executing downstream side effects", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "toolguard-policy-sim-"));
@@ -129,9 +135,10 @@ describe("policy simulator and integration verification core", () => {
       expect.arrayContaining([
         expect.stringMatching(/^Executed adapter import probe/),
         expect.stringMatching(/^Executed config generation probe/),
-        expect.stringMatching(/^Executed MCP router probe/),
+        expect.stringMatching(/^Executed MCP virtual routed tool probe/),
         expect.stringMatching(/^Executed Python adapter import probe/),
         expect.stringMatching(/^Executed Python loopback safety probe/),
+        expect.stringMatching(/^Executed Python wrapper sidecar route/),
         expect.stringMatching(/^Executed CLI process probe/),
         expect.stringMatching(/^Executed CLI argv probe/),
         expect.stringMatching(/^Executed CLI destructive guard probe/)
@@ -141,9 +148,10 @@ describe("policy simulator and integration verification core", () => {
       expect.arrayContaining([
         "adapter availability",
         "config snippet validity",
-        "tool exposure",
+        "virtual routed tool evidence",
         "sidecar compatibility",
         "loopback URL safety",
+        "wrapper sidecar evidence",
         "process probe",
         "argv boundary",
         "destructive guard"
@@ -181,6 +189,71 @@ describe("policy simulator and integration verification core", () => {
     expect(verification.routeType).toBe("cli-supervised");
     expect(verification.checkedCapabilities.map((capability) => capability.capability)).toEqual(
       expect.arrayContaining(["process probe", "argv boundary", "destructive guard"])
+    );
+  });
+
+  it("does not overclaim integration coverage booleans from failed receipt labels", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-integrations-api-"));
+    const session = new CoreSession({ evidenceRoot: root, runId: createId("run") });
+    const handle = createCoreApiServer({ host: "127.0.0.1", port: 0, evidenceRoot: root, session });
+    serverHandles.push(handle);
+    await handle.ready;
+    const address = handle.server.address();
+    expect(typeof address).toBe("object");
+    const baseUrl = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
+
+    await session.emitIntegrationVerified({
+      receiptId: createId("receipt"),
+      runId: session.runId,
+      timestamp: new Date().toISOString(),
+      routeType: "mcp-routed",
+      checkedCapabilities: [
+        {
+          capability: "virtual routed tool evidence",
+          status: "not-yet-verified",
+          localOnly: true,
+          evidence: "Local probe executed but did not pass: fixture failure"
+        }
+      ],
+      routeCoverage: [
+        {
+          state: "configured",
+          label: "MCP routed adapter path configured",
+          localOnly: true,
+          evidence: "No local route configuration check passed in this doctor run."
+        },
+        {
+          state: "available",
+          label: "MCP routed adapter path available",
+          localOnly: true,
+          evidence: "No local route availability probe passed in this doctor run."
+        },
+        {
+          state: "producing-evidence",
+          label: "MCP routed adapter path producing evidence",
+          localOnly: true,
+          evidence: "This label is not proof that the failed route produced evidence."
+        }
+      ],
+      limitation: "Local-only MCP verification checks calls routed through ToolGuard MCP configuration only.",
+      evidenceLinks: []
+    });
+
+    const payload = await getJson<{
+      routeCoverage: Array<{
+        routeType: string;
+        configured: boolean;
+        available: boolean;
+        producingEvidence: boolean;
+      }>;
+      integrations: Array<{ id: string; claimLevel: string; status: string }>;
+    }>(`${baseUrl}/api/integrations`);
+    const mcpRow = payload.routeCoverage.find((row) => row.routeType === "mcp-routed");
+    expect(mcpRow).toMatchObject({ configured: false, available: false, producingEvidence: false });
+    expect(payload.integrations.filter((integration) => integration.id === "cline" || integration.id === "roo-code")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ claimLevel: "not-yet-verified", status: "not-yet-verified" })
+      ])
     );
   });
 });

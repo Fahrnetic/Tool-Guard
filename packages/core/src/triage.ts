@@ -22,6 +22,7 @@ export function buildTriagePayload(input: {
   readonly ledger: readonly SideEffectLedgerEntry[];
   readonly baseUrl: string;
 }): TriagePayload {
+  const baseUrl = safeLoopbackBaseUrl(input.baseUrl);
   const failedEvents = input.events.filter((event) => event.type === "tool.call.failed" && isFailureCard(event.data));
   const groupsByFingerprint = new Map<string, CoreEvent[]>();
   for (const event of failedEvents) {
@@ -30,7 +31,7 @@ export function buildTriagePayload(input: {
     groupsByFingerprint.set(fingerprint, [...(groupsByFingerprint.get(fingerprint) ?? []), event]);
   }
   const groups = [...groupsByFingerprint.entries()]
-    .map(([fingerprint, events]) => buildTriageGroup({ fingerprint, events, ledger: input.ledger, runId: input.runId, baseUrl: input.baseUrl }))
+    .map(([fingerprint, events]) => buildTriageGroup({ fingerprint, events, ledger: input.ledger, runId: input.runId, baseUrl }))
     .sort((left, right) => severityRank(right.severity) - severityRank(left.severity) || right.lastOccurrence.localeCompare(left.lastOccurrence));
 
   return {
@@ -47,9 +48,9 @@ export function buildTriagePayload(input: {
     },
     states: unique(groups.map((group) => group.state)),
     links: {
-      topology: link("topology", "Topology graph", `${input.baseUrl}/api/topology/${encodeURIComponent(input.runId)}`),
-      timeline: link("timeline", "Timeline events", `${input.baseUrl}/api/runs/latest`),
-      evidenceBundle: link("evidence-bundle", "Evidence bundle", `${input.baseUrl}/api/bundle`)
+      topology: link("topology", "Topology graph", `${baseUrl}/api/topology/${encodeURIComponent(input.runId)}`),
+      timeline: link("timeline", "Timeline events", `${baseUrl}/api/runs/latest`),
+      evidenceBundle: link("evidence-bundle", "Evidence bundle", `${baseUrl}/api/bundle`)
     }
   };
 }
@@ -64,13 +65,14 @@ export async function exportIssuePacket(input: {
   const triage = buildTriagePayload(input);
   const markdown = buildIssuePacketMarkdown(triage);
   const redacted = redactStringWithSummary(markdown);
+  assertContainedIssuePacketLinks(redacted.value);
   const issuePacketPath = path.join(input.runDir, "issue-packet.md");
   await writeFile(issuePacketPath, `${redacted.value}\n`, "utf8");
   return {
     runId: input.runId,
     generatedAt: new Date().toISOString(),
     issuePacketPath,
-    issuePacketUrl: `${input.baseUrl}/api/triage/issue-packet`,
+    issuePacketUrl: `${safeLoopbackBaseUrl(input.baseUrl)}/api/triage/issue-packet`,
     markdown: redacted.value,
     noSecretFindings: findSecretPatterns(redacted.value),
     containedLinks: true,
@@ -140,7 +142,7 @@ function buildTriageGroup(input: {
     timelineLinks,
     evidenceLinks,
     rawArtifactLabels,
-    issuePacketPreview: buildGroupIssueMarkdown(input.fingerprint, {
+    issuePacketPreview: buildGroupIssueMarkdown(input.runId, input.fingerprint, {
       fingerprint: input.fingerprint,
       count: input.events.length,
       lastOccurrence: last?.occurredAt ?? new Date(0).toISOString(),
@@ -258,12 +260,12 @@ function buildIssuePacketMarkdown(payload: TriagePayload): string {
     ""
   ];
   for (const group of payload.groups) {
-    lines.push(buildGroupIssueMarkdown(group.fingerprint, group), "");
+    lines.push(buildGroupIssueMarkdown(payload.runId, group.fingerprint, group), "");
   }
   return lines.join("\n");
 }
 
-function buildGroupIssueMarkdown(fingerprint: string, group: TriageFailureGroup): string {
+function buildGroupIssueMarkdown(runId: StableId, fingerprint: string, group: TriageFailureGroup): string {
   return [
     `## ${group.title}`,
     "",
@@ -279,6 +281,19 @@ function buildGroupIssueMarkdown(fingerprint: string, group: TriageFailureGroup)
     "### Recommended fix / next safe actions",
     "",
     ...group.nextSafeActions.map((action) => `- ${action}`),
+    "",
+    "### Reproduction",
+    "",
+    `Run ID: \`${runId}\``,
+    `Fingerprint: \`${fingerprint}\``,
+    `Tool name: \`${group.toolName}\``,
+    `Failure type: \`${group.failureType}\``,
+    `Occurrence count: ${group.count}`,
+    `Last occurrence: \`${group.lastOccurrence}\``,
+    "",
+    "- Replay only with fixture-only inputs or safe loopback evidence from this run.",
+    "- Use the contained topology, timeline, and artifact links below to inspect the recorded failure before attempting any rerun.",
+    "- Do not paste raw artifacts, credentials, or external URLs into reproduction notes.",
     "",
     "### Evidence links",
     "",
@@ -329,4 +344,43 @@ function findSecretPatterns(text: string): readonly string[] {
     ["api-key-assignment", /\b(api[_-]?key|secret|token)\s*[:=]\s*["']?[A-Za-z0-9._~+/=-]{12,}/i]
   ];
   return patterns.flatMap(([label, pattern]) => (pattern.test(text) ? [label] : []));
+}
+
+function safeLoopbackBaseUrl(candidate: string): string {
+  try {
+    const parsed = new URL(candidate);
+    const port = Number(parsed.port || (parsed.protocol === "http:" ? "80" : "443"));
+    const isLoopback = parsed.protocol === "http:" && (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost");
+    const isApprovedPort = port >= 3660 && port <= 3669;
+    if (isLoopback && isApprovedPort) return parsed.origin;
+  } catch {
+    // Fall through to the approved local Core/API surface.
+  }
+  return "http://127.0.0.1:3660";
+}
+
+function assertContainedIssuePacketLinks(markdown: string): void {
+  const unsafeLinks = [...markdown.matchAll(/\]\(([^)]+)\)/g)]
+    .map((match) => match[1])
+    .filter((href): href is string => typeof href === "string")
+    .filter((href) => !isApprovedLoopbackApiLink(href));
+  if (unsafeLinks.length > 0) {
+    throw new Error(`Issue packet contains unsafe external link(s): ${unsafeLinks.join(", ")}`);
+  }
+}
+
+function isApprovedLoopbackApiLink(href: string): boolean {
+  try {
+    const parsed = new URL(href);
+    const port = Number(parsed.port || (parsed.protocol === "http:" ? "80" : "443"));
+    return (
+      parsed.protocol === "http:" &&
+      (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost") &&
+      port >= 3660 &&
+      port <= 3669 &&
+      parsed.pathname.startsWith("/api/")
+    );
+  } catch {
+    return false;
+  }
 }

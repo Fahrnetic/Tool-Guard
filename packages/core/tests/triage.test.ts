@@ -97,6 +97,14 @@ describe("failure triage workflow and issue export", () => {
     expect(exported.noSecretFindings).toEqual([]);
     expect(markdown).toContain("## Summary");
     expect(markdown).toContain("### Recommended fix / next safe actions");
+    expect(markdown).toContain("### Reproduction");
+    expect(markdown).toContain(`Run ID: \`${runId}\``);
+    expect(markdown).toContain("Fingerprint: `fixture.secret-risk:secret_leak_risk");
+    expect(markdown).toContain("Tool name: `fixture.secret-risk`");
+    expect(markdown).toContain("Failure type: `secret_leak_risk`");
+    expect(markdown).toContain("Occurrence count: 1");
+    expect(markdown).toMatch(/Last occurrence: `\d{4}-\d{2}-\d{2}T/);
+    expect(markdown).toMatch(/fixture-only|safe loopback/i);
     expect(markdown).toContain("http://127.0.0.1:3660/api/topology/");
     expect(markdown).not.toMatch(/Bearer\s+[A-Za-z0-9._~+/=-]{12,}/i);
     expect(markdown).not.toMatch(/\]\((?!http:\/\/127\.0\.0\.1:3660\/api\/)[^)]+\)/);

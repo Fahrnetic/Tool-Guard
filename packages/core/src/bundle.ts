@@ -14,6 +14,7 @@ import type {
   JsonObject,
   JsonValue,
   PolicySimulationResult,
+  RecordedRouteConfig,
   RetryLoopFinding,
   SideEffectLedgerEntry
 } from "./types.js";
@@ -152,7 +153,11 @@ export async function exportEvidenceBundle(input: {
 
   const replay = replayDecision(session.recorder.ledger, session.recorder.events);
   await writeFile(path.join(bundleDir, "replay-recipes.json"), `${stableStringify(buildReplayRecipes(session.runId, replay))}\n`, "utf8");
-  await writeFile(path.join(bundleDir, "reproducibility-checks.json"), `${stableStringify(buildReproducibilityChecks())}\n`, "utf8");
+  await writeFile(
+    path.join(bundleDir, "reproducibility-checks.json"),
+    `${stableStringify(buildReproducibilityChecks(session.recorder.ledger))}\n`,
+    "utf8"
+  );
   if (replay.safe) {
     await writeFile(path.join(bundleDir, "replay-instructions.json"), `${stableStringify(buildReplayInstructions(session.runId, replay.reason))}\n`, "utf8");
   }
@@ -492,18 +497,20 @@ interface ReproducibilityInputs {
   readonly cwd: string;
   readonly packageManager: string;
   readonly routeConfigHash: string;
+  readonly recordedRouteConfigs: readonly RecordedRouteConfig[];
   readonly fixtureSeed: string;
 }
 
-function buildReproducibilityChecks(): JsonObject {
-  const expected = currentReproducibilityInputs();
+function buildReproducibilityChecks(ledger: readonly SideEffectLedgerEntry[]): JsonObject {
+  const expected = currentReproducibilityInputs(ledger);
+  const recomputedRouteConfigHash = hashRecordedRouteConfigs(expected.recordedRouteConfigs);
   return {
     generatedAt: new Date().toISOString(),
-    expected: { ...expected },
+    expected: expected as unknown as JsonValue,
     checks: [
       reproducibilityCheck("cwd", expected.cwd, expected.cwd),
       reproducibilityCheck("packageManager", expected.packageManager, expected.packageManager),
-      reproducibilityCheck("routeConfigHash", expected.routeConfigHash, expected.routeConfigHash),
+      reproducibilityCheck("routeConfigHash", expected.routeConfigHash, recomputedRouteConfigHash),
       reproducibilityCheck("fixtureSeed", expected.fixtureSeed, expected.fixtureSeed)
     ]
   };
@@ -587,7 +594,19 @@ function isFixtureReplayEntry(entry: SideEffectLedgerEntry): boolean {
 }
 
 function isLoopbackReplayEntry(entry: SideEffectLedgerEntry): boolean {
-  return entry.targetType === "network-loopback" && entry.reversibility === "reversible";
+  const endpoint = entry.routeConfig.loopbackEndpoint;
+  if (!endpoint || !endpoint.verified || endpoint.verificationStatus !== "verified") return false;
+  if (endpoint.protocol !== "http" && endpoint.protocol !== "https") return false;
+  if (!isLoopbackHost(endpoint.host)) return false;
+  if (!Number.isInteger(endpoint.port) || endpoint.port < 3660 || endpoint.port > 3669) return false;
+  const routeMatches = !endpoint.routeId || endpoint.routeId === entry.routeConfig.routeId;
+  const toolMatches = !endpoint.toolName || endpoint.toolName === entry.toolName;
+  return entry.reversibility === "reversible" && routeMatches && toolMatches;
+}
+
+function isLoopbackHost(host: string): boolean {
+  const normalized = host.toLowerCase();
+  return normalized === "127.0.0.1" || normalized === "localhost" || normalized === "::1" || normalized === "[::1]";
 }
 
 async function validateContainedLinks(bundleDir: string, relativePaths: readonly string[]): Promise<string[]> {
@@ -619,9 +638,14 @@ async function validateReproducibilityFile(bundleDir: string, relativePath: stri
     };
     const actual = currentReproducibilityInputs();
     const expected = expectedReproducibilityInputs(parsed);
-    return (["cwd", "packageManager", "routeConfigHash", "fixtureSeed"] as const)
+    const errors = (["cwd", "packageManager", "fixtureSeed"] as const)
       .filter((name) => expected[name] !== actual[name])
       .map((name) => `Reproducibility mismatch for ${name}`);
+    const recomputedRouteConfigHash = hashRecordedRouteConfigs(expected.recordedRouteConfigs);
+    if (expected.routeConfigHash !== recomputedRouteConfigHash) {
+      errors.push("Reproducibility mismatch for routeConfigHash");
+    }
+    return errors;
   } catch {
     return [];
   }
@@ -647,18 +671,46 @@ function expectedReproducibilityInputs(parsed: {
     cwd: stringOrFallback("cwd"),
     packageManager: stringOrFallback("packageManager"),
     routeConfigHash: stringOrFallback("routeConfigHash"),
+    recordedRouteConfigs: Array.isArray(expected.recordedRouteConfigs)
+      ? expected.recordedRouteConfigs.filter(isRecordedRouteConfig)
+      : [],
     fixtureSeed: stringOrFallback("fixtureSeed")
   };
 }
 
-function currentReproducibilityInputs(): ReproducibilityInputs {
+function currentReproducibilityInputs(ledger: readonly SideEffectLedgerEntry[] = []): ReproducibilityInputs {
   const cwd = process.cwd();
   const packageManager = readRootPackageManager();
   const fixtureSeed = process.env.TOOLGUARD_FIXTURE_SEED ?? "toolguard-diagnostic-trust-v0.17";
-  const routeConfigHash = createHash("sha256")
-    .update(stableStringify({ cwd, fixtureSeed, packageManager }))
+  const recordedRouteConfigs = recordedRouteConfigsFromLedger(ledger);
+  const routeConfigHash = hashRecordedRouteConfigs(recordedRouteConfigs);
+  return { cwd, packageManager, routeConfigHash, recordedRouteConfigs, fixtureSeed };
+}
+
+function isRecordedRouteConfig(value: unknown): value is RecordedRouteConfig {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.routeType === "string" &&
+    typeof value.routeId === "string" &&
+    typeof value.downstreamTargetIdentity === "string" &&
+    isRecord(value.toolRoute)
+  );
+}
+
+function recordedRouteConfigsFromLedger(ledger: readonly SideEffectLedgerEntry[]): readonly RecordedRouteConfig[] {
+  const byFingerprint = new Map<string, RecordedRouteConfig>();
+  for (const entry of ledger) {
+    byFingerprint.set(stableStringify(entry.routeConfig as unknown as JsonObject), entry.routeConfig);
+  }
+  return [...byFingerprint.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([, config]) => config);
+}
+
+function hashRecordedRouteConfigs(configs: readonly RecordedRouteConfig[]): string {
+  return createHash("sha256")
+    .update(stableStringify({ recordedRouteConfigs: configs }))
     .digest("hex");
-  return { cwd, packageManager, routeConfigHash, fixtureSeed };
 }
 
 function isContainedRelativePath(relativePath: string): boolean {

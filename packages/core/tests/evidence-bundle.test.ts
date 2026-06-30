@@ -323,6 +323,165 @@ describe("evidence bundle export", () => {
     expect(derived.manifest.replay.instructionsFile).toBe("replay-instructions.json");
   });
 
+  it("derives routeConfigHash from recorded route configuration and validates route drift", async () => {
+    const { session } = await makeSeededSession("toolguard-bundle-route-config-");
+    const registry = new ToolRegistry();
+    registry.register({
+      toolName: "http.route",
+      title: "HTTP route",
+      description: "Records deterministic route configuration for bundle hashing.",
+      protocol: "http",
+      downstreamServerId: createId("server"),
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      destructiveRisk: "none",
+      routeMetadata: {
+        routeType: "mcp-adapter",
+        routeId: "route-alpha",
+        downstreamTargetIdentity: "fixture-http-alpha",
+        endpoint: { protocol: "http", host: "127.0.0.1", port: 3662, path: "/tools/http.route" },
+        transport: { kind: "streamable-http", url: "http://127.0.0.1:3662/tools/http.route" },
+        toolRoute: { virtualToolName: "http.route", originalToolName: "alpha" },
+        adapterConfigHash: "adapter-config-alpha"
+      },
+      execute: () => ({ ok: true })
+    });
+    await session.executeToolCall(registry, {
+      ...makeToolCall(session.runId),
+      toolName: "http.route",
+      downstreamServerId: registry.get("http.route")?.downstreamServerId ?? createId("server")
+    });
+
+    const bundle = await exportEvidenceBundle({ session });
+    const reproducibilityPath = path.join(bundle.bundleDir, "reproducibility-checks.json");
+    const reproducibility = await readJson<{
+      expected: { routeConfigHash: string; recordedRouteConfigs: Array<Record<string, unknown>> };
+    }>(reproducibilityPath);
+    expect(reproducibility.expected.routeConfigHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(reproducibility.expected.recordedRouteConfigs[0]).toMatchObject({
+      routeType: "mcp-adapter",
+      routeId: "route-alpha",
+      downstreamTargetIdentity: "fixture-http-alpha",
+      adapterConfigHash: "adapter-config-alpha"
+    });
+
+    const { session: changedSession } = await makeSeededSession("toolguard-bundle-route-config-changed-");
+    const changedRegistry = new ToolRegistry();
+    changedRegistry.register({
+      toolName: "http.route",
+      title: "HTTP route",
+      description: "Records changed route configuration for bundle hashing.",
+      protocol: "http",
+      downstreamServerId: createId("server"),
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      destructiveRisk: "none",
+      routeMetadata: {
+        routeType: "mcp-adapter",
+        routeId: "route-alpha",
+        downstreamTargetIdentity: "fixture-http-beta",
+        endpoint: { protocol: "http", host: "127.0.0.1", port: 3663, path: "/tools/http.route" },
+        transport: { kind: "streamable-http", url: "http://127.0.0.1:3663/tools/http.route" },
+        toolRoute: { virtualToolName: "http.route", originalToolName: "beta" },
+        adapterConfigHash: "adapter-config-beta"
+      },
+      execute: () => ({ ok: true })
+    });
+    await changedSession.executeToolCall(changedRegistry, {
+      ...makeToolCall(changedSession.runId),
+      toolName: "http.route",
+      downstreamServerId: changedRegistry.get("http.route")?.downstreamServerId ?? createId("server")
+    });
+    const changedBundle = await exportEvidenceBundle({ session: changedSession });
+    const changedReproducibility = await readJson<{ expected: { routeConfigHash: string } }>(
+      path.join(changedBundle.bundleDir, "reproducibility-checks.json")
+    );
+    expect(changedReproducibility.expected.routeConfigHash).not.toBe(reproducibility.expected.routeConfigHash);
+
+    const drifted = {
+      ...reproducibility,
+      expected: {
+        ...reproducibility.expected,
+        recordedRouteConfigs: reproducibility.expected.recordedRouteConfigs.map((config) => ({
+          ...config,
+          downstreamTargetIdentity: "fixture-http-beta"
+        }))
+      }
+    };
+    await writeFile(reproducibilityPath, `${JSON.stringify(drifted, null, 2)}\n`, "utf8");
+    await expect(validateEvidenceBundleManifest({ bundleDir: bundle.bundleDir })).resolves.toMatchObject({
+      valid: false,
+      errors: expect.arrayContaining([expect.stringMatching(/Reproducibility mismatch for routeConfigHash/)])
+    });
+  });
+
+  it("derives safe loopback only from explicit verified endpoint metadata", async () => {
+    const { session: unverifiedSession } = await makeSeededSession("toolguard-bundle-loopback-unverified-");
+    const unverifiedRegistry = new ToolRegistry();
+    unverifiedRegistry.register({
+      toolName: "http.loopback.unverified",
+      title: "Unverified loopback",
+      description: "Looks like a loopback HTTP side effect but lacks verified endpoint metadata.",
+      protocol: "http",
+      downstreamServerId: createId("server"),
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      destructiveRisk: "none",
+      routeMetadata: {
+        routeType: "direct-http",
+        routeId: "unverified-route",
+        downstreamTargetIdentity: "unverified-loopback",
+        endpoint: { protocol: "http", host: "127.0.0.1", port: 3662, path: "/unverified" }
+      },
+      execute: () => ({ ok: true })
+    });
+    await unverifiedSession.executeToolCall(unverifiedRegistry, {
+      ...makeToolCall(unverifiedSession.runId),
+      toolName: "http.loopback.unverified",
+      downstreamServerId: unverifiedRegistry.get("http.loopback.unverified")?.downstreamServerId ?? createId("server")
+    });
+    const unverifiedBundle = await exportEvidenceBundle({
+      session: unverifiedSession,
+      replaySafety: { safeLoopback: true }
+    });
+    expect(unverifiedBundle.manifest.replay.safe).toBe(false);
+    expect(unverifiedBundle.manifest.replay.instructionsFile).toBeUndefined();
+
+    const { session: verifiedSession } = await makeSeededSession("toolguard-bundle-loopback-verified-");
+    const verifiedRegistry = new ToolRegistry();
+    verifiedRegistry.register({
+      toolName: "http.loopback.verified",
+      title: "Verified loopback",
+      description: "Records explicit verified loopback endpoint metadata.",
+      protocol: "http",
+      downstreamServerId: createId("server"),
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      destructiveRisk: "none",
+      routeMetadata: {
+        routeType: "direct-http",
+        routeId: "verified-route",
+        downstreamTargetIdentity: "verified-loopback",
+        endpoint: { protocol: "http", host: "127.0.0.1", port: 3662, path: "/verified" },
+        loopbackEndpoint: {
+          protocol: "http",
+          host: "127.0.0.1",
+          port: 3662,
+          routeId: "verified-route",
+          toolName: "http.loopback.verified",
+          verificationStatus: "verified",
+          verified: true
+        }
+      },
+      execute: () => ({ ok: true })
+    });
+    await verifiedSession.executeToolCall(verifiedRegistry, {
+      ...makeToolCall(verifiedSession.runId),
+      toolName: "http.loopback.verified",
+      downstreamServerId: verifiedRegistry.get("http.loopback.verified")?.downstreamServerId ?? createId("server")
+    });
+    const verifiedBundle = await exportEvidenceBundle({ session: verifiedSession });
+    expect(verifiedBundle.manifest.replay.safe).toBe(true);
+    expect(verifiedBundle.manifest.replay.reason).toMatch(/safe loopback/i);
+    expect(verifiedBundle.manifest.replay.instructionsFile).toBe("replay-instructions.json");
+  });
+
   it("recomputes reproducibility inputs during validation so environment drift is detected", async () => {
     const { session } = await makeSeededSession("toolguard-bundle-repro-drift-");
     const bundle = await exportEvidenceBundle({ session });
@@ -339,7 +498,6 @@ describe("evidence bundle export", () => {
         expect.arrayContaining([
           expect.stringMatching(/Reproducibility mismatch for cwd/),
           expect.stringMatching(/Reproducibility mismatch for packageManager/),
-          expect.stringMatching(/Reproducibility mismatch for routeConfigHash/),
           expect.stringMatching(/Reproducibility mismatch for fixtureSeed/)
         ])
       );

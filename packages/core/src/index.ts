@@ -48,6 +48,7 @@ export {
 export { buildRootCauseDiagnostic, type RootCauseDiagnostic } from "./diagnostics.js";
 export { createChaosFixtures, registerChaosFixtures, type ChaosFixtureOptions } from "./chaos-fixtures.js";
 export {
+  buildRecordedRouteConfig,
   buildCallFingerprint,
   classifyRetryLoop,
   inferSideEffect,
@@ -127,6 +128,7 @@ export type {
   JsonObject,
   JsonPrimitive,
   JsonValue,
+  LoopbackEndpointMetadata,
   ContextImpactMetrics,
   ContextSavings,
   ContextSizeEstimate,
@@ -144,6 +146,7 @@ export type {
   IntegrationVerificationReceipt,
   PreflightFinding,
   PreflightProbeResult,
+  RecordedRouteConfig,
   PolicyDecision,
   PolicyPreviewDecision,
   PolicySimulationResult,

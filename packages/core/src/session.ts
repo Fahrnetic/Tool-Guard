@@ -39,6 +39,7 @@ import type {
   ToolResult
 } from "./types.js";
 import {
+  buildRecordedRouteConfig,
   buildCallFingerprint,
   classifyRetryLoop,
   inferSideEffect,
@@ -713,6 +714,7 @@ export class CoreSession {
       summary,
       ...impactAttribution({ outcome: effectState, impact: input.observedImpact }),
       ...(input.observedImpact ? { observedImpact: input.observedImpact } : {}),
+      routeConfig: buildRecordedRouteConfig({ tool: input.tool, call }),
       blastRadius,
       ...(input.retryLoopFinding ? { retryLoopFinding: input.retryLoopFinding } : {})
     };

@@ -7,6 +7,7 @@ import type {
   FailureType,
   JsonObject,
   RegisteredTool,
+  RecordedRouteConfig,
   RetryLoopFinding,
   SideEffectLedgerEntry,
   SideEffectReversibility,
@@ -169,6 +170,31 @@ export function inferSideEffect(input: {
   };
 }
 
+export function buildRecordedRouteConfig(input: {
+  readonly tool?: RegisteredTool | undefined;
+  readonly call: ToolCall;
+}): RecordedRouteConfig {
+  const metadata = input.tool?.routeMetadata ?? input.call.routeMetadata;
+  const adapterConfigHash = metadata?.adapterConfigHash ?? metadata?.configHash;
+  return {
+    routeType: nonEmpty(metadata?.routeType) ?? input.call.sourcePath,
+    routeId: nonEmpty(metadata?.routeId) ?? `${input.call.adapterId}:${input.call.downstreamServerId}:${input.call.toolName}`,
+    downstreamTargetIdentity:
+      nonEmpty(metadata?.downstreamTargetIdentity) ?? `${input.call.downstreamServerId}:${input.call.originalToolName ?? input.call.toolName}`,
+    ...(metadata?.endpoint ? { endpoint: metadata.endpoint } : {}),
+    ...(metadata?.transport ? { transport: metadata.transport } : {}),
+    toolRoute: {
+      toolName: input.call.toolName,
+      originalToolName: input.call.originalToolName ?? input.call.toolName,
+      protocol: input.tool?.protocol ?? "in-process",
+      sourcePath: input.call.sourcePath,
+      ...(metadata?.toolRoute ?? {})
+    },
+    ...(adapterConfigHash ? { adapterConfigHash } : {}),
+    ...(metadata?.loopbackEndpoint ? { loopbackEndpoint: metadata.loopbackEndpoint } : {})
+  };
+}
+
 export function buildCallFingerprint(call: ToolCall, failureType?: FailureType): string {
   const stable = stableStringify(call.arguments);
   return createHash("sha256")
@@ -235,6 +261,10 @@ function inferTargetType(
   if (protocol === "browser") return "ui-action";
   if (protocol === "fixture") return "filesystem";
   return "process";
+}
+
+function nonEmpty(value: string | undefined): string | undefined {
+  return value && value.trim().length > 0 ? value : undefined;
 }
 
 function isGitTarget(parts: readonly string[]): boolean {

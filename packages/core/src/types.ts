@@ -4,6 +4,50 @@ export type HarnessKind = "direct" | "mcp" | "python-framework" | "cli" | "ui" |
 export type AdapterKind = "direct" | "mcp" | "python-framework" | "cli" | "http";
 export type ToolProtocol = "in-process" | "process" | "http" | "mcp" | "browser" | "fixture";
 
+export interface LoopbackEndpointMetadata {
+  readonly protocol: "http" | "https";
+  readonly host: string;
+  readonly port: number;
+  readonly routeId?: string;
+  readonly toolName?: string;
+  readonly verificationStatus: "verified" | "unverified" | "failed";
+  readonly verified: boolean;
+}
+
+export interface ToolRouteMetadata {
+  readonly workspaceRoot?: string;
+  readonly sandboxRoot?: string;
+  readonly routeType?: string;
+  readonly routeId?: string;
+  readonly downstreamTargetIdentity?: string;
+  readonly endpoint?: {
+    readonly protocol?: string;
+    readonly host?: string;
+    readonly port?: number;
+    readonly path?: string;
+  };
+  readonly transport?: {
+    readonly kind?: string;
+    readonly command?: string;
+    readonly url?: string;
+  };
+  readonly toolRoute?: Readonly<Record<string, JsonValue>>;
+  readonly adapterConfigHash?: string;
+  readonly configHash?: string;
+  readonly loopbackEndpoint?: LoopbackEndpointMetadata;
+}
+
+export interface RecordedRouteConfig {
+  readonly routeType: string;
+  readonly routeId: string;
+  readonly downstreamTargetIdentity: string;
+  readonly endpoint?: ToolRouteMetadata["endpoint"];
+  readonly transport?: ToolRouteMetadata["transport"];
+  readonly toolRoute: Readonly<Record<string, JsonValue>>;
+  readonly adapterConfigHash?: string;
+  readonly loopbackEndpoint?: LoopbackEndpointMetadata;
+}
+
 export interface HarnessDescriptor {
   readonly harnessId: StableId;
   readonly kind: HarnessKind;
@@ -35,10 +79,7 @@ export interface ToolDefinition {
   readonly downstreamServerId: StableId;
   readonly inputSchema: JsonSchema;
   readonly destructiveRisk: "none" | "low" | "medium" | "high";
-  readonly routeMetadata?: {
-    readonly workspaceRoot?: string;
-    readonly sandboxRoot?: string;
-  };
+  readonly routeMetadata?: ToolRouteMetadata;
 }
 
 export interface ToolExecutionContext {
@@ -89,10 +130,7 @@ export interface ToolCall {
     readonly repo?: string;
     readonly agent?: string;
   };
-  readonly routeMetadata?: {
-    readonly workspaceRoot?: string;
-    readonly sandboxRoot?: string;
-  };
+  readonly routeMetadata?: ToolRouteMetadata;
 }
 
 export interface ToolResult {
@@ -544,6 +582,7 @@ export interface SideEffectLedgerEntry {
   readonly causalClaim: string;
   readonly counterEvidence: readonly string[];
   readonly observedImpact?: ObservedLocalImpact;
+  readonly routeConfig: RecordedRouteConfig;
   readonly blastRadius: BlastRadiusResult;
   readonly retryLoopFinding?: RetryLoopFinding;
 }

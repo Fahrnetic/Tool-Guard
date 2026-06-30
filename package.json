@@ -12,6 +12,7 @@
     "demo:raw-failure": "pnpm --filter @toolplane/core demo:raw-failure",
     "demo:serve": "pnpm --filter @toolplane/mcp-adapter demo:serve",
     "demo:toolplane": "pnpm --filter @toolplane/core demo:toolplane",
+    "doctor:integrations": "pnpm --filter @toolplane/core doctor:integrations",
     "dev:core": "pnpm --filter @toolplane/core dev",
     "dev:fixtures": "pnpm --filter @toolplane/mcp-adapter dev:fixtures",
     "dev:ui": "pnpm --filter @toolplane/ui dev -- --host 127.0.0.1 --port 3661",

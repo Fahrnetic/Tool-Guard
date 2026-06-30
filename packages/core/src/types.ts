@@ -446,10 +446,23 @@ export interface ContextWasteDelta {
 
 export type IntegrationRouteType = "mcp-routed" | "sdk-wrapped-python" | "cli-supervised";
 export type IntegrationProbeStatus = "configured" | "available" | "unsupported" | "not-yet-verified";
+export type IntegrationRouteCoverageState =
+  | "configured"
+  | "available"
+  | "unsupported"
+  | "not-verified"
+  | "producing-evidence";
 
 export interface IntegrationCapabilityCheck {
   readonly capability: string;
   readonly status: IntegrationProbeStatus;
+  readonly localOnly: true;
+  readonly evidence: string;
+}
+
+export interface IntegrationRouteCoverageEntry {
+  readonly state: IntegrationRouteCoverageState;
+  readonly label: string;
   readonly localOnly: true;
   readonly evidence: string;
 }
@@ -460,6 +473,7 @@ export interface IntegrationVerificationReceipt {
   readonly timestamp: string;
   readonly routeType: IntegrationRouteType;
   readonly checkedCapabilities: readonly IntegrationCapabilityCheck[];
+  readonly routeCoverage: readonly IntegrationRouteCoverageEntry[];
   readonly limitation: string;
   readonly evidenceLinks: readonly EvidenceLink[];
 }

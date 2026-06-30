@@ -88,6 +88,11 @@ export {
 export { RECORDED_POLICY_SCENARIOS, simulatePolicy, type PolicySimulationInput } from "./policy-simulator.js";
 export { verifyIntegrationRoute, type IntegrationVerificationInput } from "./integration-verification.js";
 export {
+  INTEGRATION_DOCTOR_ROUTES,
+  runIntegrationDoctor,
+  type IntegrationDoctorResult
+} from "./integration-doctor.js";
+export {
   DEMO_STORY_SCENARIOS,
   DEMO_STORY_STAGE_ORDER,
   DemoStoryScenarioRuntime,
@@ -142,6 +147,8 @@ export type {
   ImpactEvidenceBasis,
   IntegrationCapabilityCheck,
   IntegrationProbeStatus,
+  IntegrationRouteCoverageEntry,
+  IntegrationRouteCoverageState,
   IntegrationRouteType,
   IntegrationVerificationReceipt,
   PreflightFinding,

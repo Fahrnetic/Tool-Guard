@@ -19,6 +19,7 @@
     "build": "tsc --build tsconfig.json",
     "demo:raw-failure": "pnpm build && node dist/demo.js raw-failure",
     "demo:toolplane": "pnpm build && node dist/demo.js toolplane",
+    "doctor:integrations": "pnpm build && node dist/integration-doctor.js",
     "dev": "pnpm build && node dist/server.js",
     "lint": "pnpm typecheck",
     "test": "vitest run",

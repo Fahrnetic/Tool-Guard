@@ -10,6 +10,7 @@ import { SIDECAR_PROTOCOL_VERSION } from "./sidecar-protocol.js";
 import type {
   EvidenceLink,
   IntegrationCapabilityCheck,
+  IntegrationRouteCoverageEntry,
   IntegrationRouteType,
   IntegrationVerificationReceipt,
   JsonValue
@@ -33,18 +34,26 @@ const LIMITATIONS: Record<IntegrationRouteType, string> = {
     "Local-only CLI verification checks process-level supervision only; native agent tool calls require MCP, SDK wrapper, or ToolGuard API routing."
 };
 
+const ROUTE_LABELS: Record<IntegrationRouteType, string> = {
+  "mcp-routed": "MCP routed adapter path",
+  "sdk-wrapped-python": "Python SDK-wrapped sidecar path",
+  "cli-supervised": "CLI supervised process path"
+};
+
 export async function verifyIntegrationRoute(
   input: IntegrationVerificationInput
 ): Promise<IntegrationVerificationReceipt> {
   const receiptId = createId("receipt");
   const timestamp = new Date().toISOString();
   const checkedCapabilities = await buildCapabilityChecks(input);
+  const routeCoverage = buildRouteCoverage(input.routeType, checkedCapabilities);
   const receiptWithoutLinks = {
     receiptId,
     runId: input.session.runId,
     timestamp,
     routeType: input.routeType,
     checkedCapabilities,
+    routeCoverage,
     limitation: LIMITATIONS[input.routeType]
   } satisfies Omit<IntegrationVerificationReceipt, "evidenceLinks">;
 
@@ -64,6 +73,53 @@ export async function verifyIntegrationRoute(
   const receipt: IntegrationVerificationReceipt = { ...receiptWithoutLinks, evidenceLinks };
   await input.session.emitIntegrationVerified(receipt);
   return receipt;
+}
+
+function buildRouteCoverage(
+  routeType: IntegrationRouteType,
+  checkedCapabilities: readonly IntegrationCapabilityCheck[]
+): readonly IntegrationRouteCoverageEntry[] {
+  const configured = checkedCapabilities.some((check) => check.status === "configured");
+  const available = checkedCapabilities.some((check) => check.status === "available");
+  const notVerified = checkedCapabilities.some((check) => check.status === "not-yet-verified");
+  return [
+    {
+      state: "configured",
+      label: `${ROUTE_LABELS[routeType]} configured`,
+      localOnly: true,
+      evidence: configured
+        ? "At least one local route configuration check passed."
+        : "No local route configuration check passed in this doctor run."
+    },
+    {
+      state: "available",
+      label: `${ROUTE_LABELS[routeType]} available`,
+      localOnly: true,
+      evidence: available
+        ? "At least one local route availability probe passed."
+        : "No local route availability probe passed in this doctor run."
+    },
+    {
+      state: "unsupported",
+      label: "Native host tool interception unsupported",
+      localOnly: true,
+      evidence: LIMITATIONS[routeType]
+    },
+    {
+      state: "not-verified",
+      label: `${ROUTE_LABELS[routeType]} checks not verified`,
+      localOnly: true,
+      evidence: notVerified
+        ? "One or more local-only probes did not pass and require follow-up before claiming availability."
+        : "All local-only probes in this receipt passed; no pending route checks remain for this doctor run."
+    },
+    {
+      state: "producing-evidence",
+      label: `${ROUTE_LABELS[routeType]} producing evidence`,
+      localOnly: true,
+      evidence: "The integration doctor wrote this route receipt as a hashed evidence artifact and emitted an integration.verified event."
+    }
+  ];
 }
 
 async function buildCapabilityChecks(input: IntegrationVerificationInput): Promise<readonly IntegrationCapabilityCheck[]> {

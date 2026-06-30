@@ -256,4 +256,87 @@ describe("policy simulator and integration verification core", () => {
       ])
     );
   });
+
+  it("does not count generic receipt artifacts as route-specific evidence production", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-integrations-evidence-"));
+    const session = new CoreSession({ evidenceRoot: root, runId: createId("run") });
+    const handle = createCoreApiServer({ host: "127.0.0.1", port: 0, evidenceRoot: root, session });
+    serverHandles.push(handle);
+    await handle.ready;
+    const address = handle.server.address();
+    expect(typeof address).toBe("object");
+    const baseUrl = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
+
+    await session.emitIntegrationVerified({
+      receiptId: createId("receipt"),
+      runId: session.runId,
+      timestamp: new Date().toISOString(),
+      routeType: "mcp-routed",
+      checkedCapabilities: [
+        {
+          capability: "adapter availability",
+          status: "available",
+          localOnly: true,
+          evidence: "Executed adapter import probe for @toolplane/mcp-adapter."
+        },
+        {
+          capability: "config snippet validity",
+          status: "configured",
+          localOnly: true,
+          evidence: "Executed config generation probe for MCP snippets."
+        },
+        {
+          capability: "virtual routed tool evidence",
+          status: "not-yet-verified",
+          localOnly: true,
+          evidence: "Local route-specific evidence probe executed but did not pass."
+        }
+      ],
+      routeCoverage: [
+        {
+          state: "configured",
+          label: "MCP routed adapter path configured",
+          localOnly: true,
+          evidence: "At least one local route configuration check passed."
+        },
+        {
+          state: "available",
+          label: "MCP routed adapter path available",
+          localOnly: true,
+          evidence: "At least one local route availability probe passed."
+        },
+        {
+          state: "producing-evidence",
+          label: "MCP routed adapter path producing evidence",
+          localOnly: true,
+          evidence: "Generic receipt artifact exists, but the routed evidence probe failed."
+        }
+      ],
+      limitation: "Local-only MCP verification checks calls routed through ToolGuard MCP configuration only.",
+      evidenceLinks: [
+        {
+          artifactId: createId("artifact"),
+          href: "artifacts/integration-verification-mcp-routed-receipt.json",
+          label: "Generic verification receipt artifact"
+        }
+      ]
+    });
+
+    const payload = await getJson<{
+      routeCoverage: Array<{
+        routeType: string;
+        configured: boolean;
+        available: boolean;
+        producingEvidence: boolean;
+      }>;
+      integrations: Array<{ id: string; claimLevel: string; status: string }>;
+    }>(`${baseUrl}/api/integrations`);
+    const mcpRow = payload.routeCoverage.find((row) => row.routeType === "mcp-routed");
+    expect(mcpRow).toMatchObject({ configured: true, available: true, producingEvidence: false });
+    expect(payload.integrations.filter((integration) => integration.id === "cline" || integration.id === "roo-code")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ claimLevel: "not-yet-verified", status: "not-yet-verified" })
+      ])
+    );
+  });
 });

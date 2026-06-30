@@ -2308,9 +2308,8 @@ function buildRouteCoverageRow(input: {
   const available = capabilityChecks.some((check) => check.status === "available");
   const producingEvidence =
     latestReceipt !== undefined &&
-    capabilityChecks.some((check) => check.status === "configured" || check.status === "available") &&
-    Array.isArray(latestReceipt.receipt.evidenceLinks) &&
-    latestReceipt.receipt.evidenceLinks.some((link) => isRecord(link) && typeof link.artifactId === "string");
+    (capabilityChecks.some((check) => checkProducesRouteEvidence(input.routeType, check)) ||
+      hasExplicitRouteEvidenceLink(input.routeType, latestReceipt.receipt));
   const lastEvidenceAt = latestReceipt?.event.occurredAt;
   const evidenceFreshness = lastEvidenceAt ? evidenceFreshnessFor(lastEvidenceAt) : "missing";
   return {
@@ -2344,11 +2343,36 @@ function buildRouteCoverageRow(input: {
   };
 }
 
-function capabilityChecksFromReceipt(receipt: JsonObject): Array<{ readonly status: string }> {
+function capabilityChecksFromReceipt(
+  receipt: JsonObject
+): Array<{ readonly capability: string; readonly status: string }> {
   const checkedCapabilities = Array.isArray(receipt.checkedCapabilities) ? receipt.checkedCapabilities : [];
   return checkedCapabilities.filter((entry): entry is JsonObject => isRecord(entry)).map((entry) => ({
+    capability: typeof entry.capability === "string" ? entry.capability : "",
     status: typeof entry.status === "string" ? entry.status : "not-yet-verified"
   }));
+}
+
+function checkProducesRouteEvidence(
+  routeType: IntegrationRouteType,
+  check: { readonly capability: string; readonly status: string }
+): boolean {
+  if (check.status !== "configured" && check.status !== "available") return false;
+  const capability = check.capability.toLowerCase();
+  if (routeType === "mcp-routed") return capability === "virtual routed tool evidence";
+  if (routeType === "sdk-wrapped-python") return capability === "wrapper sidecar evidence";
+  return capability === "process probe";
+}
+
+function hasExplicitRouteEvidenceLink(routeType: IntegrationRouteType, receipt: JsonObject): boolean {
+  const evidenceLinks = Array.isArray(receipt.evidenceLinks) ? receipt.evidenceLinks : [];
+  return evidenceLinks.some(
+    (link) =>
+      isRecord(link) &&
+      typeof link.artifactId === "string" &&
+      link.routeType === routeType &&
+      link.evidenceScope === "route"
+  );
 }
 
 function checksFromReceipt(receipt: JsonObject): JsonObject[] {

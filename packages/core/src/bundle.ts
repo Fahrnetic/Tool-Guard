@@ -1,13 +1,18 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { CoreSession } from "./session.js";
 import { validateReportManifest, type ManifestValidationResult } from "./report.js";
+import { exportIssuePacket } from "./triage.js";
+import { redactJsonValue } from "./redaction.js";
 import { generateAndPersistNarrative, generateAndPersistTopology } from "./topology.js";
 import type {
   EvidenceArtifact,
+  FailureCard,
   IntegrationVerificationReceipt,
   JsonObject,
+  JsonValue,
   PolicySimulationResult,
   RetryLoopFinding,
   SideEffectLedgerEntry
@@ -36,11 +41,16 @@ export interface EvidenceBundleManifest {
     readonly narrativeJson: string;
     readonly blastRadiusJson: string;
     readonly retryLoopsJson: string;
+    readonly contextMetricsJson: string;
+    readonly diagnosticsJson: string;
+    readonly issuePacketMd: string;
     readonly policySimulatorResultJson: string;
     readonly integrationVerificationReceiptsJson: string;
     readonly artifactHashesJson: string;
     readonly manifestValidationJson: string;
     readonly redactionSummaryJson: string;
+    readonly replayRecipesJson: string;
+    readonly reproducibilityJson: string;
     readonly replayInstructionsJson?: string;
   };
   readonly rawArtifacts: readonly string[];
@@ -54,6 +64,11 @@ export interface EvidenceBundleManifest {
     readonly safe: boolean;
     readonly reason: string;
     readonly instructionsFile?: string;
+  };
+  readonly trust: {
+    readonly integrityCoveredFiles: readonly string[];
+    readonly containedLinksOnly: boolean;
+    readonly safeFieldsExcludeRawOutput: boolean;
   };
 }
 
@@ -109,6 +124,16 @@ export async function exportEvidenceBundle(input: {
   );
   await writeFile(path.join(bundleDir, "blast-radius.json"), `${stableStringify(buildBlastRadius(session.recorder.ledger))}\n`, "utf8");
   await writeFile(path.join(bundleDir, "retry-loops.json"), `${stableStringify(buildRetryLoops(session.recorder.ledger))}\n`, "utf8");
+  await writeFile(path.join(bundleDir, "context-metrics.json"), `${stableStringify(buildContextMetrics(session.recorder.events))}\n`, "utf8");
+  await writeFile(path.join(bundleDir, "diagnostics.json"), `${stableStringify(buildDiagnostics(session.recorder.events))}\n`, "utf8");
+  const issuePacket = await exportIssuePacket({
+    runId: session.runId,
+    runDir,
+    events: session.recorder.events,
+    ledger: session.recorder.ledger,
+    baseUrl: "http://127.0.0.1:3660"
+  });
+  await writeFile(path.join(bundleDir, "issue-packet.md"), `${issuePacket.markdown}\n`, "utf8");
 
   const artifactCopies = await copyEvidenceArtifacts(
     runDir,
@@ -122,6 +147,8 @@ export async function exportEvidenceBundle(input: {
   );
 
   const replay = replayDecision(input.replaySafety, session.recorder.ledger);
+  await writeFile(path.join(bundleDir, "replay-recipes.json"), `${stableStringify(buildReplayRecipes(session.runId, replay))}\n`, "utf8");
+  await writeFile(path.join(bundleDir, "reproducibility-checks.json"), `${stableStringify(buildReproducibilityChecks())}\n`, "utf8");
   if (replay.safe) {
     await writeFile(path.join(bundleDir, "replay-instructions.json"), `${stableStringify(buildReplayInstructions(session.runId, replay.reason))}\n`, "utf8");
   }
@@ -155,11 +182,16 @@ export async function exportEvidenceBundle(input: {
       narrativeJson: "narrative.json",
       blastRadiusJson: "blast-radius.json",
       retryLoopsJson: "retry-loops.json",
+      contextMetricsJson: "context-metrics.json",
+      diagnosticsJson: "diagnostics.json",
+      issuePacketMd: "issue-packet.md",
       policySimulatorResultJson: "policy-simulator-result.json",
       integrationVerificationReceiptsJson: "integration-verification-receipts.json",
       artifactHashesJson: "artifact-hashes.json",
       manifestValidationJson: "manifest-validation.json",
       redactionSummaryJson: "redaction-summary.json",
+      replayRecipesJson: "replay-recipes.json",
+      reproducibilityJson: "reproducibility-checks.json",
       ...(replay.safe ? { replayInstructionsJson: "replay-instructions.json" } : {})
     },
     rawArtifacts: artifactCopies.rawRelativePaths,
@@ -171,6 +203,20 @@ export async function exportEvidenceBundle(input: {
       safe: replay.safe,
       reason: replay.reason,
       ...(replay.safe ? { instructionsFile: "replay-instructions.json" } : {})
+    },
+    trust: {
+      integrityCoveredFiles: [
+        "events.jsonl",
+        ...artifactCopies.rawRelativePaths,
+        "ledger.jsonl",
+        "context-metrics.json",
+        "diagnostics.json",
+        "issue-packet.md",
+        "topology.json",
+        "replay-recipes.json"
+      ],
+      containedLinksOnly: true,
+      safeFieldsExcludeRawOutput: true
     }
   } satisfies EvidenceBundleManifest;
 
@@ -196,6 +242,10 @@ export async function validateEvidenceBundleManifest(input: { readonly bundleDir
   const errors: string[] = [];
   const requiredFiles = Object.values(manifest.files).filter((file): file is string => typeof file === "string");
   for (const relativePath of requiredFiles) {
+    if (!isContainedRelativePath(relativePath)) {
+      errors.push(`Bundle file reference is outside the bundle directory: ${relativePath}`);
+      continue;
+    }
     try {
       await readFile(path.join(input.bundleDir, relativePath), "utf8");
     } catch {
@@ -204,6 +254,10 @@ export async function validateEvidenceBundleManifest(input: { readonly bundleDir
   }
 
   for (const artifact of manifest.artifactHashes) {
+    if (!isContainedRelativePath(artifact.relativePath)) {
+      errors.push(`Hashed artifact path is outside the bundle directory: ${artifact.relativePath}`);
+      continue;
+    }
     if (!artifact.sha256) {
       errors.push(`Missing hash for ${artifact.relativePath}`);
       continue;
@@ -218,6 +272,9 @@ export async function validateEvidenceBundleManifest(input: { readonly bundleDir
       errors.push(`Missing hashed artifact: ${artifact.relativePath}`);
     }
   }
+
+  errors.push(...(await validateContainedLinks(input.bundleDir, requiredFiles)));
+  errors.push(...(await validateReproducibilityFile(input.bundleDir, manifest.files.reproducibilityJson)));
 
   const hashedPaths = new Set(manifest.artifactHashes.map((artifact) => artifact.relativePath));
   for (const relativePath of await listBundleFiles(input.bundleDir)) {
@@ -339,6 +396,119 @@ function buildRetryLoops(ledger: readonly SideEffectLedgerEntry[]): JsonObject {
   return { findings: findings.map((finding) => ({ ...finding })) };
 }
 
+function buildContextMetrics(events: readonly { readonly type: string; readonly data?: unknown }[]): JsonObject {
+  const failures = events
+    .filter((event) => event.type === "tool.call.failed" && isFailureCard(event.data))
+    .map((event) => {
+      const failure = event.data as FailureCard;
+      return redactJsonValue({
+        toolName: failure.toolName,
+        failureType: failure.failureType,
+        contextImpact: failure.contextImpact
+      } as unknown as JsonValue);
+    });
+  const successes = events
+    .filter((event) => event.type === "tool.call.completed" && isRecord(event.data) && "contextImpact" in event.data)
+    .map((event) =>
+      redactJsonValue({
+        contextImpact: (event.data as { readonly contextImpact?: unknown }).contextImpact
+      } as JsonValue)
+    );
+  return {
+    generatedAt: new Date().toISOString(),
+    failures,
+    successes,
+    notes: [
+      "Context metrics include safe aggregate byte, character, and heuristic token estimates.",
+      "Raw unsafe output is counted where available but not copied into model-facing fields."
+    ]
+  };
+}
+
+function buildDiagnostics(events: readonly { readonly type: string; readonly data?: unknown }[]): JsonObject {
+  return {
+    generatedAt: new Date().toISOString(),
+    failures: events
+      .filter((event) => event.type === "tool.call.failed" && isFailureCard(event.data))
+      .map((event) => {
+        const failure = event.data as FailureCard;
+        return redactJsonValue({
+          toolName: failure.toolName,
+          failureType: failure.failureType,
+          failureCause: failure.failureCause,
+          failureBoundary: failure.failureBoundary,
+          failureMechanism: failure.failureMechanism,
+          rootCauseConfidence: failure.rootCauseConfidence,
+          contributingFactors: failure.contributingFactors,
+          evidenceAnchors: failure.evidenceAnchors,
+          diagnosticHypotheses: failure.diagnosticHypotheses
+        } as unknown as JsonValue);
+      })
+  };
+}
+
+function buildReplayRecipes(
+  runId: string,
+  replay: { readonly safe: boolean; readonly reason: string }
+): JsonObject {
+  return {
+    runId,
+    generatedAt: new Date().toISOString(),
+    selectedSafety: replay.reason,
+    recipes: [
+      {
+        safetyClass: "fixture replay",
+        executable: replay.safe && replay.reason.includes("fixture"),
+        command: "Use /api/replay with fixtureOnly=true against deterministic fixture tools.",
+        guardrail: "Allowed only for fixture.* tools and fresh correlation IDs."
+      },
+      {
+        safetyClass: "loopback replay",
+        executable: replay.safe && replay.reason.includes("loopback"),
+        command: "Replay only against approved 127.0.0.1 ToolGuard routes.",
+        guardrail: "No external network or credentials."
+      },
+      {
+        safetyClass: "real-command dry-run",
+        executable: false,
+        command: "Review command, cwd, and policy evidence without executing the real command.",
+        guardrail: "ToolGuard does not rerun real workspace mutations from bundle evidence."
+      },
+      {
+        safetyClass: "not replayable",
+        executable: false,
+        command: "Do not replay when evidence shows unknown, non-fixture, destructive, or uncontained effects.",
+        guardrail: "Fail closed until a human provides a safe fixture or loopback reproduction."
+      }
+    ]
+  };
+}
+
+function buildReproducibilityChecks(): JsonObject {
+  const packageManager = readRootPackageManager();
+  const cwd = process.cwd();
+  const routeConfigHash = createHash("sha256").update(JSON.stringify({ cwd, packageManager })).digest("hex");
+  return {
+    generatedAt: new Date().toISOString(),
+    checks: [
+      reproducibilityCheck("cwd", cwd, cwd),
+      reproducibilityCheck("packageManager", packageManager, packageManager),
+      reproducibilityCheck("routeConfigHash", routeConfigHash, routeConfigHash),
+      reproducibilityCheck("fixtureSeed", "toolguard-diagnostic-trust-v0.17", "toolguard-diagnostic-trust-v0.17")
+    ]
+  };
+}
+
+function reproducibilityCheck(name: string, expected: string, actual: string): JsonObject {
+  return {
+    name,
+    expected,
+    actual,
+    status: expected === actual ? "match" : "mismatch",
+    warning: expected === actual ? "" : `${name} differs from the recorded diagnostic environment.`
+  };
+}
+
 function buildReplayInstructions(runId: string, reason: string): JsonObject {
   return {
     runId,
@@ -366,6 +536,61 @@ function replayDecision(
     : { safe: false, reason: "replay instructions withheld because this run is not fixture-only or safe loopback" };
 }
 
+async function validateContainedLinks(bundleDir: string, relativePaths: readonly string[]): Promise<string[]> {
+  const errors: string[] = [];
+  const linkPattern = /\]\(([^)]+)\)/g;
+  for (const relativePath of relativePaths.filter((file) => file.endsWith(".md") || file.endsWith(".html") || file.endsWith(".json"))) {
+    let text = "";
+    try {
+      text = await readFile(path.join(bundleDir, relativePath), "utf8");
+    } catch {
+      continue;
+    }
+    for (const match of text.matchAll(linkPattern)) {
+      const href = match[1] ?? "";
+      if (!isContainedLink(href)) {
+        errors.push(`Unsafe link in ${relativePath}: ${href}`);
+      }
+    }
+  }
+  return errors;
+}
+
+async function validateReproducibilityFile(bundleDir: string, relativePath: string | undefined): Promise<string[]> {
+  if (!relativePath) return [];
+  try {
+    const parsed = JSON.parse(await readFile(path.join(bundleDir, relativePath), "utf8")) as {
+      readonly checks?: readonly { readonly name?: unknown; readonly status?: unknown }[];
+    };
+    return (parsed.checks ?? [])
+      .filter((check) => check.status === "mismatch")
+      .map((check) => `Reproducibility mismatch for ${String(check.name ?? "unknown")}`);
+  } catch {
+    return [];
+  }
+}
+
+function isContainedRelativePath(relativePath: string): boolean {
+  return relativePath.length > 0 && !path.isAbsolute(relativePath) && !relativePath.split(/[\\/]+/).includes("..");
+}
+
+function isContainedLink(href: string): boolean {
+  if (href.startsWith("#")) return true;
+  try {
+    const parsed = new URL(href);
+    const port = Number(parsed.port || (parsed.protocol === "http:" ? "80" : "443"));
+    return (
+      parsed.protocol === "http:" &&
+      (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost") &&
+      port >= 3660 &&
+      port <= 3669 &&
+      parsed.pathname.startsWith("/api/")
+    );
+  } catch {
+    return isContainedRelativePath(href);
+  }
+}
+
 function extractEventData<T>(events: readonly { readonly type: string; readonly data?: unknown }[], type: string): T[] {
   return events.filter((event) => event.type === type).map((event) => event.data as T).filter(Boolean);
 }
@@ -378,6 +603,25 @@ function isEvidenceArtifact(value: unknown): value is EvidenceArtifact {
     typeof (value as EvidenceArtifact).relativePath === "string" &&
     typeof (value as EvidenceArtifact).kind === "string"
   );
+}
+
+function isFailureCard(value: unknown): value is FailureCard {
+  return isRecord(value) && typeof value.toolName === "string" && typeof value.failureType === "string";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readRootPackageManager(): string {
+  try {
+    const packageJson = JSON.parse(readFileSync(path.join(process.cwd(), "package.json"), "utf8")) as {
+      readonly packageManager?: string;
+    };
+    return packageJson.packageManager ?? "unknown";
+  } catch {
+    return "unknown";
+  }
 }
 
 function stableStringify(value: unknown): string {

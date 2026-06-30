@@ -135,6 +135,135 @@ describe("evidence bundle export", () => {
     });
   });
 
+  it("covers diagnostic workbench trust files, replay recipes, and reproducibility checks in bundle integrity", async () => {
+    const { session } = await makeSeededSession("toolguard-bundle-trust-");
+    await session.failToolCall(makeToolCall(session.runId), "non_zero_exit", [
+      "safe failing command output",
+      `Bearer ${"C".repeat(32)}`
+    ]);
+
+    const bundle = await exportEvidenceBundle({
+      session,
+      replaySafety: { fixtureOnly: true }
+    });
+
+    const manifest = await readJson<{
+      files: {
+        contextMetricsJson: string;
+        diagnosticsJson: string;
+        issuePacketMd: string;
+        replayRecipesJson: string;
+        reproducibilityJson: string;
+      };
+      trust: {
+        integrityCoveredFiles: string[];
+        containedLinksOnly: boolean;
+        safeFieldsExcludeRawOutput: boolean;
+      };
+    }>(bundle.manifestPath);
+
+    expect(manifest.files).toMatchObject({
+      contextMetricsJson: "context-metrics.json",
+      diagnosticsJson: "diagnostics.json",
+      issuePacketMd: "issue-packet.md",
+      replayRecipesJson: "replay-recipes.json",
+      reproducibilityJson: "reproducibility-checks.json"
+    });
+    expect(manifest.trust.integrityCoveredFiles).toEqual(
+      expect.arrayContaining([
+        "events.jsonl",
+        "ledger.jsonl",
+        "context-metrics.json",
+        "diagnostics.json",
+        "issue-packet.md",
+        "topology.json",
+        "replay-recipes.json"
+      ])
+    );
+    expect(manifest.trust.containedLinksOnly).toBe(true);
+    expect(manifest.trust.safeFieldsExcludeRawOutput).toBe(true);
+
+    const contextMetrics = await readJson<{ failures: Array<{ contextImpact: unknown }> }>(
+      path.join(bundle.bundleDir, "context-metrics.json")
+    );
+    const diagnostics = await readJson<{ failures: Array<{ evidenceAnchors: unknown[] }> }>(
+      path.join(bundle.bundleDir, "diagnostics.json")
+    );
+    const replayRecipes = await readJson<{ recipes: Array<{ safetyClass: string; executable: boolean }> }>(
+      path.join(bundle.bundleDir, "replay-recipes.json")
+    );
+    const reproducibility = await readJson<{ checks: Array<{ name: string; status: string }> }>(
+      path.join(bundle.bundleDir, "reproducibility-checks.json")
+    );
+    const issuePacket = await readFile(path.join(bundle.bundleDir, "issue-packet.md"), "utf8");
+
+    expect(contextMetrics.failures[0]?.contextImpact).toBeDefined();
+    expect(JSON.stringify(contextMetrics)).not.toContain("C".repeat(32));
+    expect(diagnostics.failures[0]?.evidenceAnchors.length).toBeGreaterThan(0);
+    expect(JSON.stringify(diagnostics)).not.toContain("C".repeat(32));
+    expect(replayRecipes.recipes.map((recipe) => recipe.safetyClass)).toEqual(
+      expect.arrayContaining(["fixture replay", "loopback replay", "real-command dry-run", "not replayable"])
+    );
+    expect(replayRecipes.recipes.find((recipe) => recipe.safetyClass === "not replayable")?.executable).toBe(false);
+    expect(reproducibility.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining(["cwd", "packageManager", "routeConfigHash", "fixtureSeed"])
+    );
+    expect(issuePacket).toContain("ToolGuard issue packet");
+    expect(issuePacket).not.toContain("C".repeat(32));
+
+    const validation = await validateEvidenceBundleManifest({ bundleDir: bundle.bundleDir });
+    expect(validation.valid).toBe(true);
+  });
+
+  it("reports missing diagnostic artifacts, contained-link violations, and reproducibility mismatches", async () => {
+    const { session } = await makeSeededSession("toolguard-bundle-warnings-");
+    const bundle = await exportEvidenceBundle({
+      session,
+      replaySafety: { fixtureOnly: true }
+    });
+
+    await rm(path.join(bundle.bundleDir, "context-metrics.json"), { force: true });
+    await expect(validateEvidenceBundleManifest({ bundleDir: bundle.bundleDir })).resolves.toMatchObject({
+      valid: false,
+      errors: expect.arrayContaining([expect.stringMatching(/context-metrics\.json/)])
+    });
+
+    const fresh = await exportEvidenceBundle({
+      session,
+      replaySafety: { fixtureOnly: true }
+    });
+    await writeFile(
+      path.join(fresh.bundleDir, "issue-packet.md"),
+      "# unsafe\n\n[escape](file:///tmp/outside)\n",
+      "utf8"
+    );
+    await expect(validateEvidenceBundleManifest({ bundleDir: fresh.bundleDir })).resolves.toMatchObject({
+      valid: false,
+      errors: expect.arrayContaining([expect.stringMatching(/unsafe link/i)])
+    });
+
+    const reproducibilityPath = path.join(fresh.bundleDir, "reproducibility-checks.json");
+    const reproducibility = await readJson<{ checks: Array<Record<string, unknown>> }>(reproducibilityPath);
+    await writeFile(
+      reproducibilityPath,
+      `${JSON.stringify(
+        {
+          ...reproducibility,
+          checks: reproducibility.checks.map((check) =>
+            check.name === "fixtureSeed" ? { ...check, status: "mismatch", actual: "changed-seed" } : check
+          )
+        },
+        null,
+        2
+      )}\n`,
+      "utf8"
+    );
+    await expect(validateEvidenceBundleManifest({ bundleDir: fresh.bundleDir })).resolves.toMatchObject({
+      valid: false,
+      errors: expect.arrayContaining([expect.stringMatching(/Reproducibility mismatch for fixtureSeed/)])
+    });
+  });
+
   it("omits replay instructions for unsafe scenarios", async () => {
     const { session } = await makeSeededSession("toolguard-bundle-unsafe-");
     const bundle = await exportEvidenceBundle({

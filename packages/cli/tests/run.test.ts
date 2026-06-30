@@ -213,6 +213,33 @@ describe("toolplane run process wrapper", () => {
     expect(events.filter((event) => event.type === "evidence.artifact.created").length).toBeGreaterThanOrEqual(2);
   });
 
+  it("prints an evidence trust summary with integrity and replay safety after diagnostic runs", async () => {
+    const root = await makeTempRoot("toolguard-cli-trust-summary-");
+    const script = path.join(root, "fail-trust.mjs");
+    await writeFile(script, "console.error('safe failure for trust summary'); process.exit(5)\n", "utf8");
+    let stdout = "";
+    let stderr = "";
+
+    const result = await runToolplaneCli(["run", "--evidence-root", root, "--fixture-only", "--", process.execPath, script], {
+      stdout: (chunk) => {
+        stdout += chunk;
+      },
+      stderr: (chunk) => {
+        stderr += chunk;
+      }
+    });
+
+    expect(result.exitCode).toBe(5);
+    expect(stdout).toContain("Evidence trust: valid");
+    expect(stdout).toContain("Replay safety: fixture replay");
+    expect(stdout).toContain("Bundle manifest:");
+    expect(stdout).toContain("context-metrics.json, diagnostics.json, issue-packet.md, topology.json, ledger.jsonl, replay-recipes.json");
+    expect(stderr).toContain("Failure Card: non_zero_exit");
+    await expect(readFile(path.join(result.evidenceDir, "bundle", "manifest.json"), "utf8")).resolves.toContain(
+      "context-metrics.json"
+    );
+  });
+
   it("indexes CLI success and failure runs with safe labels and command metadata", async () => {
     const root = await makeTempRoot();
     const okScript = path.join(root, "ok.mjs");

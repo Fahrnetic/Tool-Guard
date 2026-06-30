@@ -1564,6 +1564,18 @@ async function buildBundlePayload(input: {
       replaySafe: manifest.replay.safe,
       replayReason: manifest.replay.reason,
       replayInstructionsUrl: manifest.replay.instructionsFile ? bundleFileUrl(input.baseUrl, input.runId, manifest.replay.instructionsFile) : "",
+      trust: {
+        integrityCoveredFiles: [...manifest.trust.integrityCoveredFiles],
+        containedLinksOnly: manifest.trust.containedLinksOnly,
+        safeFieldsExcludeRawOutput: manifest.trust.safeFieldsExcludeRawOutput
+      },
+      trustSummary: {
+        status: validation.valid && manifest.trust.containedLinksOnly && manifest.trust.safeFieldsExcludeRawOutput ? "healthy" : "failed",
+        label: validation.valid ? "Evidence trust validated" : "Evidence trust warnings",
+        summary: validation.valid
+          ? `Integrity covers ${manifest.trust.integrityCoveredFiles.join(", ")} with contained links and raw/safe separation.`
+          : validation.errors.join("\n")
+      },
       files: fileRows,
       rawArtifacts,
       artifactHashes: manifest.artifactHashes.map((artifact) => ({ ...artifact })),

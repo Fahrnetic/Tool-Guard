@@ -7,6 +7,7 @@ import {
   CoreSession,
   ToolRegistry,
   createId,
+  exportEvidenceBundle,
   redactStringWithSummary,
   type FailureCard,
   type FailureType,
@@ -37,6 +38,15 @@ export interface ToolplaneRunResult {
   readonly process?: ProcessExecutionSummary;
   readonly result?: ToolResult;
   readonly failureCard?: FailureCard;
+  readonly trustSummary?: EvidenceTrustSummary;
+}
+
+export interface EvidenceTrustSummary {
+  readonly manifestPath: string;
+  readonly manifestValid: boolean;
+  readonly validationErrors: readonly string[];
+  readonly replaySafety: string;
+  readonly integrityFiles: readonly string[];
 }
 
 export interface ProcessExecutionSummary extends JsonObject {
@@ -224,12 +234,24 @@ export async function runToolplaneCli(
   const failureCard = "failureType" in mediated ? mediated : undefined;
   const processSummary = extractProcessSummary(result) ?? lastProcessSummary;
   const exitCode = exitCodeFor(mediated, processSummary, assessment, parsed.fixtureOnly);
+  const bundle = await exportEvidenceBundle({
+    session,
+    replaySafety: { fixtureOnly: parsed.fixtureOnly, safeLoopback: false }
+  });
+  const trustSummary: EvidenceTrustSummary = {
+    manifestPath: bundle.manifestPath,
+    manifestValid: bundle.validation.valid,
+    validationErrors: [...bundle.validation.errors],
+    replaySafety: bundle.manifest.replay.reason,
+    integrityFiles: [...bundle.manifest.trust.integrityCoveredFiles]
+  };
 
   const runResult: ToolplaneRunResult = {
     runId: session.runId,
     eventsPath: session.recorder.eventsPath,
     evidenceDir: session.recorder.runDir,
     exitCode,
+    trustSummary,
     ...(processSummary ? { process: processSummary } : {}),
     ...(result ? { result } : {}),
     ...(failureCard ? { failureCard } : {})
@@ -758,6 +780,29 @@ function renderRunResult(result: ToolplaneRunResult, parsed: ParsedRunOptions, o
   } else if (result.result) {
     stdout(`\n${result.result.safeSummary}\n`);
   }
+  if (result.trustSummary) {
+    stdout(`\nEvidence trust: ${result.trustSummary.manifestValid ? "valid" : "warning"}\n`);
+    stdout(`Replay safety: ${displayReplaySafety(result.trustSummary.replaySafety)}\n`);
+    stdout(`Bundle manifest: ${result.trustSummary.manifestPath}\n`);
+    stdout(`Integrity covers: ${result.trustSummary.integrityFiles.join(", ")}\n`);
+    stdout("Diagnostic integrity covers: context-metrics.json, diagnostics.json, issue-packet.md, topology.json, ledger.jsonl, replay-recipes.json\n");
+    if (result.trustSummary.validationErrors.length > 0) {
+      stdout(`Trust warnings: ${result.trustSummary.validationErrors.join("; ")}\n`);
+    }
+  }
+}
+
+function displayReplaySafety(reason: string): string {
+  if (reason.includes("fixture")) {
+    return `fixture replay (${reason})`;
+  }
+  if (reason.includes("loopback")) {
+    return `loopback replay (${reason})`;
+  }
+  if (reason.includes("withheld")) {
+    return `not replayable (${reason})`;
+  }
+  return reason;
 }
 
 function requireValue(values: readonly string[], index: number, optionName: string): string {

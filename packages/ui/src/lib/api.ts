@@ -120,7 +120,10 @@ export async function resetStoryScenario(input: { scenarioId: string }, signal?:
   });
 }
 
-export async function requestReplay(input: { toolName: string; sourceRunId: string; fixtureOnly: boolean; mode?: string; destructive?: boolean }, signal?: AbortSignal): Promise<ReplayResponse> {
+export async function requestReplay(
+  input: { toolName: string; sourceRunId: string; fixtureOnly: boolean; mode?: string; destructive?: boolean; safeLoopback?: boolean; dryRunOnly?: boolean },
+  signal?: AbortSignal
+): Promise<ReplayResponse> {
   return await fetchJsonAllowingStatus<ReplayResponse>("/api/replay", signal, {
     method: "POST",
     body: JSON.stringify(input),

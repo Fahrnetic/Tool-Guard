@@ -277,9 +277,22 @@ export type VerificationCapabilityCheck = IntegrationCapabilityCheck;
 export interface ReplayPayload {
   readonly runId: string;
   readonly generatedAt: string;
+  readonly replayCategories: readonly ReplayCategory[];
   readonly replayableRuns: readonly ReplayableRun[];
   readonly fixtures: readonly ReplayFixture[];
   readonly latestReplayEvents: readonly CoreEvent[];
+}
+
+export type ReplayCategoryValue = "fixture replay" | "loopback replay" | "real-command dry-run" | "not replayable" | string;
+export type ReplayExecutionMode = "execute" | "loopback" | "dry-run" | "blocked" | string;
+
+export interface ReplayCategory {
+  readonly category: ReplayCategoryValue;
+  readonly label: string;
+  readonly status: "safe" | "dry-run" | "blocked" | "degraded" | string;
+  readonly safe: boolean;
+  readonly executionMode: ReplayExecutionMode;
+  readonly summary: string;
 }
 
 export interface ReplayableRun {
@@ -288,26 +301,35 @@ export interface ReplayableRun {
   readonly failureCount: number;
   readonly safe: boolean;
   readonly fixtureOnly: boolean;
+  readonly category?: ReplayCategoryValue;
+  readonly executionMode?: ReplayExecutionMode;
 }
 
 export interface ReplayFixture {
   readonly id: string;
   readonly label: string;
+  readonly category: ReplayCategoryValue;
+  readonly executionMode: ReplayExecutionMode;
   readonly status: "safe" | "blocked" | "degraded" | string;
   readonly safe: boolean;
   readonly fixtureOnly: boolean;
+  readonly safeLoopback?: boolean;
+  readonly dryRunOnly?: boolean;
   readonly destructiveRisk: "none" | "low" | "medium" | "high" | string;
   readonly description: string;
 }
 
 export interface ReplayResponse {
-  readonly status: "success" | "failed" | "blocked";
+  readonly status: "success" | "failed" | "blocked" | "dry-run";
   readonly replayId: string;
   readonly sourceRunId: string;
   readonly runId: string;
+  readonly category?: ReplayCategoryValue;
   readonly reason?: string;
   readonly safe: boolean;
   readonly fixtureOnly: boolean;
+  readonly dryRunOnly?: boolean;
+  readonly safeLoopback?: boolean;
   readonly freshCorrelation?: CorrelationContext;
   readonly result?: unknown;
 }

@@ -1094,8 +1094,43 @@ async function handleReplayRequest(input: {
   const sourceRunId = stringValue(input.payload.sourceRunId, input.runId);
   const requestedTool = stringValue(input.payload.toolName, "fixture.wrong-cwd");
   const fixtureOnly = input.payload.fixtureOnly === true;
+  const dryRun = input.payload.mode === "dry-run" || input.payload.dryRunOnly === true;
+  const safeLoopback = input.payload.mode === "loopback" || input.payload.safeLoopback === true || requestedTool.startsWith("http.loopback.");
   const realWorld = input.payload.mode === "real-world" || input.payload.realWorld === true;
   const destructive = input.payload.destructive === true || requestedTool.includes("rm -rf") || requestedTool.includes("delete");
+  if (dryRun && !destructive) {
+    return {
+      statusCode: 200,
+      body: {
+        status: "dry-run",
+        replayId: createId("report"),
+        sourceRunId,
+        runId: input.runId,
+        category: "real-command dry-run",
+        reason: "Recorded real-world command recipe was previewed only and not executed. No command was executed.",
+        safe: true,
+        fixtureOnly: false,
+        dryRunOnly: true
+      }
+    };
+  }
+  if (safeLoopback && !destructive && !realWorld) {
+    return {
+      statusCode: 200,
+      body: {
+        status: "dry-run",
+        replayId: createId("report"),
+        sourceRunId,
+        runId: input.runId,
+        category: "loopback replay",
+        reason: "Loopback replay requires verified recorded endpoint metadata; this API preview did not execute a downstream network call.",
+        safe: true,
+        fixtureOnly: false,
+        safeLoopback: true,
+        dryRunOnly: true
+      }
+    };
+  }
   if (!fixtureOnly || realWorld || destructive) {
     return {
       statusCode: 409,
@@ -1104,7 +1139,8 @@ async function handleReplayRequest(input: {
         replayId: createId("report"),
         sourceRunId,
         runId: input.runId,
-        reason: "Replay is fixture-only. Destructive or real-world commands are blocked before execution.",
+        category: "not replayable",
+        reason: "Replay is fixture-only unless explicitly marked safe loopback or dry-run. This recipe is not replayable in live execution, so destructive or real-world commands are blocked before execution.",
         safe: false,
         fixtureOnly
       }
@@ -1120,6 +1156,7 @@ async function handleReplayRequest(input: {
         replayId: createId("report"),
         sourceRunId,
         runId: input.runId,
+        category: "fixture replay",
         reason: `Replay fixture ${toolName} is not registered.`,
         safe: false,
         fixtureOnly: true
@@ -1135,6 +1172,7 @@ async function handleReplayRequest(input: {
       replayId: createId("report"),
       sourceRunId,
       runId: call.runId,
+      category: "fixture replay",
       freshCorrelation: {
         traceId: call.traceId,
         ...(call.parentId ? { parentId: call.parentId } : {}),
@@ -1176,19 +1214,24 @@ function buildReplayPayload(runId: StableId, events: readonly CoreEvent[]): Json
   return {
     runId,
     generatedAt: new Date().toISOString(),
+    replayCategories: replayRecipeCategories(),
     replayableRuns: [
       {
         sourceRunId: runId,
         label: failedEvents.length > 0 ? "Latest failed ToolGuard run" : "Latest ToolGuard run",
         failureCount: failedEvents.length,
         safe: true,
-        fixtureOnly: true
+        fixtureOnly: true,
+        category: "fixture replay",
+        executionMode: "execute"
       }
     ],
     fixtures: [
       {
         id: "fixture.wrong-cwd",
         label: "Wrong cwd failure reconstruction",
+        category: "fixture replay",
+        executionMode: "execute",
         status: "safe",
         safe: true,
         fixtureOnly: true,
@@ -1198,6 +1241,8 @@ function buildReplayPayload(runId: StableId, events: readonly CoreEvent[]): Json
       {
         id: "fixture.prompt-injection-output",
         label: "Prompt-injection sanitizer proof",
+        category: "fixture replay",
+        executionMode: "execute",
         status: "safe",
         safe: true,
         fixtureOnly: true,
@@ -1205,11 +1250,38 @@ function buildReplayPayload(runId: StableId, events: readonly CoreEvent[]): Json
         description: "Replays a safe fixture that proves suspicious output stays contained."
       },
       {
+        id: "http.loopback.identity",
+        label: "Verified loopback route replay",
+        category: "loopback replay",
+        executionMode: "loopback",
+        status: "safe",
+        safe: true,
+        fixtureOnly: false,
+        safeLoopback: true,
+        destructiveRisk: "none",
+        description: "Replay is allowed only for a recorded, verified 127.0.0.1 route with matching route metadata."
+      },
+      {
+        id: "real-world.git-status",
+        label: "Recorded real command preview",
+        category: "real-command dry-run",
+        executionMode: "dry-run",
+        status: "dry-run",
+        safe: true,
+        fixtureOnly: false,
+        dryRunOnly: true,
+        destructiveRisk: "low",
+        description: "Shows the recorded command and policy outcome without executing any real-world command."
+      },
+      {
         id: "real-world.rm-rf",
         label: "Real-world destructive command",
+        category: "not replayable",
+        executionMode: "blocked",
         status: "blocked",
         safe: false,
         fixtureOnly: false,
+        dryRunOnly: false,
         destructiveRisk: "high",
         description: "Blocked by policy. Replay Lab never executes destructive real-world commands."
       }
@@ -1218,6 +1290,43 @@ function buildReplayPayload(runId: StableId, events: readonly CoreEvent[]): Json
       .filter((event) => event.parentId === runId)
       .slice(-8) as unknown as JsonValue
   };
+}
+
+function replayRecipeCategories(): JsonObject[] {
+  return [
+    {
+      category: "fixture replay",
+      label: "Fixture replay",
+      status: "safe",
+      safe: true,
+      executionMode: "execute",
+      summary: "Deterministic fixture-only calls can be executed safely with fresh correlation IDs."
+    },
+    {
+      category: "loopback replay",
+      label: "Loopback replay",
+      status: "safe",
+      safe: true,
+      executionMode: "loopback",
+      summary: "Only verified local loopback routes with recorded endpoint metadata are replayable."
+    },
+    {
+      category: "real-command dry-run",
+      label: "Real-command dry-run",
+      status: "dry-run",
+      safe: true,
+      executionMode: "dry-run",
+      summary: "Real-world command recipes are previewed without executing side effects."
+    },
+    {
+      category: "not replayable",
+      label: "Not replayable",
+      status: "blocked",
+      safe: false,
+      executionMode: "blocked",
+      summary: "Unsafe, destructive, or unverifiable recipes are explicitly blocked."
+    }
+  ];
 }
 
 async function buildReportsPayload(input: {

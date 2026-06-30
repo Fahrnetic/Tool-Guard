@@ -24,6 +24,106 @@ function originFor(handle: CoreApiServerHandle): string {
 }
 
 describe("local sidecar API", () => {
+  it("distinguishes all replay recipe categories in the replay API", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-replay-categories-"));
+    const handle = createCoreApiServer({ port: 0, evidenceRoot: root, seedDirectRun: false });
+    await handle.ready;
+
+    try {
+      const response = await fetch(`${originFor(handle)}/api/replay`);
+      expect(response.status).toBe(200);
+      const payload = (await response.json()) as {
+        replayCategories: Array<{ category: string; executionMode: string; safe: boolean }>;
+        fixtures: Array<{ id: string; category: string; executionMode: string; safe: boolean; fixtureOnly: boolean }>;
+      };
+
+      expect(payload.replayCategories.map((item) => item.category)).toEqual([
+        "fixture replay",
+        "loopback replay",
+        "real-command dry-run",
+        "not replayable"
+      ]);
+      expect(payload.fixtures.map((item) => item.category)).toEqual(
+        expect.arrayContaining(["fixture replay", "loopback replay", "real-command dry-run", "not replayable"])
+      );
+      expect(payload.fixtures.find((item) => item.category === "fixture replay")).toMatchObject({
+        safe: true,
+        fixtureOnly: true,
+        executionMode: "execute"
+      });
+      expect(payload.fixtures.find((item) => item.category === "loopback replay")).toMatchObject({
+        safe: true,
+        fixtureOnly: false,
+        executionMode: "loopback"
+      });
+      expect(payload.fixtures.find((item) => item.category === "real-command dry-run")).toMatchObject({
+        safe: true,
+        fixtureOnly: false,
+        executionMode: "dry-run"
+      });
+      expect(payload.fixtures.find((item) => item.category === "not replayable")).toMatchObject({
+        safe: false,
+        fixtureOnly: false,
+        executionMode: "blocked"
+      });
+    } finally {
+      await handle.close();
+    }
+  });
+
+  it("keeps real command replay dry-run only and blocks not-replayable requests", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-replay-post-categories-"));
+    const handle = createCoreApiServer({ port: 0, evidenceRoot: root, seedDirectRun: false });
+    await handle.ready;
+
+    try {
+      const baseUrl = originFor(handle);
+      const dryRunResponse = await fetch(`${baseUrl}/api/replay`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          toolName: "real-world.git-status",
+          sourceRunId: handle.session.runId,
+          fixtureOnly: false,
+          mode: "dry-run"
+        })
+      });
+      const dryRun = (await dryRunResponse.json()) as { status: string; category: string; dryRunOnly: boolean; safe: boolean; reason: string };
+
+      expect(dryRunResponse.status).toBe(200);
+      expect(dryRun).toMatchObject({
+        status: "dry-run",
+        category: "real-command dry-run",
+        dryRunOnly: true,
+        safe: true
+      });
+      expect(dryRun.reason).toMatch(/not executed/i);
+
+      const blockedResponse = await fetch(`${baseUrl}/api/replay`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          toolName: "real-world.rm-rf",
+          sourceRunId: handle.session.runId,
+          fixtureOnly: false,
+          mode: "real-world",
+          destructive: true
+        })
+      });
+      const blocked = (await blockedResponse.json()) as { status: string; category: string; safe: boolean; reason: string };
+
+      expect(blockedResponse.status).toBe(409);
+      expect(blocked).toMatchObject({
+        status: "blocked",
+        category: "not replayable",
+        safe: false
+      });
+      expect(blocked.reason).toMatch(/blocked before execution/i);
+    } finally {
+      await handle.close();
+    }
+  });
+
   it("backs validation dashboard process hygiene with a local approved-port probe", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "toolguard-validation-dashboard-"));
     const leakedFixturePort = 3669;

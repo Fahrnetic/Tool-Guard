@@ -405,13 +405,8 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
           sendJson(response, body.statusCode, { error: body.message });
           return;
         }
-        const replaySafety = isRecord(body.payload) && isRecord(body.payload.replaySafety) ? body.payload.replaySafety : {};
         const bundle = await exportEvidenceBundle({
-          session,
-          replaySafety: {
-            fixtureOnly: replaySafety.fixtureOnly === true,
-            safeLoopback: replaySafety.safeLoopback === true
-          }
+          session
         });
         sendJson(response, 200, {
           runId,

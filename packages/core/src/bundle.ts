@@ -83,6 +83,10 @@ export interface EvidenceBundleResult {
 
 export async function exportEvidenceBundle(input: {
   readonly session: CoreSession;
+  /**
+   * @deprecated Caller-provided replay safety is intentionally ignored. Replay
+   * safety is derived from recorded server-side evidence only.
+   */
   readonly replaySafety?: EvidenceBundleReplaySafety;
 }): Promise<EvidenceBundleResult> {
   const session = input.session;
@@ -146,7 +150,7 @@ export async function exportEvidenceBundle(input: {
     "utf8"
   );
 
-  const replay = replayDecision(input.replaySafety, session.recorder.ledger);
+  const replay = replayDecision(session.recorder.ledger, session.recorder.events);
   await writeFile(path.join(bundleDir, "replay-recipes.json"), `${stableStringify(buildReplayRecipes(session.runId, replay))}\n`, "utf8");
   await writeFile(path.join(bundleDir, "reproducibility-checks.json"), `${stableStringify(buildReproducibilityChecks())}\n`, "utf8");
   if (replay.safe) {
@@ -484,17 +488,23 @@ function buildReplayRecipes(
   };
 }
 
+interface ReproducibilityInputs {
+  readonly cwd: string;
+  readonly packageManager: string;
+  readonly routeConfigHash: string;
+  readonly fixtureSeed: string;
+}
+
 function buildReproducibilityChecks(): JsonObject {
-  const packageManager = readRootPackageManager();
-  const cwd = process.cwd();
-  const routeConfigHash = createHash("sha256").update(JSON.stringify({ cwd, packageManager })).digest("hex");
+  const expected = currentReproducibilityInputs();
   return {
     generatedAt: new Date().toISOString(),
+    expected: { ...expected },
     checks: [
-      reproducibilityCheck("cwd", cwd, cwd),
-      reproducibilityCheck("packageManager", packageManager, packageManager),
-      reproducibilityCheck("routeConfigHash", routeConfigHash, routeConfigHash),
-      reproducibilityCheck("fixtureSeed", "toolguard-diagnostic-trust-v0.17", "toolguard-diagnostic-trust-v0.17")
+      reproducibilityCheck("cwd", expected.cwd, expected.cwd),
+      reproducibilityCheck("packageManager", expected.packageManager, expected.packageManager),
+      reproducibilityCheck("routeConfigHash", expected.routeConfigHash, expected.routeConfigHash),
+      reproducibilityCheck("fixtureSeed", expected.fixtureSeed, expected.fixtureSeed)
     ]
   };
 }
@@ -523,17 +533,61 @@ function buildReplayInstructions(runId: string, reason: string): JsonObject {
 }
 
 function replayDecision(
-  requested: EvidenceBundleReplaySafety | undefined,
-  ledger: readonly SideEffectLedgerEntry[]
+  ledger: readonly SideEffectLedgerEntry[],
+  events: readonly { readonly type: string; readonly data?: unknown }[]
 ): { readonly safe: boolean; readonly reason: string } {
-  if (requested?.fixtureOnly) return { safe: true, reason: "fixture-only replay" };
-  if (requested?.safeLoopback) return { safe: true, reason: "safe loopback replay" };
-  const ledgerSafe =
-    ledger.length > 0 &&
-    ledger.every((entry) => entry.reversibility === "fixture-only" || entry.targetType === "network-loopback");
-  return ledgerSafe
-    ? { safe: true, reason: "ledger contains only fixture-only or loopback side effects" }
-    : { safe: false, reason: "replay instructions withheld because this run is not fixture-only or safe loopback" };
+  const hasRecordedEvidence = events.some(
+    (event) => event.type === "evidence.artifact.created" || event.type === "side_effect.recorded"
+  );
+  if (!hasRecordedEvidence || ledger.length === 0) {
+    return {
+      safe: false,
+      reason: "replay instructions withheld because server-derived evidence does not prove fixture-only or safe loopback replay"
+    };
+  }
+
+  const safeEntries = ledger.every(isReplaySafeLedgerEntry);
+  if (!safeEntries) {
+    return {
+      safe: false,
+      reason: "replay instructions withheld because recorded side-effect evidence is not fixture-only or safe loopback"
+    };
+  }
+
+  const fixtureOnly = ledger.every(isFixtureReplayEntry);
+  if (fixtureOnly) {
+    return { safe: true, reason: "server-derived fixture-only replay from recorded evidence" };
+  }
+
+  const loopbackOnly = ledger.every(isLoopbackReplayEntry);
+  if (loopbackOnly) {
+    return { safe: true, reason: "server-derived safe loopback replay from recorded evidence" };
+  }
+
+  const fixtureOrLoopback = ledger.every((entry) => isFixtureReplayEntry(entry) || isLoopbackReplayEntry(entry));
+  return fixtureOrLoopback
+    ? { safe: true, reason: "server-derived fixture and safe loopback replay from recorded evidence" }
+    : {
+        safe: false,
+        reason: "replay instructions withheld because recorded route metadata is not fixture-only or safe loopback"
+      };
+}
+
+function isReplaySafeLedgerEntry(entry: SideEffectLedgerEntry): boolean {
+  if (entry.effectState === "unknown" || entry.effectState === "partial") return false;
+  if (entry.reversibility === "irreversible-risk" || entry.reversibility === "manual-review") return false;
+  return isFixtureReplayEntry(entry) || isLoopbackReplayEntry(entry);
+}
+
+function isFixtureReplayEntry(entry: SideEffectLedgerEntry): boolean {
+  return entry.toolName.startsWith("fixture.") && (
+    entry.reversibility === "fixture-only" ||
+    entry.reversibility === "reversible"
+  );
+}
+
+function isLoopbackReplayEntry(entry: SideEffectLedgerEntry): boolean {
+  return entry.targetType === "network-loopback" && entry.reversibility === "reversible";
 }
 
 async function validateContainedLinks(bundleDir: string, relativePaths: readonly string[]): Promise<string[]> {
@@ -560,14 +614,51 @@ async function validateReproducibilityFile(bundleDir: string, relativePath: stri
   if (!relativePath) return [];
   try {
     const parsed = JSON.parse(await readFile(path.join(bundleDir, relativePath), "utf8")) as {
-      readonly checks?: readonly { readonly name?: unknown; readonly status?: unknown }[];
+      readonly expected?: Partial<Record<keyof ReproducibilityInputs, unknown>>;
+      readonly checks?: readonly { readonly name?: unknown; readonly expected?: unknown; readonly status?: unknown }[];
     };
-    return (parsed.checks ?? [])
-      .filter((check) => check.status === "mismatch")
-      .map((check) => `Reproducibility mismatch for ${String(check.name ?? "unknown")}`);
+    const actual = currentReproducibilityInputs();
+    const expected = expectedReproducibilityInputs(parsed);
+    return (["cwd", "packageManager", "routeConfigHash", "fixtureSeed"] as const)
+      .filter((name) => expected[name] !== actual[name])
+      .map((name) => `Reproducibility mismatch for ${name}`);
   } catch {
     return [];
   }
+}
+
+function expectedReproducibilityInputs(parsed: {
+  readonly expected?: Partial<Record<keyof ReproducibilityInputs, unknown>>;
+  readonly checks?: readonly { readonly name?: unknown; readonly expected?: unknown }[];
+}): ReproducibilityInputs {
+  const fallback = new Map(
+    (parsed.checks ?? [])
+      .filter((check): check is { readonly name: string; readonly expected: string } =>
+        typeof check.name === "string" && typeof check.expected === "string"
+      )
+      .map((check) => [check.name, check.expected])
+  );
+  const expected = parsed.expected ?? {};
+  const stringOrFallback = (name: keyof ReproducibilityInputs): string => {
+    const value = expected[name];
+    return typeof value === "string" ? value : fallback.get(name) ?? "";
+  };
+  return {
+    cwd: stringOrFallback("cwd"),
+    packageManager: stringOrFallback("packageManager"),
+    routeConfigHash: stringOrFallback("routeConfigHash"),
+    fixtureSeed: stringOrFallback("fixtureSeed")
+  };
+}
+
+function currentReproducibilityInputs(): ReproducibilityInputs {
+  const cwd = process.cwd();
+  const packageManager = readRootPackageManager();
+  const fixtureSeed = process.env.TOOLGUARD_FIXTURE_SEED ?? "toolguard-diagnostic-trust-v0.17";
+  const routeConfigHash = createHash("sha256")
+    .update(stableStringify({ cwd, fixtureSeed, packageManager }))
+    .digest("hex");
+  return { cwd, packageManager, routeConfigHash, fixtureSeed };
 }
 
 function isContainedRelativePath(relativePath: string): boolean {

@@ -7,7 +7,9 @@ import {
   createCoreApiServer,
   createId,
   exportEvidenceBundle,
+  registerChaosFixtures,
   simulatePolicy,
+  ToolRegistry,
   validateEvidenceBundleManifest,
   verifyIntegrationRoute,
   type EvidenceArtifact,
@@ -63,10 +65,18 @@ function makeToolCall(runId: ToolCall["runId"]): ToolCall {
 describe("evidence bundle export", () => {
   it("exports a self-contained safe bundle with report, timeline, topology, ledger, policy, verification, hashes, redaction, and replay instructions", async () => {
     const { session } = await makeSeededSession("toolguard-bundle-safe-");
+    const registry = new ToolRegistry();
+    registerChaosFixtures(registry, { sandboxRoot: session.recorder.runDir });
+    await session.executeToolCall(registry, {
+      ...makeToolCall(session.runId),
+      downstreamServerId: registry.get("fixture.destructive-block")?.downstreamServerId ?? createId("server"),
+      toolName: "fixture.destructive-block",
+      arguments: { fixtureOnly: true }
+    });
 
     const bundle = await exportEvidenceBundle({
       session,
-      replaySafety: { fixtureOnly: true, safeLoopback: false }
+      replaySafety: { fixtureOnly: false, safeLoopback: false }
     });
 
     expect(bundle.bundleDir).toBe(path.join(session.recorder.runDir, "bundle"));
@@ -242,15 +252,20 @@ describe("evidence bundle export", () => {
       errors: expect.arrayContaining([expect.stringMatching(/unsafe link/i)])
     });
 
-    const reproducibilityPath = path.join(fresh.bundleDir, "reproducibility-checks.json");
+    const reproFresh = await exportEvidenceBundle({
+      session,
+      replaySafety: { fixtureOnly: true }
+    });
+    const reproducibilityPath = path.join(reproFresh.bundleDir, "reproducibility-checks.json");
     const reproducibility = await readJson<{ checks: Array<Record<string, unknown>> }>(reproducibilityPath);
     await writeFile(
       reproducibilityPath,
       `${JSON.stringify(
         {
           ...reproducibility,
+          expected: { ...(reproducibility as { expected?: Record<string, unknown> }).expected, fixtureSeed: "changed-seed" },
           checks: reproducibility.checks.map((check) =>
-            check.name === "fixtureSeed" ? { ...check, status: "mismatch", actual: "changed-seed" } : check
+            check.name === "fixtureSeed" ? { ...check, expected: "changed-seed", status: "mismatch" } : check
           )
         },
         null,
@@ -258,7 +273,7 @@ describe("evidence bundle export", () => {
       )}\n`,
       "utf8"
     );
-    await expect(validateEvidenceBundleManifest({ bundleDir: fresh.bundleDir })).resolves.toMatchObject({
+    await expect(validateEvidenceBundleManifest({ bundleDir: reproFresh.bundleDir })).resolves.toMatchObject({
       valid: false,
       errors: expect.arrayContaining([expect.stringMatching(/Reproducibility mismatch for fixtureSeed/)])
     });
@@ -274,6 +289,68 @@ describe("evidence bundle export", () => {
     await expect(readFile(path.join(bundle.bundleDir, "replay-instructions.json"), "utf8")).rejects.toThrow();
     expect(bundle.manifest.replay.safe).toBe(false);
     expect(bundle.manifest.replay.instructionsFile).toBeUndefined();
+  });
+
+  it("ignores caller-forged replay safety and derives fixture safety from recorded evidence", async () => {
+    const { session: unsafeSession } = await makeSeededSession("toolguard-bundle-forged-unsafe-");
+    const forged = await exportEvidenceBundle({
+      session: unsafeSession,
+      replaySafety: { fixtureOnly: true, safeLoopback: true }
+    });
+
+    expect(forged.manifest.replay.safe).toBe(false);
+    expect(forged.manifest.replay.reason).toMatch(/server-derived/i);
+    expect(forged.manifest.replay.instructionsFile).toBeUndefined();
+    await expect(readFile(path.join(forged.bundleDir, "replay-instructions.json"), "utf8")).rejects.toThrow();
+
+    const safeRoot = await mkdtemp(path.join(tmpdir(), "toolguard-bundle-derived-fixture-"));
+    const safeSession = new CoreSession({ evidenceRoot: safeRoot, runId: createId("run") });
+    const registry = new ToolRegistry();
+    registerChaosFixtures(registry, { sandboxRoot: safeRoot });
+    await safeSession.executeToolCall(registry, {
+      ...makeToolCall(safeSession.runId),
+      downstreamServerId: registry.get("fixture.destructive-block")?.downstreamServerId ?? createId("server"),
+      toolName: "fixture.destructive-block",
+      arguments: { fixtureOnly: true }
+    });
+
+    const derived = await exportEvidenceBundle({
+      session: safeSession,
+      replaySafety: { fixtureOnly: false, safeLoopback: false }
+    });
+    expect(derived.manifest.replay.safe).toBe(true);
+    expect(derived.manifest.replay.reason).toMatch(/server-derived fixture-only/i);
+    expect(derived.manifest.replay.instructionsFile).toBe("replay-instructions.json");
+  });
+
+  it("recomputes reproducibility inputs during validation so environment drift is detected", async () => {
+    const { session } = await makeSeededSession("toolguard-bundle-repro-drift-");
+    const bundle = await exportEvidenceBundle({ session });
+    const originalCwd = process.cwd();
+    const originalSeed = process.env.TOOLGUARD_FIXTURE_SEED;
+    const driftRoot = await mkdtemp(path.join(tmpdir(), "toolguard-bundle-drift-cwd-"));
+    await writeFile(path.join(driftRoot, "package.json"), JSON.stringify({ packageManager: "pnpm@99.99.99" }), "utf8");
+    try {
+      process.env.TOOLGUARD_FIXTURE_SEED = "changed-seed";
+      process.chdir(driftRoot);
+      const validation = await validateEvidenceBundleManifest({ bundleDir: bundle.bundleDir });
+      expect(validation.valid).toBe(false);
+      expect(validation.errors).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/Reproducibility mismatch for cwd/),
+          expect.stringMatching(/Reproducibility mismatch for packageManager/),
+          expect.stringMatching(/Reproducibility mismatch for routeConfigHash/),
+          expect.stringMatching(/Reproducibility mismatch for fixtureSeed/)
+        ])
+      );
+    } finally {
+      process.chdir(originalCwd);
+      if (originalSeed === undefined) {
+        delete process.env.TOOLGUARD_FIXTURE_SEED;
+      } else {
+        process.env.TOOLGUARD_FIXTURE_SEED = originalSeed;
+      }
+    }
   });
 
   it("serves bundle export from the Core API without network credentials", async () => {
@@ -295,8 +372,8 @@ describe("evidence bundle export", () => {
     expect(payload.bundleDir).toBe(path.join(session.recorder.runDir, "bundle"));
     expect(payload.manifestValid).toBe(true);
     expect(payload.manifestUrl).toBe(`${baseUrl}/api/bundles/${handle.session.runId}/files/manifest.json`);
-    expect(payload.replayInstructions).toMatch(/replay-instructions\.json$/);
-    expect(payload.replayInstructionsUrl).toBe(`${baseUrl}/api/bundles/${handle.session.runId}/files/replay-instructions.json`);
+    expect(payload.replayInstructions).toBeUndefined();
+    expect(payload.replayInstructionsUrl).toBeUndefined();
 
     const bundleResponse = await fetch(`${baseUrl}/api/bundle`);
     expect(bundleResponse.status).toBe(200);
@@ -312,7 +389,7 @@ describe("evidence bundle export", () => {
     expect(bundlePayload.bundle.manifestHealth.label).toBe("Manifest valid");
     expect(bundlePayload.bundle.artifactHashStatus.label).toMatch(/hashed bundle files/);
     expect(bundlePayload.bundle.redactionStatus.label).toMatch(/redactions recorded/);
-    expect(bundlePayload.bundle.replaySafetyStatus.label).toBe("Replay instructions safe");
+    expect(bundlePayload.bundle.replaySafetyStatus.label).toBe("Replay withheld");
     expect(bundlePayload.bundle.files.every((file) => file.url.startsWith(`${baseUrl}/api/bundles/${handle.session.runId}/files/`))).toBe(true);
     expect(bundlePayload.bundle.files).toEqual(
       expect.arrayContaining([

@@ -601,6 +601,24 @@ describe("toolplane run process wrapper", () => {
     expect(humanStdout.trim()).not.toMatch(/^\{/);
   }, 60_000);
 
+  it("rejects unsafe integration doctor run IDs before constructing evidence paths", async () => {
+    const root = await makeTempRoot("toolguard-cli-doctor-run-id-");
+
+    await expect(
+      runToolplaneCli([
+        "doctor",
+        "integrations",
+        "--json",
+        "--evidence-root",
+        root,
+        "--workspace-root",
+        path.resolve("."),
+        "--run-id",
+        "run_../../escape"
+      ])
+    ).rejects.toThrow(/--run-id must match safe pattern/);
+  });
+
   it("forwards CLI events to the local Core API when configured", async () => {
     const root = await makeTempRoot();
     const handle = createCoreApiServer({ port: 3666, evidenceRoot: root, seedDirectRun: false });

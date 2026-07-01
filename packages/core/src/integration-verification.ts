@@ -54,7 +54,8 @@ export async function verifyIntegrationRoute(
   const receiptId = createId("receipt");
   const timestamp = new Date().toISOString();
   const checkedCapabilities = await buildCapabilityChecks(input);
-  const routeCoverage = buildRouteCoverage(input.routeType, checkedCapabilities);
+  const routeEvidenceProduced = routeProducesEvidence(input.routeType, checkedCapabilities);
+  const routeCoverage = buildRouteCoverage(input.routeType, checkedCapabilities, routeEvidenceProduced);
   const passportMetadata = buildPlatformPassportMetadata(input.routeType, checkedCapabilities, timestamp);
   const receiptWithoutLinks = {
     receiptId,
@@ -80,7 +81,7 @@ export async function verifyIntegrationRoute(
       href: artifact.relativePath,
       label: `Verification receipt for ${input.routeType}`,
       routeType: input.routeType,
-      evidenceScope: "route",
+      evidenceScope: routeEvidenceProduced ? "route" : "host-config",
       ...passportMetadata
     }
   ];
@@ -256,7 +257,8 @@ function configHash(value: string): string {
 
 function buildRouteCoverage(
   routeType: IntegrationRouteType,
-  checkedCapabilities: readonly IntegrationCapabilityCheck[]
+  checkedCapabilities: readonly IntegrationCapabilityCheck[],
+  routeEvidenceProduced: boolean
 ): readonly IntegrationRouteCoverageEntry[] {
   const configured = checkedCapabilities.some((check) => check.status === "configured");
   const available = checkedCapabilities.some((check) => check.status === "available");
@@ -296,9 +298,30 @@ function buildRouteCoverage(
       state: "producing-evidence",
       label: `${ROUTE_LABELS[routeType]} producing evidence`,
       localOnly: true,
-      evidence: "The integration doctor wrote this route receipt as a hashed evidence artifact and emitted an integration.verified event."
+      evidence: routeEvidenceProduced
+        ? "An exact route-specific smoke/evidence probe passed and produced a route-scoped evidence artifact for this receipt."
+        : "No exact route-specific smoke/evidence probe passed in this doctor run; the receipt artifact is generic verification evidence only."
     }
   ];
+}
+
+function routeProducesEvidence(
+  routeType: IntegrationRouteType,
+  checkedCapabilities: readonly IntegrationCapabilityCheck[]
+): boolean {
+  return smokeStatusFromCapabilities(checkedCapabilities) === "passed" &&
+    checkedCapabilities.some((check) => routeSpecificEvidenceCapabilityPassed(routeType, check));
+}
+
+function routeSpecificEvidenceCapabilityPassed(
+  routeType: IntegrationRouteType,
+  check: IntegrationCapabilityCheck
+): boolean {
+  if (check.status !== "configured" && check.status !== "available") return false;
+  const capability = check.capability.toLowerCase();
+  if (routeType === "mcp-routed") return capability === "virtual routed tool evidence";
+  if (routeType === "sdk-wrapped-python") return capability === "wrapper sidecar evidence";
+  return capability === "process probe";
 }
 
 async function buildCapabilityChecks(input: IntegrationVerificationInput): Promise<readonly IntegrationCapabilityCheck[]> {

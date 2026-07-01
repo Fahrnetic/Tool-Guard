@@ -11,6 +11,7 @@ import {
   createId,
   renderIntegrationDoctorHuman,
   runIntegrationDoctor,
+  verifyIntegrationRoute,
   type CoreEvent,
   type EvidenceLink,
   type HostPlatformPassport,
@@ -131,8 +132,90 @@ describe("integration doctor route coverage", () => {
         })
       ])
     );
-    expect(machine.receipts[0]!.producingEvidence).toBe(true);
+    expect(machine.receipts[0]!.producingEvidence).toBe(false);
   });
+
+  it("keeps failed route probes as generic receipt artifacts without route-scoped evidence claims", async () => {
+    const evidenceRoot = await mkdtemp(path.join(tmpdir(), "toolguard-failed-route-evidence-"));
+    const workspaceRoot = await mkdtemp(path.join(tmpdir(), "toolguard-empty-workspace-"));
+    const session = new CoreSession({ evidenceRoot, runId: "run_failed_route_probe" as StableId });
+
+    const receipt = await verifyIntegrationRoute({
+      session,
+      routeType: "mcp-routed",
+      workspaceRoot,
+      probeTimeoutMs: 25
+    });
+    const machine = buildIntegrationDoctorJson(
+      {
+        runId: receipt.runId,
+        evidenceDir: session.recorder.runDir,
+        eventsPath: session.recorder.eventsPath,
+        receipts: [receipt],
+        bundleManifest: path.join(session.recorder.runDir, "bundle", "manifest.json"),
+        bundleValid: true,
+        validationErrors: []
+      },
+      "2026-07-01T00:00:00.000Z"
+    );
+
+    expect(receipt.smokeTestStatus).toBe("failed");
+    expect(receipt.checkedCapabilities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          capability: "virtual routed tool evidence",
+          status: "not-yet-verified"
+        })
+      ])
+    );
+    expect(receipt.evidenceLinks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          routeType: "mcp-routed",
+          evidenceScope: "host-config"
+        })
+      ])
+    );
+    expect(receipt.evidenceLinks).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          routeType: "mcp-routed",
+          evidenceScope: "route"
+        })
+      ])
+    );
+    expect(receipt.routeCoverage.find((entry) => entry.state === "producing-evidence")?.evidence).toMatch(
+      /No exact route-specific smoke\/evidence probe passed/i
+    );
+    expect(machine.receipts[0]).toMatchObject({
+      routeType: "mcp-routed",
+      producingEvidence: false,
+      smokeTestStatus: "failed"
+    });
+  });
+
+  it("rejects unsafe doctor run IDs before evidence recorder path construction and accepts safe run IDs", async () => {
+    const evidenceRoot = await mkdtemp(path.join(tmpdir(), "toolguard-doctor-run-id-"));
+    await expect(
+      runIntegrationDoctor({
+        evidenceRoot,
+        workspaceRoot: path.resolve("."),
+        runId: "run_../escape",
+        probeTimeoutMs: 25
+      })
+    ).rejects.toThrow(/--run-id must match safe pattern/);
+    await expect(
+      runIntegrationDoctor({
+        evidenceRoot,
+        workspaceRoot: await mkdtemp(path.join(tmpdir(), "toolguard-safe-run-id-workspace-")),
+        runId: "run_safe-ABC_123",
+        probeTimeoutMs: 25
+      })
+    ).resolves.toMatchObject({
+      runId: "run_safe-ABC_123",
+      evidenceDir: path.join(evidenceRoot, "run_safe-ABC_123")
+    });
+  }, 40_000);
 
   it("emits host/platform/transport passports and honest unsupported native coverage", async () => {
     const evidenceRoot = await mkdtemp(path.join(tmpdir(), "toolguard-platform-passports-"));

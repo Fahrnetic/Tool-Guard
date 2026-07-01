@@ -324,9 +324,28 @@ function receiptJson(receipt: IntegrationVerificationReceipt): IntegrationDoctor
     receiptId: receipt.receiptId,
     routeType: receipt.routeType,
     evidenceLinks: receipt.evidenceLinks,
-    producingEvidence: receipt.evidenceLinks.some((link) => link.evidenceScope === "route"),
+    producingEvidence: receiptProducesRouteEvidence(receipt),
     smokeTestStatus: receipt.smokeTestStatus
   };
+}
+
+function receiptProducesRouteEvidence(receipt: IntegrationVerificationReceipt): boolean {
+  if (receipt.smokeTestStatus !== "passed") return false;
+  return (
+    receipt.checkedCapabilities.some((check) => routeSpecificEvidenceCapabilityPassed(receipt.routeType, check)) ||
+    receipt.evidenceLinks.some((link) => link.routeType === receipt.routeType && link.evidenceScope === "route")
+  );
+}
+
+function routeSpecificEvidenceCapabilityPassed(
+  routeType: IntegrationRouteType,
+  check: IntegrationCapabilityCheck
+): boolean {
+  if (check.status !== "configured" && check.status !== "available") return false;
+  const capability = check.capability.toLowerCase();
+  if (routeType === "mcp-routed") return capability === "virtual routed tool evidence";
+  if (routeType === "sdk-wrapped-python") return capability === "wrapper sidecar evidence";
+  return capability === "process probe";
 }
 
 function requireCliValue(argv: readonly string[], index: number, option: string): string {
@@ -338,7 +357,11 @@ function requireCliValue(argv: readonly string[], index: number, option: string)
 }
 
 function createIdFromInput(runId: string | undefined): ReturnType<typeof createId> {
-  return runId === undefined ? createId("run") : (runId as ReturnType<typeof createId>);
+  if (runId === undefined) return createId("run");
+  if (!/^run_[A-Za-z0-9_-]+$/.test(runId)) {
+    throw new Error("--run-id must match safe pattern run_[A-Za-z0-9_-]+.");
+  }
+  return runId as ReturnType<typeof createId>;
 }
 
 async function main(): Promise<void> {

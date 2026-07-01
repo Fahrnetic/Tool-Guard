@@ -2424,6 +2424,7 @@ function buildRouteCoverageRow(input: {
 }
 
 function receiptProducesRouteEvidence(routeType: IntegrationRouteType, receipt: JsonObject): boolean {
+  if (receipt.smokeTestStatus === "failed") return false;
   return (
     capabilityChecksFromReceipt(receipt).some((check) => checkProducesRouteEvidence(routeType, check)) ||
     hasExplicitRouteEvidenceLink(routeType, receipt)

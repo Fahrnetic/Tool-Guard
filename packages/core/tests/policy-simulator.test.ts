@@ -13,6 +13,7 @@ import {
   type IntegrationVerificationReceipt,
   type PolicySimulationResult
 } from "../src/index.js";
+import { generateHostConfigSnippets } from "../src/setup-snippets.js";
 
 const serverHandles: CoreApiServerHandle[] = [];
 
@@ -356,6 +357,7 @@ describe("policy simulator and integration verification core", () => {
       timestamp: new Date().toISOString(),
       routeType: "mcp-routed",
       hostId: "cline",
+      hostFamily: "cline-roo-style",
       supportedHostIds: ["cline"],
       checkedCapabilities: [
         {
@@ -420,4 +422,79 @@ describe("policy simulator and integration verification core", () => {
       supportedHostIds: ["roo-code"]
     });
   });
+
+  it("uses MCP config hash as exact passport evidence before host-family fallback", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-integrations-config-hash-"));
+    const session = new CoreSession({ evidenceRoot: root, runId: createId("run") });
+    const handle = createCoreApiServer({ host: "127.0.0.1", port: 0, evidenceRoot: root, session });
+    serverHandles.push(handle);
+    await handle.ready;
+    const address = handle.server.address();
+    expect(typeof address).toBe("object");
+    const baseUrl = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
+    const rooConfig = generateHostConfigSnippets().find((host) => host.hostId === "roo-code");
+    expect(rooConfig).toBeTruthy();
+
+    await session.emitIntegrationVerified({
+      receiptId: createId("receipt"),
+      runId: session.runId,
+      timestamp: new Date().toISOString(),
+      routeType: "mcp-routed",
+      hostFamily: "cline-roo-style",
+      configHash: testConfigHash(rooConfig!.configJson),
+      checkedCapabilities: [
+        {
+          capability: "adapter availability",
+          status: "available",
+          localOnly: true,
+          evidence: "Executed adapter import probe for @toolplane/mcp-adapter."
+        },
+        {
+          capability: "config snippet validity",
+          status: "configured",
+          localOnly: true,
+          evidence: "Executed Roo Code config generation probe for MCP snippets."
+        },
+        {
+          capability: "virtual routed tool evidence",
+          status: "available",
+          localOnly: true,
+          evidence: "Executed Roo Code-specific virtual routed tool evidence probe."
+        }
+      ],
+      routeCoverage: [
+        {
+          state: "producing-evidence",
+          label: "MCP routed adapter path producing evidence",
+          localOnly: true,
+          evidence: "The Roo Code host-specific route produced evidence."
+        }
+      ],
+      limitation: "Local-only MCP verification checks calls routed through ToolGuard MCP configuration only.",
+      evidenceLinks: []
+    });
+
+    const payload = await getJson<{
+      integrations: Array<{ id: string; claimLevel: string; status: string; supportedHostIds?: string[] }>;
+    }>(`${baseUrl}/api/integrations`);
+    expect(payload.integrations.find((integration) => integration.id === "cline")).toMatchObject({
+      claimLevel: "not-yet-verified",
+      status: "not-yet-verified",
+      supportedHostIds: ["cline"]
+    });
+    expect(payload.integrations.find((integration) => integration.id === "roo-code")).toMatchObject({
+      claimLevel: "available",
+      status: "available",
+      supportedHostIds: ["roo-code"]
+    });
+  });
 });
+
+function testConfigHash(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `fnv1a-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}

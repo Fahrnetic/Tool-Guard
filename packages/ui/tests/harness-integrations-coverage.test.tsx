@@ -89,17 +89,21 @@ describe("Harness Integrations coverage matrix", () => {
     expect(rooPowerShell).toContain('"alwaysAllow": []');
   });
 
-  it("matches passport evidence only when the receipt identifies the exact MCP harness, family, or config", () => {
+  it("matches passport evidence only when exact metadata matches or a family-only receipt has no exact host metadata", () => {
     const cline = mcpIntegration("cline", "Cline");
     const roo = mcpIntegration("roo-code", "Roo Code");
-    const clineReceipt = receiptFor({ hostId: "cline" });
+    const clineReceipt = receiptFor({ hostId: "cline", hostFamily: "cline-roo-style" });
     const routeOnlyReceipt = receiptFor({});
+    const familyOnlyReceipt = receiptFor({ hostFamily: "cline-roo-style" });
     const familyReceipt = receiptFor({ hostFamily: "cline-roo-style" });
+    const clineSupportedFamilyReceipt = receiptFor({ supportedHostIds: ["cline"], hostFamily: "cline-roo-style" });
 
     expect(receiptMatchesIntegration(clineReceipt, cline)).toBe(true);
     expect(receiptMatchesIntegration(clineReceipt, roo)).toBe(false);
     expect(receiptMatchesIntegration(routeOnlyReceipt, cline)).toBe(false);
+    expect(receiptMatchesIntegration(familyOnlyReceipt, roo)).toBe(true);
     expect(receiptMatchesIntegration(familyReceipt, roo)).toBe(true);
+    expect(receiptMatchesIntegration(clineSupportedFamilyReceipt, roo)).toBe(false);
   });
 });
 

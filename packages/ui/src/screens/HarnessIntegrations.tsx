@@ -561,9 +561,9 @@ function WizardPanel({ integration, platform, receipts, verifying, onVerify, exp
   readonly onExport: () => void;
 }) {
   const routeType = routeTypeForIntegration(integration);
-  const matchingReceipts = routeType ? receipts.filter((receipt) => receipt.routeType === routeType) : [];
+  const matchingReceipts = routeType ? receipts.filter((receipt) => receiptMatchesIntegration(receipt, integration)) : [];
   return (
-    <div className="rounded-2xl border border-border bg-bg-panel/90 p-5">
+    <div className="rounded-2xl border border-border bg-bg-panel/90 p-5" data-testid="selected-harness-wizard">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <h3 className="text-lg font-semibold text-text">{integration.name}</h3>
@@ -582,7 +582,7 @@ function WizardPanel({ integration, platform, receipts, verifying, onVerify, exp
 
       <div className="mt-5">
         <h4 className="text-sm font-semibold text-text">Copy-ready setup snippet</h4>
-        <pre className="mt-2 overflow-x-auto rounded-xl border border-border bg-bg p-4 text-xs leading-5 text-text-muted"><code>{setupSnippetFor(integration, platform).command}</code></pre>
+        <pre className="mt-2 overflow-x-auto rounded-xl border border-border bg-bg p-4 text-xs leading-5 text-text-muted" data-testid="selected-setup-snippet"><code>{setupSnippetFor(integration, platform).command}</code></pre>
       </div>
 
       <div className="mt-5 flex flex-wrap gap-2">
@@ -757,14 +757,29 @@ export function receiptMatchesIntegration(receipt: VerificationReceipt, integrat
   const configHashes = new Set(hostConfigs.map((host) => configHash(host.configJson)));
   if (receipt.integrationId === integration.id) return true;
   if (receipt.hostId && hostIds.includes(receipt.hostId as SupportedMcpHostId)) return true;
-  if (receipt.hostFamily && receipt.hostFamily === (integration.hostFamily ?? hostConfigs[0]?.hostFamily)) return true;
   if (receipt.supportedHostIds?.some((hostId) => hostIds.includes(hostId as SupportedMcpHostId))) return true;
   if (receipt.configHash && configHashes.has(receipt.configHash)) return true;
+  if (receipt.hostFamily && receipt.hostFamily === (integration.hostFamily ?? hostConfigs[0]?.hostFamily) && !hasExactReceiptHostMetadata(receipt)) return true;
   return receipt.evidenceLinks.some((link) =>
     link.integrationId === integration.id ||
     (link.hostId ? hostIds.includes(link.hostId as SupportedMcpHostId) : false) ||
-    (link.hostFamily ? link.hostFamily === (integration.hostFamily ?? hostConfigs[0]?.hostFamily) : false) ||
-    (link.configHash ? configHashes.has(link.configHash) : false)
+    (link.supportedHostIds?.some((hostId) => hostIds.includes(hostId as SupportedMcpHostId)) ?? false) ||
+    (link.configHash ? configHashes.has(link.configHash) : false) ||
+    (link.hostFamily ? link.hostFamily === (integration.hostFamily ?? hostConfigs[0]?.hostFamily) && !hasExactReceiptHostMetadata(link) : false)
+  );
+}
+
+function hasExactReceiptHostMetadata(scope: {
+  readonly integrationId?: string;
+  readonly hostId?: string;
+  readonly supportedHostIds?: readonly string[];
+  readonly configHash?: string;
+}): boolean {
+  return Boolean(
+    scope.integrationId ||
+    scope.hostId ||
+    (scope.supportedHostIds && scope.supportedHostIds.length > 0) ||
+    scope.configHash
   );
 }
 

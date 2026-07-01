@@ -16,14 +16,16 @@
     "@tanstack/react-table": "^8.21.3",
     "@toolplane/core": "workspace:*",
     "@vitejs/plugin-react": "^5.1.2",
-    "vite": "^7.3.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
-    "tailwindcss": "^4.1.18"
+    "tailwindcss": "^4.1.18",
+    "vite": "^7.3.0"
   },
   "devDependencies": {
+    "@types/jsdom": "^28.0.3",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
+    "jsdom": "^29.1.1",
     "typescript": "^5.9.3",
     "vitest": "4.0.15"
   }

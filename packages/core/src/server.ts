@@ -13,6 +13,7 @@ import { buildRunNarrative, buildRunTopology, generateAndPersistNarrative, gener
 import { simulatePolicy } from "./policy-simulator.js";
 import { verifyIntegrationRoute } from "./integration-verification.js";
 import { buildTriagePayload, exportIssuePacket } from "./triage.js";
+import { generateHostConfigSnippets } from "./setup-snippets.js";
 import {
   buildDemoStoryModePayload,
   defaultDemoStoryScenarioRuntime,
@@ -2276,7 +2277,7 @@ function integrationClaimFromPassport(
   passport: { readonly id: string; readonly supportedHostIds: readonly string[]; readonly hostFamily: string }
 ): { readonly claimLevel: string; readonly status: string } {
   if (!row) return { claimLevel: "not-yet-verified", status: "not-yet-verified" };
-  const exactReceipt = receipts.find(({ receipt }) => receiptMatchesMcpPassport(receipt, passport));
+  const exactReceipt = receipts.find(({ receipt }) => receiptMatchesMcpPassport(receipt, withConfigHashes(passport)));
   if (!exactReceipt) return { claimLevel: "not-yet-verified", status: "not-yet-verified" };
   return integrationClaimFromRoute({
     ...row,
@@ -2421,22 +2422,56 @@ function hasExplicitRouteEvidenceLink(routeType: IntegrationRouteType, receipt: 
 
 function receiptMatchesMcpPassport(
   receipt: JsonObject,
-  passport: { readonly id: string; readonly supportedHostIds: readonly string[]; readonly hostFamily: string }
+  passport: { readonly id: string; readonly supportedHostIds: readonly string[]; readonly hostFamily: string; readonly configHashes: readonly string[] }
 ): boolean {
   if (receipt.routeType !== "mcp-routed") return false;
   if (receipt.integrationId === passport.id) return true;
   if (typeof receipt.hostId === "string" && passport.supportedHostIds.includes(receipt.hostId)) return true;
-  if (typeof receipt.hostFamily === "string" && receipt.hostFamily === passport.hostFamily) return true;
   const receiptHosts = Array.isArray(receipt.supportedHostIds) ? receipt.supportedHostIds.filter((host): host is string => typeof host === "string") : [];
   if (receiptHosts.some((host) => passport.supportedHostIds.includes(host))) return true;
+  if (typeof receipt.configHash === "string" && passport.configHashes.includes(receipt.configHash)) return true;
+  if (typeof receipt.hostFamily === "string" && receipt.hostFamily === passport.hostFamily && !hasExactMcpReceiptMetadata(receipt)) return true;
   const evidenceLinks = Array.isArray(receipt.evidenceLinks) ? receipt.evidenceLinks : [];
   return evidenceLinks.some(
     (link) =>
       isRecord(link) &&
       (link.integrationId === passport.id ||
         (typeof link.hostId === "string" && passport.supportedHostIds.includes(link.hostId)) ||
-        link.hostFamily === passport.hostFamily)
+        (Array.isArray(link.supportedHostIds) &&
+          link.supportedHostIds.some((host): host is string => typeof host === "string" && passport.supportedHostIds.includes(host))) ||
+        (typeof link.configHash === "string" && passport.configHashes.includes(link.configHash)) ||
+        (link.hostFamily === passport.hostFamily && !hasExactMcpReceiptMetadata(link)))
   );
+}
+
+function withConfigHashes(passport: { readonly id: string; readonly supportedHostIds: readonly string[]; readonly hostFamily: string }): {
+  readonly id: string;
+  readonly supportedHostIds: readonly string[];
+  readonly hostFamily: string;
+  readonly configHashes: readonly string[];
+} {
+  const configHashes = generateHostConfigSnippets()
+    .filter((host) => passport.supportedHostIds.includes(host.hostId))
+    .map((host) => configHash(host.configJson));
+  return { ...passport, configHashes };
+}
+
+function hasExactMcpReceiptMetadata(scope: JsonObject): boolean {
+  return Boolean(
+    typeof scope.integrationId === "string" ||
+    typeof scope.hostId === "string" ||
+    (Array.isArray(scope.supportedHostIds) && scope.supportedHostIds.some((host) => typeof host === "string")) ||
+    typeof scope.configHash === "string"
+  );
+}
+
+function configHash(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `fnv1a-${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
 function checksFromReceipt(receipt: JsonObject): JsonObject[] {

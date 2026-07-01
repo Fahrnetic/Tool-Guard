@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { generateVisibilitySetupSnippets } from "@toolplane/core/setup-snippets";
+import type { PlatformCommandSnippet } from "@toolplane/core/setup-snippets";
 import { StatePanel } from "../components/StatePanel.js";
 import { StatusChip } from "../components/StatusChip.js";
 import { exportReport, verifyIntegration } from "../lib/api.js";
@@ -20,7 +21,9 @@ interface HarnessIntegrationsProps {
 }
 
 export function HarnessIntegrations({ payload, status, error }: HarnessIntegrationsProps) {
+  const snippets = useMemo(() => generateVisibilitySetupSnippets(), []);
   const [selectedId, setSelectedId] = useState<string | undefined>();
+  const [selectedPlatform, setSelectedPlatform] = useState<PlatformCommandSnippet["platform"]>("posix");
   const [verifying, setVerifying] = useState<VerificationRouteType | undefined>();
   const [receipts, setReceipts] = useState<VerificationReceipt[]>([]);
   const [verifyError, setVerifyError] = useState<string | undefined>();
@@ -81,6 +84,17 @@ export function HarnessIntegrations({ payload, status, error }: HarnessIntegrati
         </p>
       </div>
 
+      <OnboardingWorkbench
+        integrations={payload.integrations}
+        coverageRows={coverageRows}
+        receipts={receipts}
+        selectedIntegration={selectedIntegration}
+        selectedPlatform={selectedPlatform}
+        snippets={snippets.platforms}
+        onSelectIntegration={setSelectedId}
+        onSelectPlatform={setSelectedPlatform}
+      />
+
       <CoverageMatrix rows={coverageRows} />
 
       <div className="grid gap-4 lg:grid-cols-[0.92fr_1.08fr]">
@@ -106,6 +120,7 @@ export function HarnessIntegrations({ payload, status, error }: HarnessIntegrati
           {selectedIntegration ? (
             <WizardPanel
               integration={selectedIntegration}
+              platform={selectedPlatform}
               receipts={receipts}
               verifying={verifying}
               onVerify={runProbe}
@@ -119,6 +134,267 @@ export function HarnessIntegrations({ payload, status, error }: HarnessIntegrati
       </div>
     </section>
   );
+}
+
+const visibilityLevels: readonly {
+  readonly level: string;
+  readonly tone: "healthy" | "selected" | "degraded" | "neutral" | "failed";
+  readonly copy: string;
+}[] = [
+  {
+    level: "mediated",
+    tone: "healthy",
+    copy: "Tool calls pass through ToolGuard before execution, so policy, redaction, evidence, and failure cards are available."
+  },
+  {
+    level: "supervised",
+    tone: "selected",
+    copy: "ToolGuard supervises a process boundary such as `toolguard run --`, but it cannot see host-native tool calls inside the process."
+  },
+  {
+    level: "observed",
+    tone: "degraded",
+    copy: "A wrapper or importer reports useful facts to ToolGuard after explicit setup, with less control than mediated execution."
+  },
+  {
+    level: "imported",
+    tone: "neutral",
+    copy: "Visibility comes from imported logs or receipts. ToolGuard can organize evidence but did not control the original call."
+  },
+  {
+    level: "not-covered",
+    tone: "failed",
+    copy: "No routed, wrapped, supervised, or imported boundary is present. ToolGuard does not claim protection for this path."
+  },
+  {
+    level: "unknown",
+    tone: "neutral",
+    copy: "ToolGuard has not received enough route evidence yet. Run a local setup or smoke test before relying on the route."
+  }
+];
+
+function OnboardingWorkbench(input: {
+  readonly integrations: readonly IntegrationView[];
+  readonly coverageRows: readonly IntegrationRouteCoverageView[];
+  readonly receipts: readonly VerificationReceipt[];
+  readonly selectedIntegration: IntegrationView | undefined;
+  readonly selectedPlatform: PlatformCommandSnippet["platform"];
+  readonly snippets: readonly PlatformCommandSnippet[];
+  readonly onSelectIntegration: (id: string) => void;
+  readonly onSelectPlatform: (platform: PlatformCommandSnippet["platform"]) => void;
+}) {
+  const selected = input.selectedIntegration ?? input.integrations[0];
+  const routeType = selected ? routeTypeForIntegration(selected) : undefined;
+  const routeSnippets = routeType ? input.snippets.filter((snippet) => snippet.route === routeType) : [];
+  const availablePlatforms: PlatformCommandSnippet["platform"][] =
+    routeSnippets.length > 0 ? [...new Set(routeSnippets.map((snippet) => snippet.platform))] : ["posix"];
+  const selectedSnippet =
+    routeSnippets.find((snippet) => snippet.platform === input.selectedPlatform) ??
+    routeSnippets[0];
+  const latestReceipt = routeType ? input.receipts.find((receipt) => receipt.routeType === routeType) : undefined;
+  const coverage = input.coverageRows.find((row) => row.routeType === (routeType ?? "native-host-tools"));
+  const smokeStatus = latestReceipt
+    ? `Success. Smoke-test receipt ${latestReceipt.receiptId} was recorded at ${new Date(latestReceipt.timestamp).toLocaleString()}.`
+    : coverage?.evidenceFreshness === "recent" && coverage.lastEvidenceAt
+      ? `Success. Local proof exists from ${new Date(coverage.lastEvidenceAt).toLocaleString()}.`
+      : selected?.status === "unsupported"
+        ? "Unsupported. Route this harness through MCP, SDK wrappers, CLI supervision, or the ToolGuard API before expecting evidence."
+        : "Warning. No local smoke-test receipt is visible yet. Run the next setup command below.";
+
+  return (
+    <section className="rounded-3xl border border-primary/20 bg-bg-panel/90 p-5 shadow-2xl shadow-black/25" aria-labelledby="visibility-workbench-heading">
+      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+        <div>
+          <StatusChip label="Route-first onboarding" tone="selected" />
+          <h3 id="visibility-workbench-heading" className="mt-3 text-2xl font-semibold text-text">
+            Start with what ToolGuard can actually see
+          </h3>
+          <p className="mt-2 text-sm leading-6 text-text-muted">
+            Pick a harness and platform, then copy a shared setup snippet. The workbench keeps unsupported paths visible,
+            shows the next local command, and labels visibility by route instead of promising universal interception.
+          </p>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-[0.22em] text-text-dim">Harness</span>
+              <select
+                value={selected?.id ?? ""}
+                onChange={(event) => input.onSelectIntegration(event.target.value)}
+                className="mt-2 min-h-11 w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text"
+                aria-label="Choose harness"
+              >
+                {input.integrations.map((integration) => (
+                  <option key={integration.id} value={integration.id}>
+                    {integration.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-[0.22em] text-text-dim">Platform</span>
+              <select
+                value={availablePlatforms.includes(input.selectedPlatform) ? input.selectedPlatform : availablePlatforms[0]}
+                onChange={(event) => input.onSelectPlatform(event.target.value as PlatformCommandSnippet["platform"])}
+                className="mt-2 min-h-11 w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text"
+                aria-label="Choose platform"
+              >
+                {availablePlatforms.map((platform) => (
+                  <option key={platform} value={platform}>
+                    {platformPlatformLabel(platform)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            {visibilityLevels.map((level) => (
+              <article key={level.level} className="rounded-2xl border border-border bg-bg/45 p-4">
+                <StatusChip label={level.level} tone={level.tone} />
+                <p className="mt-3 text-sm leading-6 text-text-muted">{level.copy}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <section className="rounded-2xl border border-border bg-bg/55 p-4" aria-label="Guided setup checklist">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h4 className="text-base font-semibold text-text">Guided setup checklist</h4>
+              <StatusChip label={coverage?.claim ?? "unknown"} tone={toneForClaim(coverage?.claim ?? "unknown")} />
+            </div>
+            <ol className="mt-4 space-y-3 text-sm leading-6 text-text-muted">
+              {setupSteps(selected, selectedSnippet).map((step, index) => (
+                <li key={step} className="flex gap-3 rounded-xl border border-border/70 bg-bg-panel/55 p-3">
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-primary/45 text-xs font-semibold text-primary">
+                    {index + 1}
+                  </span>
+                  <span>{step}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
+
+          <section className="rounded-2xl border border-border bg-bg/55 p-4" aria-label="Copyable setup snippet">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h4 className="text-base font-semibold text-text">{selectedSnippet?.title ?? "Unsupported route"}</h4>
+              <button
+                type="button"
+                className="rounded-xl border border-primary/50 bg-primary/15 px-3 py-2 text-xs font-semibold text-primary transition hover:bg-primary/25 active:scale-[0.98]"
+                aria-label="Copy setup snippet"
+                onClick={() => void navigator.clipboard?.writeText(selectedSnippet?.command ?? setupSnippetFor(selected))}
+              >
+                Copy snippet
+              </button>
+            </div>
+            <pre className="mt-3 max-h-64 overflow-auto rounded-xl border border-border bg-bg p-4 text-xs leading-5 text-text-muted">
+              <code>{selectedSnippet?.command ?? setupSnippetFor(selected)}</code>
+            </pre>
+            <p className="mt-3 text-xs leading-5 text-text-subtle">
+              Snippet source: shared ToolGuard setup generator. Placeholders such as &lt;TOOLPLANE_REPO&gt; avoid developer-machine absolute paths.
+            </p>
+          </section>
+
+          <section className="rounded-2xl border border-border bg-bg/55 p-4" aria-live="polite" aria-label="Smoke-test receipt status">
+            <div className="flex flex-wrap gap-2">
+              <StatusChip label={latestReceipt || coverage?.evidenceFreshness === "recent" ? "success" : selected?.status === "unsupported" ? "unsupported" : "warning"} tone={latestReceipt || coverage?.evidenceFreshness === "recent" ? "healthy" : selected?.status === "unsupported" ? "failed" : "warning"} />
+              {coverage?.claim === "not-covered" ? <StatusChip label="not-covered" tone="failed" /> : null}
+            </div>
+            <p className="mt-3 text-sm leading-6 text-text-muted">{smokeStatus}</p>
+          </section>
+        </div>
+      </div>
+
+      <PassportDeck integrations={input.integrations} coverageRows={input.coverageRows} receipts={input.receipts} />
+    </section>
+  );
+}
+
+function PassportDeck(input: {
+  readonly integrations: readonly IntegrationView[];
+  readonly coverageRows: readonly IntegrationRouteCoverageView[];
+  readonly receipts: readonly VerificationReceipt[];
+}) {
+  return (
+    <section className="mt-6" aria-label="Harness passports">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h4 className="text-lg font-semibold text-text">Harness passports</h4>
+          <p className="mt-1 text-sm text-text-muted">Each passport lists evidence fields, limitations, freshness, and current visibility level.</p>
+        </div>
+        <StatusChip label={`${input.integrations.length} harnesses`} tone="neutral" />
+      </div>
+      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        {input.integrations.map((integration) => {
+          const routeType = routeTypeForIntegration(integration);
+          const coverage = input.coverageRows.find((row) => row.routeType === (routeType ?? "native-host-tools"));
+          const receipt = routeType ? input.receipts.find((candidate) => candidate.routeType === routeType) : undefined;
+          return <PassportCard key={integration.id} integration={integration} coverage={coverage} receipt={receipt} />;
+        })}
+      </div>
+    </section>
+  );
+}
+
+function PassportCard({ integration, coverage, receipt }: {
+  readonly integration: IntegrationView;
+  readonly coverage: IntegrationRouteCoverageView | undefined;
+  readonly receipt: VerificationReceipt | undefined;
+}) {
+  const freshness = receipt ? "recent" : (coverage?.evidenceFreshness ?? "missing");
+  const evidenceFields = receipt
+    ? receipt.checkedCapabilities.map((check) => `${check.capability}: ${check.status}`)
+    : coverage?.checks.map((check) => `${check.label}: ${check.state}`) ?? ["Smoke-test receipt: not verified"];
+  return (
+    <article className="rounded-2xl border border-border bg-bg/55 p-4" tabIndex={0}>
+      <div className="flex flex-wrap gap-2">
+        <StatusChip label={coverage?.claim ?? "unknown"} tone={toneForClaim(coverage?.claim ?? "unknown")} />
+        <StatusChip label={freshnessLabel(freshness)} tone={toneForFreshness(freshness)} />
+      </div>
+      <h5 className="mt-3 text-base font-semibold text-text">{integration.name}</h5>
+      <p className="mt-2 text-sm leading-6 text-text-muted">{integration.limitation}</p>
+      <dl className="mt-4 space-y-3 text-sm">
+        <div>
+          <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-text-dim">Evidence fields</dt>
+          <dd className="mt-2 text-text-muted">{evidenceFields.join("; ")}</dd>
+        </div>
+        <div>
+          <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-text-dim">Last verified</dt>
+          <dd className="mt-2 text-text-muted">
+            {receipt ? new Date(receipt.timestamp).toLocaleString() : coverage?.lastEvidenceAt ? new Date(coverage.lastEvidenceAt).toLocaleString() : "No local proof yet"}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-text-dim">Limitations</dt>
+          <dd className="mt-2 text-text-muted">{coverage?.limitation ?? "Route coverage is unknown until a local setup or smoke test runs."}</dd>
+        </div>
+      </dl>
+    </article>
+  );
+}
+
+function setupSteps(integration: IntegrationView | undefined, snippet: PlatformCommandSnippet | undefined): readonly string[] {
+  if (!integration || integration.status === "unsupported") {
+    return [
+      "Choose a routed boundary such as MCP, SDK wrapper, CLI supervision, or ToolGuard API.",
+      "Copy a supported setup snippet instead of relying on native host interception.",
+      "Run a local smoke test to create a route-specific evidence receipt."
+    ];
+  }
+  return [
+    `Confirm ${integration.name} will use the ${integration.route} boundary, not an unrouted native tool path.`,
+    `Copy the ${snippet?.title ?? "shared setup"} snippet for ${snippet ? platformPlatformLabel(snippet.platform) : "your platform"}.`,
+    "Run the verification probe or smoke command, then check the passport for a fresh receipt and limitations."
+  ];
+}
+
+function platformPlatformLabel(platform: PlatformCommandSnippet["platform"]): string {
+  if (platform === "posix") return "POSIX shell";
+  if (platform === "powershell") return "PowerShell";
+  if (platform === "cmd") return "CMD";
+  if (platform === "wsl") return "WSL";
+  if (platform === "container") return "Container";
+  return "CI";
 }
 
 function CoverageMatrix({ rows }: { readonly rows: readonly IntegrationRouteCoverageView[] }) {
@@ -268,8 +544,9 @@ function defaultCoverageRows(): readonly IntegrationRouteCoverageView[] {
   ];
 }
 
-function WizardPanel({ integration, receipts, verifying, onVerify, exporting, onExport }: {
+function WizardPanel({ integration, platform, receipts, verifying, onVerify, exporting, onExport }: {
   readonly integration: IntegrationView;
+  readonly platform: PlatformCommandSnippet["platform"];
   readonly receipts: readonly VerificationReceipt[];
   readonly verifying: VerificationRouteType | undefined;
   readonly onVerify: (routeType: VerificationRouteType) => void;
@@ -298,7 +575,7 @@ function WizardPanel({ integration, receipts, verifying, onVerify, exporting, on
 
       <div className="mt-5">
         <h4 className="text-sm font-semibold text-text">Copy-ready setup snippet</h4>
-        <pre className="mt-2 overflow-x-auto rounded-xl border border-border bg-bg p-4 text-xs leading-5 text-text-muted"><code>{setupSnippetFor(integration)}</code></pre>
+        <pre className="mt-2 overflow-x-auto rounded-xl border border-border bg-bg p-4 text-xs leading-5 text-text-muted"><code>{setupSnippetFor(integration, platform)}</code></pre>
       </div>
 
       <div className="mt-5 flex flex-wrap gap-2">
@@ -370,19 +647,28 @@ function stateLabel(status: string): string {
   return status;
 }
 
-function setupSnippetFor(integration: IntegrationView): string {
+function setupSnippetFor(integration: IntegrationView | undefined, platform: PlatformCommandSnippet["platform"] = "posix"): string {
   const snippets = generateVisibilitySetupSnippets();
+  if (!integration) return "";
   if (integration.route === "MCP-routed") {
     return snippets.mcpHosts[0]?.configJson ?? "";
   }
   if (integration.route === "SDK-wrapped") {
-    return snippetCommand(snippets.platforms, "python-wrapper");
+    return snippetForRouteAndPlatform(snippets.platforms, "sdk-wrapped-python", platform)?.command ?? snippetCommand(snippets.platforms, "python-wrapper");
   }
   if (integration.route === "CLI-supervised") {
-    return snippetCommand(snippets.platforms, "cli-posix");
+    return snippetForRouteAndPlatform(snippets.platforms, "cli-supervised", platform)?.command ?? snippetCommand(snippets.platforms, "cli-posix");
   }
   return `# Unsupported route in v0
 # Route calls through MCP, an SDK wrapper, the CLI shim, or the ToolGuard API before claiming protection.`;
+}
+
+function snippetForRouteAndPlatform(
+  snippets: ReturnType<typeof generateVisibilitySetupSnippets>["platforms"],
+  route: PlatformCommandSnippet["route"],
+  platform: PlatformCommandSnippet["platform"]
+): PlatformCommandSnippet | undefined {
+  return snippets.find((snippet) => snippet.route === route && snippet.platform === platform);
 }
 
 function snippetCommand(snippets: ReturnType<typeof generateVisibilitySetupSnippets>["platforms"], id: string): string {

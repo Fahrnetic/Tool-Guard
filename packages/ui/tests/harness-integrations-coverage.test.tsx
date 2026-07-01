@@ -7,6 +7,23 @@ describe("Harness Integrations coverage matrix", () => {
   it("renders coverage honesty labels and warnings when recent evidence is missing", () => {
     const html = renderToStaticMarkup(<HarnessIntegrations payload={payload} status="ready" />);
 
+    expect(html).toContain("Route-first onboarding");
+    expect(html).toContain("Start with what ToolGuard can actually see");
+    expect(html).toContain("mediated");
+    expect(html).toContain("supervised");
+    expect(html).toContain("observed");
+    expect(html).toContain("imported");
+    expect(html).toContain("unknown");
+    expect(html).toContain("Choose harness");
+    expect(html).toContain("Choose platform");
+    expect(html).toContain("Guided setup checklist");
+    expect(html).toContain("Copy setup snippet");
+    expect(html).toContain("Smoke-test receipt status");
+    expect(html).toContain("Warning. No local smoke-test receipt is visible yet");
+    expect(html).toContain("Harness passports");
+    expect(html).toContain("Evidence fields");
+    expect(html).toContain("Limitations");
+    expect(html).toContain("No local proof yet");
     expect(html).toContain("Route coverage matrix");
     expect(html).toContain("mediated");
     expect(html).toContain("supervised");
@@ -15,6 +32,17 @@ describe("Harness Integrations coverage matrix", () => {
     expect(html).toContain("no recent evidence");
     expect(html).toContain("No recent evidence has been recorded");
     expect(html).toContain("Native host tools remain outside the claim");
+  });
+
+  it("renders success, unsupported, and not-covered status copy when a local proof exists", () => {
+    const html = renderToStaticMarkup(<HarnessIntegrations payload={payloadWithRecentProof} status="ready" />);
+
+    expect(html).toContain("Success. Local proof exists");
+    expect(html).toContain("unsupported");
+    expect(html).toContain("not-covered");
+    expect(html).toContain("ToolGuard does not claim native host interception");
+    expect(html).toContain("Last verified");
+    expect(html).toContain("adapter availability: available");
   });
 });
 
@@ -75,6 +103,35 @@ const payload: IntegrationsPayload = {
       claimLevel: "available",
       status: "available",
       limitation: "ToolGuard protects calls routed through the MCP proxy only, not native host tools."
+    }
+  ]
+};
+
+const payloadWithRecentProof: IntegrationsPayload = {
+  ...payload,
+  routeCoverage: [
+    {
+      routeType: "mcp-routed",
+      label: "MCP routed adapter path",
+      claim: "mediated",
+      configured: true,
+      available: true,
+      evidenceFreshness: "recent",
+      lastEvidenceAt: "2026-06-29T01:00:00.000Z",
+      limitation: "Covered only when calls route through the ToolGuard MCP proxy.",
+      checks: [{ label: "adapter availability", state: "available", evidence: "Receipt recorded." }]
+    },
+    ...payload.routeCoverage!.slice(1)
+  ],
+  integrations: [
+    ...payload.integrations,
+    {
+      id: "native-host-tools",
+      name: "Unrouted native host tools",
+      route: "unsupported",
+      claimLevel: "unsupported",
+      status: "unsupported",
+      limitation: "ToolGuard does not claim native host interception for unrouted host tools."
     }
   ]
 };

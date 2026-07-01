@@ -112,6 +112,10 @@ class PythonAdapterTests(unittest.TestCase):
         self.assertIn("toolCallId", server.requests[0]["correlation"])
         self.assertIn("attemptId", server.requests[0]["correlation"])
         self.assertIn("policyDecisionId", server.requests[0]["correlation"])
+        self.assertEqual(server.requests[0]["routeMetadata"]["routeType"], "sdk-wrapped-python")
+        self.assertEqual(server.requests[0]["routeMetadata"]["coverage"]["claim"], "observed")
+        self.assertEqual(server.requests[0]["routeMetadata"]["coverage"]["evidenceScope"], "route")
+        self.assertRegex(server.requests[0]["routeMetadata"]["traceContext"]["traceparent"], r"^00-[0-9a-f]{32}-[0-9a-f]{16}-01$")
 
     def test_crewai_wrapper_routes_success_through_sidecar(self) -> None:
         with FakeSidecar(
@@ -134,6 +138,34 @@ class PythonAdapterTests(unittest.TestCase):
         self.assertEqual(result, "crew-result")
         self.assertEqual(server.requests[0]["adapterName"], "toolguard-crewai")
         self.assertEqual(server.requests[0]["arguments"], {"topic": "adapter"})
+
+    def test_wrappers_forward_explicit_route_metadata(self) -> None:
+        route_metadata = {
+            "routeType": "sdk-wrapped-python",
+            "routeId": "route_python_explicit",
+            "traceContext": {"traceparent": "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"},
+            "platform": {"hostId": "python-framework-adapters", "transport": "http-loopback-sidecar"},
+            "coverage": {"claim": "observed", "evidenceScope": "route", "producingEvidence": True},
+        }
+        with FakeSidecar(
+            [
+                {
+                    "protocolVersion": SIDECAR_PROTOCOL_VERSION,
+                    "status": "success",
+                    "result": {
+                        "toolName": "fixture.good",
+                        "output": "routed",
+                        "safeSummary": "Tool fixture.good completed successfully.",
+                        "artifactIds": ["artifact_success"],
+                    },
+                }
+            ]
+        ) as server:
+            tool = LangGraphToolGuardTool("fixture.good", config=config())
+            result = tool.invoke({}, route_metadata=route_metadata)
+
+        self.assertEqual(result, "routed")
+        self.assertEqual(server.requests[0]["routeMetadata"], route_metadata)
 
     def test_sidecar_unavailable_fails_closed_without_direct_execution(self) -> None:
         client = ToolGuardSidecarClient(

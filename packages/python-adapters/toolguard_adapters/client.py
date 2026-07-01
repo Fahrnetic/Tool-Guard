@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import socket
 import urllib.error
 import urllib.parse
@@ -97,6 +98,7 @@ class ToolGuardSidecarClient:
         run_name: str | None = None,
         tags: list[str] | None = None,
         labels: dict[str, str] | None = None,
+        route_metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         try:
             self.config.validate_local()
@@ -124,6 +126,7 @@ class ToolGuardSidecarClient:
             "labels": labels or {},
             "correlation": selected_correlation.to_protocol(),
             "observableConfig": self.config.redacted_observable_config(),
+            "routeMetadata": route_metadata or self.default_route_metadata(selected_correlation),
         }
         data = json.dumps(payload).encode("utf-8")
         request = urllib.request.Request(
@@ -162,4 +165,20 @@ class ToolGuardSidecarClient:
         return {
             "status": "failure",
             "failureCard": build_failure_card(tool_name, "sidecar_protocol_error", "missing result or failureCard"),
+        }
+
+    def default_route_metadata(self, correlation: Correlation) -> dict[str, Any]:
+        trace_id = hashlib.sha256(f"{correlation.trace_id}:{self.config.adapter_id}".encode("utf-8")).hexdigest()[:32]
+        tool_span = hashlib.sha256(correlation.tool_call_id.encode("utf-8")).hexdigest()[:16]
+        return {
+            "routeType": "sdk-wrapped-python",
+            "routeId": f"route_{self.config.adapter_name}",
+            "transport": {"kind": "http-loopback-sidecar"},
+            "platform": {
+                "hostId": "python-framework-adapters",
+                "hostName": self.config.harness_name,
+                "transport": "http-loopback-sidecar",
+            },
+            "coverage": {"claim": "observed", "evidenceScope": "route", "producingEvidence": True},
+            "traceContext": {"traceparent": f"00-{trace_id[:32]}-{tool_span[:16]}-01"},
         }

@@ -347,6 +347,17 @@ export class CoreSession {
     );
   }
 
+  async emitVisibilityImported(
+    call: ToolCall,
+    summary: string,
+    data: JsonObject & { readonly artifactId?: StableId }
+  ): Promise<CoreEvent> {
+    return await this.#emit("visibility.imported", call, summary, {
+      ...(data.artifactId ? { artifactId: data.artifactId } : {}),
+      data
+    });
+  }
+
   async emitBundleExported(data: JsonObject): Promise<CoreEvent> {
     const last = this.#recorder.events.at(-1);
     const context = last

@@ -109,6 +109,19 @@ export {
 export { RECORDED_POLICY_SCENARIOS, simulatePolicy, type PolicySimulationInput } from "./policy-simulator.js";
 export { verifyIntegrationRoute, type IntegrationVerificationInput } from "./integration-verification.js";
 export {
+  importBrowserEvidence,
+  importHttpWebhookEvidence,
+  normalizeProviderToolCall,
+  wrapLocalToolFunction,
+  type BrowserEvidenceImportInput,
+  type HttpWebhookImportInput,
+  type LocalFunctionWrapperOptions,
+  type LocalFunctionWrapperResult,
+  type ProviderToolCallNormalizationInput,
+  type ProviderToolCallNormalizationResult,
+  type VisibilityEvidenceImportResult
+} from "./local-routes.js";
+export {
   INTEGRATION_DOCTOR_ROUTES,
   buildIntegrationDoctorJson,
   parseIntegrationDoctorCliArgs,

@@ -508,7 +508,13 @@ export interface ContextWasteDelta {
   readonly notes: readonly string[];
 }
 
-export type IntegrationRouteType = "mcp-routed" | "sdk-wrapped-python" | "cli-supervised";
+export type IntegrationRouteType =
+  | "mcp-routed"
+  | "sdk-wrapped-python"
+  | "cli-supervised"
+  | "js-ts-wrapper"
+  | "http-webhook-import"
+  | "browser-evidence-import";
 export type IntegrationProbeStatus = "configured" | "available" | "unsupported" | "not-yet-verified";
 export type VisibilityLevel = "mediated" | "supervised" | "observed" | "imported" | "not-covered" | "unknown";
 export type SmokeTestStatus = "passed" | "failed" | "not-run" | "not-applicable";

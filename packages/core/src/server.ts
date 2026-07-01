@@ -12,6 +12,7 @@ import { redactStringWithSummary } from "./redaction.js";
 import { buildRunNarrative, buildRunTopology, generateAndPersistNarrative, generateAndPersistTopology } from "./topology.js";
 import { simulatePolicy } from "./policy-simulator.js";
 import { verifyIntegrationRoute } from "./integration-verification.js";
+import { importBrowserEvidence, importHttpWebhookEvidence } from "./local-routes.js";
 import { buildTriagePayload, exportIssuePacket } from "./triage.js";
 import { generateHostConfigSnippets } from "./setup-snippets.js";
 import {
@@ -31,7 +32,8 @@ import type {
   PolicyDecision,
   RecordedPolicyScenarioId,
   SideEffectLedgerEntry,
-  ToolCall
+  ToolCall,
+  ToolRouteMetadata
 } from "./types.js";
 
 import { SIDECAR_PROTOCOL_VERSION } from "./sidecar-protocol.js";
@@ -321,6 +323,59 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
           return;
         }
         sendJson(response, 200, await verifyIntegrationRoute({ session, routeType }));
+        return;
+      }
+
+      if (url.pathname === "/api/visibility/import/http") {
+        if (request.method !== "POST") {
+          sendJson(response, 405, { error: "method_not_allowed" });
+          return;
+        }
+        const body = await readJsonBody(request, 128 * 1024);
+        if (!body.ok) {
+          sendJson(response, body.statusCode, { error: body.message });
+          return;
+        }
+        const imported = await importHttpWebhookEvidence(session, {
+          source: typeof body.payload.source === "string" ? body.payload.source : "local-http-webhook",
+          method: typeof body.payload.method === "string" ? body.payload.method : request.method,
+          path: typeof body.payload.path === "string" ? body.payload.path : "/",
+          headers: isRecord(body.payload.headers) ? (body.payload.headers as Record<string, JsonValue>) : {},
+          body: jsonValueFrom(body.payload.body),
+          ...(typeof body.payload.traceparent === "string" ? { traceparent: body.payload.traceparent } : {}),
+          ...(typeof body.payload.tracestate === "string" ? { tracestate: body.payload.tracestate } : {})
+        });
+        sendJson(response, 202, imported);
+        return;
+      }
+
+      if (url.pathname === "/api/visibility/import/browser") {
+        if (request.method !== "POST") {
+          sendJson(response, 405, { error: "method_not_allowed" });
+          return;
+        }
+        const body = await readJsonBody(request, 256 * 1024);
+        if (!body.ok) {
+          sendJson(response, body.statusCode, { error: body.message });
+          return;
+        }
+        const screenshot = isRecord(body.payload.screenshot)
+          ? {
+              ...(typeof body.payload.screenshot.label === "string" ? { label: body.payload.screenshot.label } : {}),
+              ...(typeof body.payload.screenshot.mimeType === "string" ? { mimeType: body.payload.screenshot.mimeType } : {}),
+              ...(typeof body.payload.screenshot.byteLength === "number" ? { byteLength: body.payload.screenshot.byteLength } : {}),
+              ...(typeof body.payload.screenshot.sha256 === "string" ? { sha256: body.payload.screenshot.sha256 } : {})
+            }
+          : undefined;
+        const imported = await importBrowserEvidence(session, {
+          ...(typeof body.payload.pageUrl === "string" ? { pageUrl: body.payload.pageUrl } : {}),
+          ...(screenshot ? { screenshot } : {}),
+          console: Array.isArray(body.payload.console) ? body.payload.console.filter(isRecord).map(browserConsoleFrom) : [],
+          network: Array.isArray(body.payload.network) ? body.payload.network.filter(isRecord).map(browserNetworkFrom) : [],
+          ...(typeof body.payload.traceparent === "string" ? { traceparent: body.payload.traceparent } : {}),
+          ...(typeof body.payload.tracestate === "string" ? { tracestate: body.payload.tracestate } : {})
+        });
+        sendJson(response, 202, imported);
         return;
       }
 
@@ -614,7 +669,7 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
     registry,
     ready,
     close: () =>
-      new Promise((resolve, reject) => {
+      new Promise<void>((resolve, reject) => {
         for (const client of clients) {
           client.end();
         }
@@ -711,7 +766,13 @@ function makeSidecarToolCall(payload: SidecarToolCallRequest, runId: StableId, r
     sourcePath: "framework-adapter",
     runName: stringFrom(payload.runName, `python ${toolName}`),
     tags: stringArrayFrom(payload.tags),
-    labels: safeLabelsFrom(payload.labels)
+    labels: safeLabelsFrom(payload.labels),
+    routeMetadata: routeMetadataFrom(payload.routeMetadata, {
+      routeType: "sdk-wrapped-python",
+      transport: { kind: "http-loopback-sidecar" },
+      platform: { hostId: "python-framework-adapters", hostName: "Python framework adapters", transport: "http-loopback-sidecar" },
+      coverage: { claim: "observed", evidenceScope: "route", producingEvidence: true }
+    })
   };
 }
 
@@ -740,7 +801,13 @@ function makeSidecarFailureToolCall(
     sourcePath: "framework-adapter",
     runName: stringFrom(payload?.runName, `python ${toolName}`),
     tags: stringArrayFrom(payload?.tags),
-    labels: safeLabelsFrom(payload?.labels)
+    labels: safeLabelsFrom(payload?.labels),
+    routeMetadata: routeMetadataFrom(payload?.routeMetadata, {
+      routeType: "sdk-wrapped-python",
+      transport: { kind: "http-loopback-sidecar" },
+      platform: { hostId: "python-framework-adapters", hostName: "Python framework adapters", transport: "http-loopback-sidecar" },
+      coverage: { claim: "observed", evidenceScope: "route", producingEvidence: true }
+    })
   };
 }
 
@@ -759,6 +826,7 @@ interface SidecarToolCallRequest {
   readonly tags?: unknown;
   readonly labels?: unknown;
   readonly downstreamServerId?: unknown;
+  readonly routeMetadata?: unknown;
   readonly correlation?: {
     readonly runId?: unknown;
     readonly traceId?: unknown;
@@ -845,6 +913,74 @@ function jsonObjectFrom(value: unknown): JsonObject {
   return isRecord(value) ? (value as JsonObject) : {};
 }
 
+function jsonValueFrom(value: unknown): JsonValue {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    Array.isArray(value) ||
+    isRecord(value)
+  ) {
+    return value as JsonValue;
+  }
+  return {};
+}
+
+function routeMetadataFrom(value: unknown, fallback: ToolRouteMetadata): ToolRouteMetadata {
+  if (!isRecord(value)) return fallback;
+  const traceContext = isRecord(value.traceContext) ? value.traceContext : {};
+  const platform = isRecord(value.platform) ? value.platform : {};
+  const coverage = isRecord(value.coverage) ? value.coverage : {};
+  const endpoint = isRecord(value.endpoint)
+    ? { endpoint: jsonObjectFrom(value.endpoint) as ToolRouteMetadata["endpoint"] }
+    : fallback.endpoint
+      ? { endpoint: fallback.endpoint }
+      : {};
+  const transport = isRecord(value.transport)
+    ? { transport: jsonObjectFrom(value.transport) as ToolRouteMetadata["transport"] }
+    : fallback.transport
+      ? { transport: fallback.transport }
+      : {};
+  const { endpoint: _fallbackEndpoint, transport: _fallbackTransport, ...fallbackRest } = fallback;
+  return {
+    ...fallbackRest,
+    ...endpoint,
+    ...transport,
+    ...(typeof value.routeType === "string" ? { routeType: value.routeType } : {}),
+    ...(typeof value.routeId === "string" ? { routeId: value.routeId } : {}),
+    ...(typeof value.downstreamTargetIdentity === "string" ? { downstreamTargetIdentity: value.downstreamTargetIdentity } : {}),
+    ...(isRecord(value.toolRoute) ? { toolRoute: jsonObjectFrom(value.toolRoute) } : {}),
+    ...(typeof value.adapterConfigHash === "string" ? { adapterConfigHash: value.adapterConfigHash } : {}),
+    ...(typeof value.configHash === "string" ? { configHash: value.configHash } : {}),
+    traceContext: {
+      ...(typeof traceContext.traceparent === "string" ? { traceparent: traceContext.traceparent } : {}),
+      ...(typeof traceContext.tracestate === "string" ? { tracestate: traceContext.tracestate } : {})
+    },
+    platform: {
+      ...fallback.platform,
+      ...(typeof platform.hostId === "string" ? { hostId: platform.hostId } : {}),
+      ...(typeof platform.hostName === "string" ? { hostName: platform.hostName } : {}),
+      ...(typeof platform.hostFamily === "string" ? { hostFamily: platform.hostFamily } : {}),
+      ...(Array.isArray(platform.supportedHostIds) ? { supportedHostIds: platform.supportedHostIds.filter((item): item is string => typeof item === "string") } : {}),
+      ...(typeof platform.osPlatform === "string" ? { osPlatform: platform.osPlatform } : {}),
+      ...(typeof platform.transport === "string" ? { transport: platform.transport } : {}),
+      ...(typeof platform.routePassportId === "string" ? { routePassportId: platform.routePassportId } : {}),
+      ...(typeof platform.configHash === "string" ? { configHash: platform.configHash } : {})
+    },
+    coverage: {
+      ...fallback.coverage,
+      ...(coverage.claim === "mediated" || coverage.claim === "supervised" || coverage.claim === "observed" || coverage.claim === "imported" || coverage.claim === "not-covered" || coverage.claim === "unknown"
+        ? { claim: coverage.claim }
+        : {}),
+      ...(coverage.evidenceScope === "route" || coverage.evidenceScope === "harness" || coverage.evidenceScope === "host-config"
+        ? { evidenceScope: coverage.evidenceScope }
+        : {}),
+      ...(typeof coverage.producingEvidence === "boolean" ? { producingEvidence: coverage.producingEvidence } : {})
+    }
+  } as ToolRouteMetadata;
+}
+
 function stringFrom(value: unknown, fallback: string): string {
   return typeof value === "string" && value.length > 0 ? value : fallback;
 }
@@ -870,6 +1006,22 @@ function safeLabelsFrom(value: unknown): NonNullable<ToolCall["labels"]> {
     ...(typeof value.task === "string" ? { task: value.task } : {}),
     ...(typeof value.repo === "string" ? { repo: value.repo } : {}),
     ...(typeof value.agent === "string" ? { agent: value.agent } : {})
+  };
+}
+
+function browserConsoleFrom(value: Record<string, unknown>): { level?: string; message?: string; count?: number } {
+  return {
+    ...(typeof value.level === "string" ? { level: value.level } : {}),
+    ...(typeof value.message === "string" ? { message: value.message } : {}),
+    ...(typeof value.count === "number" ? { count: value.count } : {})
+  };
+}
+
+function browserNetworkFrom(value: Record<string, unknown>): { method?: string; url?: string; status?: number } {
+  return {
+    ...(typeof value.method === "string" ? { method: value.method } : {}),
+    ...(typeof value.url === "string" ? { url: value.url } : {}),
+    ...(typeof value.status === "number" ? { status: value.status } : {})
   };
 }
 
@@ -2547,7 +2699,14 @@ function parseScenarioId(value: unknown): RecordedPolicyScenarioId | undefined {
 }
 
 function parseRouteType(value: unknown): IntegrationRouteType | undefined {
-  return value === "mcp-routed" || value === "sdk-wrapped-python" || value === "cli-supervised" ? value : undefined;
+  return value === "mcp-routed" ||
+    value === "sdk-wrapped-python" ||
+    value === "cli-supervised" ||
+    value === "js-ts-wrapper" ||
+    value === "http-webhook-import" ||
+    value === "browser-evidence-import"
+    ? value
+    : undefined;
 }
 
 function correlationFromCoreEvent(event: CoreEvent): JsonObject {

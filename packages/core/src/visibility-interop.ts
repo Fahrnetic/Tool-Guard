@@ -111,6 +111,7 @@ const KNOWN_EVENT_TYPES: ReadonlySet<CoreEventType> = new Set([
   "narrative.generated",
   "policy.simulated",
   "integration.verified",
+  "visibility.imported",
   "bundle.exported"
 ]);
 

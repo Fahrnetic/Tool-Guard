@@ -36,6 +36,7 @@ export type CoreEventType =
   | "narrative.generated"
   | "policy.simulated"
   | "integration.verified"
+  | "visibility.imported"
   | "bundle.exported";
 
 export interface CorrelationFields {

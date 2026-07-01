@@ -26,8 +26,18 @@ class CrewAIToolGuardTool:
             )
         )
 
-    def _run(self, correlation: Correlation | None = None, **kwargs: Any) -> Any:
-        response = self._client.call_tool(self.name, dict(kwargs), correlation=correlation or Correlation())
+    def _run(
+        self,
+        correlation: Correlation | None = None,
+        route_metadata: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        response = self._client.call_tool(
+            self.name,
+            dict(kwargs),
+            correlation=correlation or Correlation(),
+            route_metadata=route_metadata,
+        )
         if response.get("status") == "success":
             result = response.get("result", {})
             if isinstance(result, dict):
@@ -35,8 +45,18 @@ class CrewAIToolGuardTool:
             return result
         return response.get("failureCard", response)
 
-    def run(self, correlation: Correlation | None = None, **kwargs: Any) -> Any:
-        return self._run(correlation=correlation, **kwargs)
+    def run(
+        self,
+        correlation: Correlation | None = None,
+        route_metadata: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        return self._run(correlation=correlation, route_metadata=route_metadata, **kwargs)
 
-    def __call__(self, correlation: Correlation | None = None, **kwargs: Any) -> Any:
-        return self._run(correlation=correlation, **kwargs)
+    def __call__(
+        self,
+        correlation: Correlation | None = None,
+        route_metadata: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        return self._run(correlation=correlation, route_metadata=route_metadata, **kwargs)

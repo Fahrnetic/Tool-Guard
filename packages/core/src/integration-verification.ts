@@ -40,13 +40,22 @@ const LIMITATIONS: Record<IntegrationRouteType, string> = {
   "sdk-wrapped-python":
     "Local-only Python verification checks SDK wrapper and loopback sidecar boundaries only; direct framework tools are not intercepted.",
   "cli-supervised":
-    "Local-only CLI verification checks process-level supervision only; native agent tool calls require MCP, SDK wrapper, or ToolGuard API routing."
+    "Local-only CLI verification checks process-level supervision only; native agent tool calls require MCP, SDK wrapper, or ToolGuard API routing.",
+  "js-ts-wrapper":
+    "Local-only JS/TS wrapper verification checks explicit function/tool wrappers only; native host tools that bypass the wrapper are not intercepted.",
+  "http-webhook-import":
+    "Local-only HTTP/webhook import records bounded redacted observed/imported evidence only; ToolGuard did not mediate the original action.",
+  "browser-evidence-import":
+    "Local-only browser evidence import records safe screenshot, console, and network summaries only; ToolGuard did not mediate native browser actions."
 };
 
 const ROUTE_LABELS: Record<IntegrationRouteType, string> = {
   "mcp-routed": "MCP routed adapter path",
   "sdk-wrapped-python": "Python SDK-wrapped sidecar path",
-  "cli-supervised": "CLI supervised process path"
+  "cli-supervised": "CLI supervised process path",
+  "js-ts-wrapper": "JS/TS explicit wrapper path",
+  "http-webhook-import": "HTTP/webhook local import path",
+  "browser-evidence-import": "Browser evidence import path"
 };
 
 export async function verifyIntegrationRoute(
@@ -210,6 +219,36 @@ function routePassportBase(routeType: IntegrationRouteType): {
       limitations: [LIMITATIONS[routeType], "Direct Python framework tools are observed only when explicit ToolGuard wrappers are used."]
     };
   }
+  if (routeType === "js-ts-wrapper") {
+    return {
+      integrationId: "js-ts-wrapper",
+      hostId: "local-js-ts-wrapper",
+      hostName: "Local JS/TS wrapper",
+      transport: "in-process-function",
+      visibilityLevel: "mediated",
+      limitations: [LIMITATIONS[routeType], "Only calls made through explicit wrapper functions produce route evidence."]
+    };
+  }
+  if (routeType === "http-webhook-import") {
+    return {
+      integrationId: "http-webhook-import",
+      hostId: "local-http-webhook-import",
+      hostName: "HTTP/webhook import",
+      transport: "http-loopback-import",
+      visibilityLevel: "imported",
+      limitations: [LIMITATIONS[routeType], "Imported evidence is bounded and redacted, but original execution is observed after the fact."]
+    };
+  }
+  if (routeType === "browser-evidence-import") {
+    return {
+      integrationId: "browser-evidence-import",
+      hostId: "local-browser-evidence-import",
+      hostName: "Browser evidence import",
+      transport: "browser-summary-import",
+      visibilityLevel: "observed",
+      limitations: [LIMITATIONS[routeType], "Screenshots, console summaries, and network summaries are safe evidence, not native interception."]
+    };
+  }
   return {
     integrationId: "cli-supervised",
     hostId: "local-cli",
@@ -352,6 +391,9 @@ function routeSpecificEvidenceCapabilityPassed(
   const capability = check.capability.toLowerCase();
   if (routeType === "mcp-routed") return capability === "virtual routed tool evidence";
   if (routeType === "sdk-wrapped-python") return capability === "wrapper sidecar evidence";
+  if (routeType === "js-ts-wrapper") return capability === "explicit wrapper route";
+  if (routeType === "http-webhook-import") return capability === "bounded local import";
+  if (routeType === "browser-evidence-import") return capability === "safe browser summaries";
   return capability === "process probe";
 }
 
@@ -371,6 +413,15 @@ async function buildCapabilityChecks(input: IntegrationVerificationInput): Promi
       probeCapability("loopback URL safety", "available", async () => probePythonLoopbackSafety(workspaceRoot, timeoutMs)),
       probeCapability("wrapper sidecar evidence", "configured", async () => probePythonWrapperRouteEvidence(workspaceRoot, timeoutMs))
     ]);
+  }
+  if (input.routeType === "js-ts-wrapper") {
+    return [capability("explicit wrapper route", "configured", "JS/TS wrapper route is available through wrapLocalToolFunction.")];
+  }
+  if (input.routeType === "http-webhook-import") {
+    return [capability("bounded local import", "configured", "HTTP/webhook import route accepts bounded redacted local payloads.")];
+  }
+  if (input.routeType === "browser-evidence-import") {
+    return [capability("safe browser summaries", "configured", "Browser evidence import accepts screenshot metadata, console summaries, and network summaries.")];
   }
   return await Promise.all([
     probeCapability("process probe", "available", async () => probeCliProcess(workspaceRoot, timeoutMs)),

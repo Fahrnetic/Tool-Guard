@@ -31,11 +31,17 @@ class LangGraphToolGuardTool:
         input: dict[str, Any] | None = None,
         *,
         correlation: Correlation | None = None,
+        route_metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> Any:
         arguments = dict(input or {})
         arguments.update(kwargs)
-        response = self._client.call_tool(self.name, arguments, correlation=correlation or Correlation())
+        response = self._client.call_tool(
+            self.name,
+            arguments,
+            correlation=correlation or Correlation(),
+            route_metadata=route_metadata,
+        )
         if response.get("status") == "success":
             result = response.get("result", {})
             if isinstance(result, dict):
@@ -48,6 +54,7 @@ class LangGraphToolGuardTool:
         input: dict[str, Any] | None = None,
         *,
         correlation: Correlation | None = None,
+        route_metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> Any:
-        return self.invoke(input, correlation=correlation, **kwargs)
+        return self.invoke(input, correlation=correlation, route_metadata=route_metadata, **kwargs)

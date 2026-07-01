@@ -4,7 +4,7 @@ import type { Root } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HarnessIntegrations } from "../src/screens/HarnessIntegrations.js";
-import { verifyIntegration } from "../src/lib/api.js";
+import { exportBundle, verifyIntegration } from "../src/lib/api.js";
 import type { IntegrationView, IntegrationsPayload, VerificationReceipt } from "../src/lib/model.js";
 
 declare global {
@@ -15,7 +15,7 @@ declare global {
 
 vi.mock("../src/lib/api.js", () => ({
   verifyIntegration: vi.fn(),
-  exportReport: vi.fn()
+  exportBundle: vi.fn()
 }));
 
 describe("Harness Integrations workbench interactions", () => {
@@ -29,10 +29,23 @@ describe("Harness Integrations workbench interactions", () => {
     root = undefined;
     dom = undefined;
     vi.mocked(verifyIntegration).mockReset();
+    vi.mocked(exportBundle).mockReset();
   });
 
   it("switches harness and platform selectors while keeping receipts scoped to the exact passport", async () => {
     vi.mocked(verifyIntegration).mockResolvedValue(clineReceipt);
+    vi.mocked(exportBundle).mockResolvedValue({
+      runId: "run_integrations",
+      bundleDir: "/tmp/toolguard/run_integrations/bundle",
+      manifestJson: "/tmp/toolguard/run_integrations/bundle/manifest.json",
+      manifestUrl: "http://127.0.0.1:3660/api/bundle/files/manifest.json",
+      manifestValidation: "/tmp/toolguard/run_integrations/bundle/manifest-validation.json",
+      manifestValidationUrl: "http://127.0.0.1:3660/api/bundle/files/manifest-validation.json",
+      manifestValid: true,
+      validationErrors: [],
+      replayInstructions: "/tmp/toolguard/run_integrations/bundle/replay-instructions.json",
+      replayInstructionsUrl: "http://127.0.0.1:3660/api/bundle/files/replay-instructions.json"
+    });
     renderWorkbench();
 
     expect(selectedSnippetText()).toContain("# Cline (cline-roo-style)");
@@ -40,6 +53,10 @@ describe("Harness Integrations workbench interactions", () => {
 
     await clickProbe();
     expect(selectedWizardText()).toContain("Cline-specific virtual routed tool evidence probe");
+    expect(selectedWizardText()).toContain("Coverage passport");
+    expect(selectedWizardText()).toContain("Friendly diagnostic record");
+    expect(selectedWizardText()).toContain("Native host file edit");
+    expect(selectedWizardText()).toContain("not-covered");
 
     changeSelect("Choose harness", "roo-code");
     expect(selectedSnippetText()).toContain("# Roo Code (cline-roo-style)");
@@ -56,6 +73,11 @@ describe("Harness Integrations workbench interactions", () => {
     expect(selectedSnippetText()).toContain("# Cline (cline-roo-style)");
     expect(selectedSnippetText()).toContain("$env:TOOLGUARD_CORE_URL = 'http://127.0.0.1:3660'");
     expect(selectedWizardText()).toContain("Cline-specific virtual routed tool evidence probe");
+
+    await clickExportBundle();
+    expect(vi.mocked(exportBundle)).toHaveBeenCalledTimes(1);
+    expect(dom?.window.document.body.textContent).toContain("Safe evidence bundle ready: manifest valid");
+    expect(dom?.window.document.body.textContent).toContain("Redacted visibility labels, route receipts, passports, and diagnostics are included.");
   });
 
   function renderWorkbench(): void {
@@ -84,6 +106,16 @@ describe("Harness Integrations workbench interactions", () => {
   async function clickProbe(): Promise<void> {
     const button = Array.from(dom!.window.document.querySelectorAll("button")).find((candidate) =>
       candidate.textContent?.includes("Run verification probe")
+    );
+    expect(button).toBeTruthy();
+    await act(async () => {
+      button!.dispatchEvent(new dom!.window.MouseEvent("click", { bubbles: true }));
+    });
+  }
+
+  async function clickExportBundle(): Promise<void> {
+    const button = Array.from(dom!.window.document.querySelectorAll("button")).find((candidate) =>
+      candidate.textContent?.includes("Export safe evidence bundle")
     );
     expect(button).toBeTruthy();
     await act(async () => {
@@ -127,9 +159,37 @@ const clineReceipt: VerificationReceipt = {
   runId: "run_integrations",
   timestamp: "2026-07-01T00:05:00.000Z",
   routeType: "mcp-routed",
+  smokeTestStatus: "passed",
+  visibilityLevel: "mediated",
   hostId: "cline",
   hostFamily: "cline-roo-style",
+  osPlatform: "linux",
+  osFamily: "linux",
+  transport: "stdio",
+  configHash: "fnv1a-cline",
   supportedHostIds: ["cline"],
+  platformPassport: {
+    passportId: "passport_cline",
+    hostId: "cline",
+    hostName: "Cline",
+    osPlatform: "linux",
+    osFamily: "linux",
+    transport: "stdio",
+    routeType: "mcp-routed",
+    configHash: "fnv1a-cline",
+    visibilityLevel: "mediated",
+    limitations: ["Native host tools remain not-covered unless routed through ToolGuard."],
+    evidenceFields: ["receiptId", "routeType", "checkedCapabilities", "evidenceLinks"],
+    smokeTestStatus: "passed",
+    lastVerifiedAt: "2026-07-01T00:05:00.000Z"
+  },
+  nativeHostActions: [
+    {
+      action: "Native host file edit",
+      coverage: "not-covered",
+      limitation: "Bypasses the ToolGuard MCP route and is not claimed as protected."
+    }
+  ],
   checkedCapabilities: [
     {
       capability: "virtual routed tool evidence",

@@ -3,7 +3,7 @@ import { generateVisibilitySetupSnippets } from "@toolplane/core/setup-snippets"
 import type { HostConfigSnippet, PlatformCommandSnippet, SupportedMcpHostId } from "@toolplane/core/setup-snippets";
 import { StatePanel } from "../components/StatePanel.js";
 import { StatusChip } from "../components/StatusChip.js";
-import { exportReport, verifyIntegration } from "../lib/api.js";
+import { exportBundle, verifyIntegration } from "../lib/api.js";
 import type {
   IntegrationEvidenceFreshness,
   IntegrationRouteCoverageView,
@@ -63,8 +63,8 @@ export function HarnessIntegrations({ payload, status, error }: HarnessIntegrati
     setExporting(true);
     setExportMessage(undefined);
     try {
-      const report = await exportReport();
-      setExportMessage(`Report export ready: ${report.manifestValid ? "manifest valid" : "manifest has warnings"} at ${report.manifestUrl}. Verification receipts are recorded as redacted evidence artifacts.`);
+      const bundle = await exportBundle();
+      setExportMessage(`Safe evidence bundle ready: ${bundle.manifestValid ? "manifest valid" : "manifest has warnings"} at ${bundle.manifestUrl}. Redacted visibility labels, route receipts, passports, and diagnostics are included.`);
     } catch (caught) {
       setVerifyError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -748,7 +748,7 @@ function WizardPanel({ integration, platform, receipts, verifying, onVerify, exp
           onClick={onExport}
           className="rounded-xl border border-border bg-bg px-4 py-2 text-sm font-semibold text-text-muted transition hover:border-primary/40 hover:text-text active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {exporting ? "Exporting report..." : "Export receipts to report"}
+          {exporting ? "Exporting safe bundle..." : "Export safe evidence bundle"}
         </button>
       </div>
 
@@ -765,13 +765,42 @@ function WizardPanel({ integration, platform, receipts, verifying, onVerify, exp
 }
 
 function ReceiptCard({ receipt }: { readonly receipt: VerificationReceipt }) {
+  const passport = receipt.platformPassport;
+  const nativeActions = receipt.nativeHostActions ?? [];
   return (
     <article className="rounded-xl border border-border bg-bg/55 p-4">
       <div className="flex flex-wrap gap-2">
         <StatusChip label={receipt.routeType} tone="selected" />
         <StatusChip label={new Date(receipt.timestamp).toLocaleString()} tone="neutral" />
+        {receipt.smokeTestStatus ? <StatusChip label={`smoke ${receipt.smokeTestStatus}`} tone={receipt.smokeTestStatus === "passed" ? "healthy" : "degraded"} /> : null}
       </div>
       <p className="mt-3 text-sm leading-6 text-text-muted">{receipt.limitation}</p>
+      {passport ? (
+        <section className="mt-4 rounded-lg border border-primary/25 bg-primary/5 p-3" aria-label="Coverage passport">
+          <h5 className="text-sm font-semibold text-text">Coverage passport</h5>
+          <dl className="mt-3 grid gap-2 text-xs leading-5 text-text-muted sm:grid-cols-2">
+            <div>
+              <dt className="font-semibold uppercase tracking-[0.16em] text-text-dim">Host / platform</dt>
+              <dd>{passport.hostName ?? passport.hostId} on {passport.osPlatform}</dd>
+            </div>
+            <div>
+              <dt className="font-semibold uppercase tracking-[0.16em] text-text-dim">Transport</dt>
+              <dd>{passport.transport}</dd>
+            </div>
+            <div>
+              <dt className="font-semibold uppercase tracking-[0.16em] text-text-dim">Visibility</dt>
+              <dd>{passport.visibilityLevel}</dd>
+            </div>
+            <div>
+              <dt className="font-semibold uppercase tracking-[0.16em] text-text-dim">Config hash</dt>
+              <dd>{passport.configHash}</dd>
+            </div>
+          </dl>
+          <p className="mt-3 text-xs leading-5 text-text-subtle">
+            Evidence fields: {passport.evidenceFields.join(", ")}. Limitations: {passport.limitations.join(" ")}
+          </p>
+        </section>
+      ) : null}
       <div className="mt-4 grid gap-2">
         {receipt.checkedCapabilities.map((check) => (
           <div key={check.capability} className="rounded-lg border border-border bg-bg/65 p-3">
@@ -783,6 +812,24 @@ function ReceiptCard({ receipt }: { readonly receipt: VerificationReceipt }) {
           </div>
         ))}
       </div>
+      <section className="mt-4 rounded-lg border border-border bg-bg/65 p-3" aria-label="Friendly diagnostic record">
+        <h5 className="text-sm font-semibold text-text">Friendly diagnostic record</h5>
+        <p className="mt-2 text-sm leading-6 text-text-muted">
+          Smoke test {receipt.smokeTestStatus ?? "not-yet-verified"} for {receipt.routeType}. ToolGuard can show
+          {receipt.visibilityLevel ? ` ${receipt.visibilityLevel}` : ""} visibility for the routed boundary, and keeps unsupported
+          host-native actions visible instead of upgrading them to covered.
+        </p>
+        {nativeActions.length > 0 ? (
+          <ul className="mt-3 space-y-2 text-sm text-text-muted">
+            {nativeActions.map((action) => (
+              <li key={`${action.action}-${action.coverage}`} className="rounded-md border border-border/70 bg-bg/45 p-2">
+                <span className="font-semibold text-text">{action.action}</span>: <StatusChip label={action.coverage} tone={action.coverage === "not-covered" ? "failed" : "degraded"} />{" "}
+                {action.limitation}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </section>
       <div className="mt-4 flex flex-wrap gap-2">
         {receipt.evidenceLinks.map((link) => <StatusChip key={link.artifactId} label={link.label} tone="selected" />)}
       </div>

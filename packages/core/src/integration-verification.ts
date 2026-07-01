@@ -10,6 +10,7 @@ import type { StableId } from "./ids.js";
 import type { CoreSession } from "./session.js";
 import { generateHostConfigSnippets } from "./setup-snippets.js";
 import { SIDECAR_PROTOCOL_VERSION } from "./sidecar-protocol.js";
+import { CANONICAL_VISIBILITY_SCHEMA_VERSION } from "./visibility.js";
 import type {
   EvidenceLink,
   IntegrationCapabilityCheck,
@@ -57,7 +58,10 @@ export async function verifyIntegrationRoute(
   const routeEvidenceProduced = routeProducesEvidence(input.routeType, checkedCapabilities);
   const routeCoverage = buildRouteCoverage(input.routeType, checkedCapabilities, routeEvidenceProduced);
   const passportMetadata = buildPlatformPassportMetadata(input.routeType, checkedCapabilities, timestamp);
+  const visibilityLevel = passportMetadata.visibilityLevel ?? "unknown";
+  const platformPassport = passportMetadata.platformPassport;
   const receiptWithoutLinks = {
+    schemaVersion: CANONICAL_VISIBILITY_SCHEMA_VERSION,
     receiptId,
     runId: input.session.runId,
     timestamp,
@@ -66,7 +70,34 @@ export async function verifyIntegrationRoute(
     checkedCapabilities,
     routeCoverage,
     nativeHostActions: buildNativeHostActionCoverage(input.routeType),
-    limitation: LIMITATIONS[input.routeType]
+    limitation: LIMITATIONS[input.routeType],
+    visibility: {
+      schemaVersion: CANONICAL_VISIBILITY_SCHEMA_VERSION,
+      visibilityLevel,
+      coverageClaim: visibilityLevel,
+      ...(platformPassport ? { routePassportId: platformPassport.passportId } : {}),
+      routeType: input.routeType,
+      evidenceScope: routeEvidenceProduced ? "route" : "host-config",
+      producingEvidence: routeEvidenceProduced,
+      harness: {
+        ...(passportMetadata.hostId ? { harnessId: passportMetadata.hostId } : {}),
+        ...(platformPassport?.hostName ? { name: platformPassport.hostName } : {})
+      },
+      platform: {
+        ...(passportMetadata.hostId ? { hostId: passportMetadata.hostId } : {}),
+        ...(platformPassport?.hostName ? { hostName: platformPassport.hostName } : {}),
+        ...(passportMetadata.hostFamily ? { hostFamily: passportMetadata.hostFamily } : {}),
+        ...(passportMetadata.supportedHostIds ? { supportedHostIds: passportMetadata.supportedHostIds } : {}),
+        ...(passportMetadata.osPlatform ? { osPlatform: passportMetadata.osPlatform } : {}),
+        ...(passportMetadata.osFamily ? { osFamily: passportMetadata.osFamily } : {}),
+        ...(passportMetadata.transport ? { transport: passportMetadata.transport } : {}),
+        ...(passportMetadata.configHash ? { configHash: passportMetadata.configHash } : {})
+      },
+      traceContext: {
+        traceparent: `00-${configHash(`${input.session.runId}:${receiptId}`).replace("fnv1a-", "").padStart(32, "0").slice(0, 32)}-${configHash(receiptId).replace("fnv1a-", "").padStart(16, "0").slice(0, 16)}-01`,
+        source: "generated"
+      }
+    }
   } satisfies Omit<IntegrationVerificationReceipt, "evidenceLinks">;
 
   const artifact = await input.session.recordRawArtifact(makeArtifactContext(input.session.runId, input.routeType), {

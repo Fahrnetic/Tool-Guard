@@ -7,6 +7,11 @@ import { validateReportManifest, type ManifestValidationResult } from "./report.
 import { exportIssuePacket } from "./triage.js";
 import { redactJsonValue } from "./redaction.js";
 import { generateAndPersistNarrative, generateAndPersistTopology } from "./topology.js";
+import {
+  CANONICAL_VISIBILITY_SCHEMA_VERSION,
+  stableVisibilityJson,
+  visibilityLabels
+} from "./visibility.js";
 import type {
   EvidenceArtifact,
   FailureCard,
@@ -16,7 +21,8 @@ import type {
   PolicySimulationResult,
   RecordedRouteConfig,
   RetryLoopFinding,
-  SideEffectLedgerEntry
+  SideEffectLedgerEntry,
+  VisibilityMetadata
 } from "./types.js";
 
 export interface EvidenceBundleReplaySafety {
@@ -31,6 +37,7 @@ export interface EvidenceBundleArtifactHash {
 }
 
 export interface EvidenceBundleManifest {
+  readonly schemaVersion: "toolguard.visibility.v1";
   readonly bundleId: string;
   readonly runId: string;
   readonly generatedAt: string;
@@ -52,8 +59,10 @@ export interface EvidenceBundleManifest {
     readonly redactionSummaryJson: string;
     readonly replayRecipesJson: string;
     readonly reproducibilityJson: string;
+    readonly visibilityMetadataJson: string;
     readonly replayInstructionsJson?: string;
   };
+  readonly visibility: EvidenceBundleVisibilityMetadata;
   readonly rawArtifacts: readonly string[];
   readonly artifactHashes: readonly EvidenceBundleArtifactHash[];
   readonly reportManifestValidation: ManifestValidationResult;
@@ -71,6 +80,15 @@ export interface EvidenceBundleManifest {
     readonly containedLinksOnly: boolean;
     readonly safeFieldsExcludeRawOutput: boolean;
   };
+}
+
+export interface EvidenceBundleVisibilityMetadata {
+  readonly schemaVersion: "toolguard.visibility.v1";
+  readonly labels: readonly string[];
+  readonly routePassports: readonly JsonObject[];
+  readonly coverageReceipts: readonly JsonObject[];
+  readonly traceContexts: readonly JsonObject[];
+  readonly hashes: readonly EvidenceBundleArtifactHash[];
 }
 
 export interface EvidenceBundleResult {
@@ -158,6 +176,11 @@ export async function exportEvidenceBundle(input: {
     `${stableStringify(buildReproducibilityChecks(session.recorder.ledger))}\n`,
     "utf8"
   );
+  await writeFile(
+    path.join(bundleDir, "visibility-metadata.json"),
+    stableVisibilityJson(buildBundleVisibility(session.recorder.events, receipts, [])),
+    "utf8"
+  );
   if (replay.safe) {
     await writeFile(path.join(bundleDir, "replay-instructions.json"), `${stableStringify(buildReplayInstructions(session.runId, replay.reason))}\n`, "utf8");
   }
@@ -176,10 +199,12 @@ export async function exportEvidenceBundle(input: {
   await writeFile(validationPath, `${JSON.stringify(provisionalValidation, null, 2)}\n`, "utf8");
 
   const artifactHashes = await hashBundleFiles(bundleDir);
+  const visibility = buildBundleVisibility(session.recorder.events, receipts, artifactHashes);
   await writeFile(path.join(bundleDir, "artifact-hashes.json"), `${JSON.stringify(artifactHashes, null, 2)}\n`, "utf8");
 
   const bundleId = `bundle-${createHash("sha256").update(`${session.runId}:${bundleDir}`).digest("hex").slice(0, 12)}`;
   const manifestWithoutValidation = {
+    schemaVersion: CANONICAL_VISIBILITY_SCHEMA_VERSION,
     bundleId,
     runId: session.runId,
     generatedAt: new Date().toISOString(),
@@ -201,8 +226,10 @@ export async function exportEvidenceBundle(input: {
       redactionSummaryJson: "redaction-summary.json",
       replayRecipesJson: "replay-recipes.json",
       reproducibilityJson: "reproducibility-checks.json",
+      visibilityMetadataJson: "visibility-metadata.json",
       ...(replay.safe ? { replayInstructionsJson: "replay-instructions.json" } : {})
     },
+    visibility,
     rawArtifacts: artifactCopies.rawRelativePaths,
     artifactHashes,
     reportManifestValidation,
@@ -222,7 +249,8 @@ export async function exportEvidenceBundle(input: {
         "diagnostics.json",
         "issue-packet.md",
         "topology.json",
-        "replay-recipes.json"
+        "replay-recipes.json",
+        "visibility-metadata.json"
       ],
       containedLinksOnly: true,
       safeFieldsExcludeRawOutput: true
@@ -330,6 +358,91 @@ async function copyEvidenceArtifacts(
 
 function isRawArtifact(artifact: EvidenceArtifact): boolean {
   return artifact.kind === "raw-result" || artifact.kind === "raw-stdout" || artifact.kind === "raw-stderr";
+}
+
+function buildBundleVisibility(
+  events: readonly { readonly visibility?: VisibilityMetadata; readonly occurredAt?: string; readonly eventId?: string; readonly runId?: string }[],
+  receipts: readonly IntegrationVerificationReceipt[],
+  hashes: readonly EvidenceBundleArtifactHash[]
+): EvidenceBundleVisibilityMetadata {
+  const visibilityEntries = events.map((event) => event.visibility).filter((entry): entry is VisibilityMetadata => Boolean(entry));
+  const labels = [...new Set(visibilityEntries.flatMap((entry) => visibilityLabels(entry)))].sort();
+  const routePassportsById = new Map<string, JsonObject>();
+  for (const receipt of receipts) {
+    if (receipt.platformPassport) {
+      routePassportsById.set(receipt.platformPassport.passportId, receipt.platformPassport as unknown as JsonObject);
+    }
+  }
+  for (const entry of visibilityEntries) {
+    if (!entry.routePassportId) continue;
+    routePassportsById.set(entry.routePassportId, {
+      passportId: entry.routePassportId,
+      hostId: entry.platform.hostId ?? "unknown",
+      hostName: entry.platform.hostName ?? "unknown",
+      osPlatform: entry.platform.osPlatform ?? "unknown",
+      osFamily: entry.platform.osFamily ?? "unknown",
+      transport: entry.platform.transport ?? "unknown",
+      routeType: entry.routeType ?? "unknown",
+      configHash: entry.platform.configHash ?? "unknown",
+      visibilityLevel: entry.visibilityLevel,
+      limitations: [],
+      evidenceFields: ["schemaVersion", "visibility", "traceContext"],
+      smokeTestStatus: entry.producingEvidence ? "passed" : "not-run",
+      lastVerifiedAt: events.find((event) => event.visibility === entry)?.occurredAt ?? new Date(0).toISOString()
+    });
+  }
+  const coverageReceipts = [
+    ...receipts.map((receipt) => ({
+      receiptId: receipt.receiptId,
+      runId: receipt.runId,
+      timestamp: receipt.timestamp,
+      routeType: receipt.routeType,
+      visibilityLevel: receipt.visibilityLevel ?? "unknown",
+      smokeTestStatus: receipt.smokeTestStatus ?? "not-run",
+      evidenceFields: [...(receipt.evidenceFields ?? [])]
+    })),
+    ...events
+      .filter((event) => event.visibility?.routeType && event.eventId && event.runId && event.occurredAt)
+      .map((event) => ({
+        receiptId: `receipt_${event.eventId}`,
+        runId: event.runId ?? "",
+        timestamp: event.occurredAt ?? "",
+        routeType: event.visibility?.routeType ?? "unknown",
+        visibilityLevel: event.visibility?.visibilityLevel ?? "unknown",
+        smokeTestStatus: event.visibility?.producingEvidence ? "passed" : "not-run",
+        evidenceFields: ["schemaVersion", "visibility", "traceContext", "eventId", "runId"]
+      }))
+  ];
+  const traceContexts = [
+    ...new Map(
+      visibilityEntries.map((entry) => [
+        entry.traceContext.traceparent,
+        {
+          traceparent: entry.traceContext.traceparent,
+          ...(entry.traceContext.tracestate ? { tracestate: entry.traceContext.tracestate } : {}),
+          source: entry.traceContext.source
+        }
+      ])
+    ).values()
+  ];
+  return {
+    schemaVersion: CANONICAL_VISIBILITY_SCHEMA_VERSION,
+    labels,
+    routePassports: [...routePassportsById.values()].sort((left, right) =>
+      String(left.passportId ?? "").localeCompare(String(right.passportId ?? ""))
+    ),
+    coverageReceipts: dedupeJsonObjects(coverageReceipts, "receiptId"),
+    traceContexts,
+    hashes
+  };
+}
+
+function dedupeJsonObjects(values: readonly JsonObject[], key: string): readonly JsonObject[] {
+  const byKey = new Map<string, JsonObject>();
+  for (const value of values) {
+    byKey.set(String(value[key] ?? stableStringify(value)), value);
+  }
+  return [...byKey.values()].sort((left, right) => String(left[key] ?? "").localeCompare(String(right[key] ?? "")));
 }
 
 async function hashBundleFiles(bundleDir: string): Promise<readonly EvidenceBundleArtifactHash[]> {

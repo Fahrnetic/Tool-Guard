@@ -4,6 +4,7 @@ import { createId, type StableId } from "./ids.js";
 import { buildContextImpact } from "./context-impact.js";
 import { exportStaticReport, type StaticReportResult } from "./report.js";
 import { buildRunIndexSeed } from "./run-index.js";
+import { CANONICAL_VISIBILITY_SCHEMA_VERSION, buildVisibilityMetadata } from "./visibility.js";
 import {
   finishObservedImpact,
   impactAttribution,
@@ -875,6 +876,7 @@ export class CoreSession {
         : options.data;
     const event: CoreEvent = {
       eventId: createId("event"),
+      schemaVersion: CANONICAL_VISIBILITY_SCHEMA_VERSION,
       type,
       occurredAt: this.#clock().toISOString(),
       sequence: ++this.#sequence,
@@ -888,6 +890,7 @@ export class CoreSession {
       toolCallId: call.toolCallId,
       attemptId: call.attemptId,
       policyDecisionId: call.policyDecisionId,
+      visibility: buildVisibilityMetadata(call),
       ...(options.artifactId ? { artifactId: options.artifactId } : {}),
       ...(data
         ? { data: redactJsonValue(data as JsonValue) as NonNullable<CoreEvent["data"]> }
@@ -917,6 +920,7 @@ export class CoreSession {
   ): Promise<CoreEvent> {
     const event: CoreEvent = {
       eventId: createId("event"),
+      schemaVersion: CANONICAL_VISIBILITY_SCHEMA_VERSION,
       type,
       occurredAt: this.#clock().toISOString(),
       sequence: ++this.#sequence,
@@ -930,6 +934,7 @@ export class CoreSession {
       ...(context.toolCallId ? { toolCallId: context.toolCallId } : {}),
       ...(context.attemptId ? { attemptId: context.attemptId } : {}),
       ...(context.policyDecisionId ? { policyDecisionId: context.policyDecisionId } : {}),
+      visibility: contextVisibilityMetadata(context),
       ...(options.artifactId ? { artifactId: options.artifactId } : {}),
       ...(options.data
         ? { data: redactJsonValue(options.data as JsonValue) as NonNullable<CoreEvent["data"]> }
@@ -974,5 +979,33 @@ async function executeWithAbort(execute: () => Promise<JsonValue> | JsonValue, s
     execution
       .then((value) => settle(() => resolve(value)))
       .catch((error: unknown) => settle(() => reject(error)));
+  });
+}
+
+function contextVisibilityMetadata(context: {
+  readonly runId: StableId;
+  readonly traceId: StableId;
+  readonly parentId?: StableId;
+  readonly harnessId?: StableId;
+  readonly adapterId?: StableId;
+  readonly downstreamServerId?: StableId;
+  readonly toolCallId?: StableId;
+  readonly attemptId?: StableId;
+  readonly policyDecisionId?: StableId;
+}): ReturnType<typeof buildVisibilityMetadata> {
+  return buildVisibilityMetadata({
+    runId: context.runId,
+    traceId: context.traceId,
+    ...(context.parentId ? { parentId: context.parentId } : {}),
+    harnessId: context.harnessId ?? "harness_unknown",
+    adapterId: context.adapterId ?? "adapter_unknown",
+    downstreamServerId: context.downstreamServerId ?? "server_unknown",
+    toolCallId: context.toolCallId ?? "toolcall_unknown",
+    attemptId: context.attemptId ?? "attempt_unknown",
+    policyDecisionId: context.policyDecisionId ?? "policy_unknown",
+    toolName: "context.event",
+    arguments: {},
+    idempotency: "unknown",
+    sourcePath: "non-mcp-direct"
   });
 }

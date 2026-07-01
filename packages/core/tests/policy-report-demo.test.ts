@@ -6,6 +6,8 @@ import {
   ClassifiedToolError,
   CoreSession,
   ToolRegistry,
+  CANONICAL_VISIBILITY_SCHEMA_VERSION,
+  buildVisibilityMetadata,
   createId,
   exportStaticReport,
   registerChaosFixtures,
@@ -325,7 +327,9 @@ describe("policy, redaction, reports, and demos", () => {
     const root = await mkdtemp(path.join(tmpdir(), "toolguard-redaction-summary-"));
     const runId = createId("run");
     const rawSecret = `Bearer ${"S".repeat(24)}`;
+    const visibilityCall = makeCall({ runId });
     const event: CoreEvent = {
+      schemaVersion: CANONICAL_VISIBILITY_SCHEMA_VERSION,
       eventId: createId("event"),
       type: "tool.call.failed",
       occurredAt: new Date(0).toISOString(),
@@ -339,6 +343,7 @@ describe("policy, redaction, reports, and demos", () => {
       toolCallId: createId("toolcall"),
       attemptId: createId("attempt"),
       policyDecisionId: createId("policy"),
+      visibility: buildVisibilityMetadata(visibilityCall),
       data: {
         toolName: "fixture.secret",
         failureType: "secret_leak_risk",

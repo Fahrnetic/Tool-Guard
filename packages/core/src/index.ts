@@ -1,6 +1,13 @@
 export { PROJECT_NAME, PRODUCT_DISPLAY_NAME } from "./product.js";
 export { createId, type StableId } from "./ids.js";
 export { EventBus, type CoreEvent, type CoreEventType, type CorrelationFields } from "./events.js";
+export {
+  CANONICAL_VISIBILITY_SCHEMA_VERSION,
+  buildVisibilityMetadata,
+  traceContextForCall,
+  visibilityLabels,
+  visibilityLevelForCall
+} from "./visibility.js";
 export { EvidenceRecorder, type EvidenceRecorderOptions } from "./evidence.js";
 export {
   RunIndexStore,
@@ -203,5 +210,9 @@ export type {
   ToolDefinition,
   ToolProtocol,
   ToolResult,
-  TraceSummary
+  TraceSummary,
+  VisibilityHarnessMetadata,
+  VisibilityMetadata,
+  VisibilityPlatformMetadata,
+  VisibilityTraceContext
 } from "./types.js";

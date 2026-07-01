@@ -2314,7 +2314,9 @@ function integrationClaimFromPassport(
   passport: { readonly id: string; readonly supportedHostIds: readonly string[]; readonly hostFamily: string }
 ): { readonly claimLevel: string; readonly status: string } {
   if (!row) return { claimLevel: "not-yet-verified", status: "not-yet-verified" };
-  const exactReceipt = receipts.find(({ receipt }) => receiptMatchesMcpPassport(receipt, withConfigHashes(passport)));
+  const exactReceipt = receipts
+    .filter(({ receipt }) => receiptMatchesMcpPassport(receipt, withConfigHashes(passport)))
+    .at(-1);
   if (!exactReceipt) return { claimLevel: "not-yet-verified", status: "not-yet-verified" };
   return integrationClaimFromRoute({
     ...row,

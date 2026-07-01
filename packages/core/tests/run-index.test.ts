@@ -133,6 +133,62 @@ describe("durable run index", () => {
     expect(jsonl).toContain(firstCall.toolCallId);
     expect(jsonl).toContain(secondCall.toolCallId);
   });
+
+  it("indexes visibility labels, route passport IDs, and trace context safely", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-run-index-visibility-"));
+    const registry = new ToolRegistry();
+    registry.register({
+      toolName: "fixture.fail",
+      title: "Fail",
+      description: "Failing fixture",
+      protocol: "fixture",
+      downstreamServerId: "server_fixture",
+      inputSchema: { type: "object" },
+      destructiveRisk: "none",
+      execute: () => {
+        throw new Error(`Bearer ${"B".repeat(32)}`);
+      }
+    });
+    const session = new CoreSession({ evidenceRoot: root, runId: createId("run") });
+    const traceparent = "00-11111111111111111111111111111111-2222222222222222-01";
+    const call: ToolCall = {
+      ...makeCall(session.runId, "fixture.fail", "visibility failure"),
+      sourcePath: "cli-wrapper",
+      routeMetadata: {
+        routeType: "cli-supervised",
+        routeId: "route_local_cli",
+        traceContext: { traceparent },
+        platform: {
+          hostId: "local-cli",
+          hostName: "Local CLI",
+          osPlatform: "linux",
+          osFamily: "linux",
+          transport: "process-argv",
+          routePassportId: "passport_local_cli",
+          configHash: "fnv1a-87654321"
+        },
+        coverage: {
+          claim: "supervised",
+          evidenceScope: "route",
+          producingEvidence: true
+        }
+      }
+    };
+
+    await session.executeToolCall(registry, call);
+
+    const record = (await session.recorder.listRunIndexRecords()).find((entry) => entry.runId === session.runId);
+    expect(record).toMatchObject({
+      visibility: {
+        visibilityLevel: "supervised",
+        coverageClaim: "supervised",
+        routePassportId: "passport_local_cli",
+        routeType: "cli-supervised",
+        traceContext: { traceparent, source: "provided" }
+      }
+    });
+    expect(JSON.stringify(record)).not.toContain("B".repeat(32));
+  });
 });
 
 function makeCall(runId: StableId, toolName: string, sessionLabel: string): ToolCall {

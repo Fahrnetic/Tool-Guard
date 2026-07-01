@@ -2,7 +2,13 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { CoreSession, createId, type CoreEvent, type ToolCall } from "../src/index.js";
+import {
+  CANONICAL_VISIBILITY_SCHEMA_VERSION,
+  CoreSession,
+  createId,
+  type CoreEvent,
+  type ToolCall
+} from "../src/index.js";
 
 function makeToolCall(sourcePath: ToolCall["sourcePath"]): ToolCall {
   return {
@@ -67,6 +73,90 @@ describe("core event lifecycle", () => {
 
     const artifactEvent = persisted.find((event) => event.type === "evidence.artifact.created");
     expect(artifactEvent?.artifactId).toMatch(/^artifact_/);
+  });
+
+  it("persists canonical visibility metadata and W3C trace context on every event", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-visibility-events-"));
+    const traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+    const call: ToolCall = {
+      ...makeToolCall("mcp-adapter"),
+      harnessName: "Cline",
+      adapterName: "ToolGuard MCP",
+      routeMetadata: {
+        routeType: "mcp-routed",
+        routeId: "route_cline_mcp",
+        transport: { kind: "stdio" },
+        traceContext: { traceparent },
+        platform: {
+          hostId: "cline",
+          hostName: "Cline",
+          osPlatform: "linux",
+          osFamily: "linux",
+          transport: "stdio",
+          routePassportId: "passport_cline_mcp",
+          configHash: "fnv1a-12345678"
+        },
+        coverage: {
+          claim: "mediated",
+          evidenceScope: "route",
+          producingEvidence: true
+        }
+      }
+    };
+    const session = new CoreSession({
+      evidenceRoot: root,
+      runId: call.runId,
+      clock: () => new Date("2026-06-26T00:00:00.000Z")
+    });
+
+    await session.mediateSuccessfulCall(call, { ok: true, secret: `Bearer ${"A".repeat(32)}` });
+
+    const persisted = (await readFile(session.recorder.eventsPath, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as CoreEvent);
+
+    for (const event of persisted) {
+      expect(event.schemaVersion).toBe(CANONICAL_VISIBILITY_SCHEMA_VERSION);
+      expect(event.visibility).toMatchObject({
+        schemaVersion: CANONICAL_VISIBILITY_SCHEMA_VERSION,
+        visibilityLevel: "mediated",
+        coverageClaim: "mediated",
+        routePassportId: "passport_cline_mcp",
+        routeType: "mcp-routed",
+        evidenceScope: "route",
+        producingEvidence: true,
+        harness: { harnessId: call.harnessId, name: "Cline" },
+        platform: {
+          hostId: "cline",
+          hostName: "Cline",
+          osPlatform: "linux",
+          osFamily: "linux",
+          transport: "stdio",
+          configHash: "fnv1a-12345678"
+        },
+        traceContext: { traceparent, source: "provided" }
+      });
+      expect(JSON.stringify(event)).not.toContain("A".repeat(32));
+    }
+  });
+
+  it("generates deterministic W3C trace context when route metadata does not provide one", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-visibility-generated-trace-"));
+    const call = makeToolCall("cli-wrapper");
+    const session = new CoreSession({ evidenceRoot: root, runId: call.runId });
+
+    await session.failToolCall(call, "non_zero_exit", ["safe local failure"]);
+
+    const persisted = (await readFile(session.recorder.eventsPath, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as CoreEvent);
+    const traceparents = persisted.map((event) => event.visibility?.traceContext.traceparent);
+
+    expect(new Set(traceparents).size).toBe(1);
+    expect(traceparents[0]).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
+    expect(persisted[0]?.visibility?.traceContext.source).toBe("generated");
   });
 
   it("accepts normalized calls from MCP and non-MCP adapter paths without protocol imports", async () => {

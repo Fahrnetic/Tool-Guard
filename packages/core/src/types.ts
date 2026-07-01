@@ -14,6 +14,43 @@ export interface LoopbackEndpointMetadata {
   readonly verified: boolean;
 }
 
+export interface VisibilityTraceContext {
+  readonly traceparent: string;
+  readonly tracestate?: string;
+  readonly source: "provided" | "generated";
+}
+
+export interface VisibilityHarnessMetadata {
+  readonly harnessId?: string;
+  readonly name?: string;
+  readonly kind?: HarnessKind;
+}
+
+export interface VisibilityPlatformMetadata {
+  readonly hostId?: string;
+  readonly hostName?: string;
+  readonly hostFamily?: string;
+  readonly supportedHostIds?: readonly string[];
+  readonly osPlatform?: NodeJS.Platform | string;
+  readonly osFamily?: OsFamily;
+  readonly transport?: string;
+  readonly configHash?: string;
+}
+
+export interface VisibilityMetadata {
+  readonly schemaVersion: "toolguard.visibility.v1";
+  readonly visibilityLevel: VisibilityLevel;
+  readonly coverageClaim: VisibilityLevel;
+  readonly routePassportId?: string;
+  readonly routeType?: string;
+  readonly routeId?: string;
+  readonly evidenceScope?: "route" | "harness" | "host-config";
+  readonly producingEvidence: boolean;
+  readonly harness: VisibilityHarnessMetadata;
+  readonly platform: VisibilityPlatformMetadata;
+  readonly traceContext: VisibilityTraceContext;
+}
+
 export interface ToolRouteMetadata {
   readonly workspaceRoot?: string;
   readonly sandboxRoot?: string;
@@ -35,6 +72,26 @@ export interface ToolRouteMetadata {
   readonly adapterConfigHash?: string;
   readonly configHash?: string;
   readonly loopbackEndpoint?: LoopbackEndpointMetadata;
+  readonly traceContext?: {
+    readonly traceparent?: string;
+    readonly tracestate?: string;
+  };
+  readonly platform?: {
+    readonly hostId?: string;
+    readonly hostName?: string;
+    readonly hostFamily?: string;
+    readonly supportedHostIds?: readonly string[];
+    readonly osPlatform?: NodeJS.Platform | string;
+    readonly osFamily?: OsFamily;
+    readonly transport?: string;
+    readonly routePassportId?: string;
+    readonly configHash?: string;
+  };
+  readonly coverage?: {
+    readonly claim?: VisibilityLevel;
+    readonly evidenceScope?: "route" | "harness" | "host-config";
+    readonly producingEvidence?: boolean;
+  };
 }
 
 export interface RecordedRouteConfig {
@@ -500,6 +557,8 @@ export interface NativeHostActionCoverage {
 }
 
 export interface IntegrationVerificationReceipt {
+  readonly schemaVersion?: "toolguard.visibility.v1";
+  readonly visibility?: VisibilityMetadata;
   readonly receiptId: StableId;
   readonly runId: StableId;
   readonly timestamp: string;

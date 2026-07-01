@@ -123,6 +123,71 @@ describe("evidence bundle export", () => {
     expect(events.at(-1)?.type).toBe("bundle.exported");
   });
 
+  it("exports canonical visibility bundle metadata with route passports, coverage receipts, labels, and hashes", async () => {
+    const { session } = await makeSeededSession("toolguard-bundle-visibility-");
+    const traceparent = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01";
+    await session.failToolCall(
+      {
+        ...makeToolCall(session.runId),
+        sourcePath: "cli-wrapper",
+        routeMetadata: {
+          routeType: "cli-supervised",
+          routeId: "route_local_cli",
+          traceContext: { traceparent },
+          platform: {
+            hostId: "local-cli",
+            hostName: "Local CLI",
+            osPlatform: "linux",
+            osFamily: "linux",
+            transport: "process-argv",
+            routePassportId: "passport_local_cli",
+            configHash: "fnv1a-cli"
+          },
+          coverage: {
+            claim: "supervised",
+            evidenceScope: "route",
+            producingEvidence: true
+          }
+        }
+      },
+      "non_zero_exit",
+      [`safe failure with Bearer ${"D".repeat(32)}`]
+    );
+
+    const bundle = await exportEvidenceBundle({ session });
+    const manifest = await readJson<{
+      schemaVersion: string;
+      visibility: {
+        schemaVersion: string;
+        labels: string[];
+        routePassports: Array<{ passportId: string; visibilityLevel: string }>;
+        coverageReceipts: Array<{ routeType: string; visibilityLevel: string }>;
+        traceContexts: Array<{ traceparent: string }>;
+        hashes: Array<{ relativePath: string; sha256: string }>;
+      };
+    }>(bundle.manifestPath);
+
+    expect(manifest.schemaVersion).toBe("toolguard.visibility.v1");
+    expect(manifest.visibility).toMatchObject({
+      schemaVersion: "toolguard.visibility.v1",
+      labels: expect.arrayContaining(["supervised", "route", "producing-evidence"]),
+      routePassports: expect.arrayContaining([
+        expect.objectContaining({ passportId: "passport_local_cli", visibilityLevel: "supervised" })
+      ]),
+      coverageReceipts: expect.arrayContaining([
+        expect.objectContaining({ routeType: "cli-supervised", visibilityLevel: "supervised" })
+      ]),
+      traceContexts: expect.arrayContaining([expect.objectContaining({ traceparent })])
+    });
+    expect(manifest.visibility.hashes).toEqual(
+      expect.arrayContaining([expect.objectContaining({ relativePath: "events.jsonl", sha256: expect.any(String) })])
+    );
+    expect(JSON.stringify(manifest)).not.toContain("D".repeat(32));
+    await expect(readFile(path.join(bundle.bundleDir, "visibility-metadata.json"), "utf8")).resolves.toContain(
+      "toolguard.visibility.v1"
+    );
+  });
+
   it("fails closed when bundle manifest hashes are missing or mismatched", async () => {
     const { session } = await makeSeededSession("toolguard-bundle-tamper-");
     const bundle = await exportEvidenceBundle({

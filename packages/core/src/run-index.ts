@@ -2,7 +2,8 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { CoreEvent } from "./events.js";
 import { redactString } from "./redaction.js";
-import type { FailureCard, JsonValue, ToolCall } from "./types.js";
+import type { FailureCard, JsonValue, ToolCall, VisibilityMetadata } from "./types.js";
+import { buildVisibilityMetadata } from "./visibility.js";
 
 export type RunIndexRouteType = "direct" | "cli" | "mcp" | "python";
 export type RunIndexStatus = "running" | "succeeded" | "failed";
@@ -38,6 +39,7 @@ export interface RunIndexSeed {
   readonly eventsPath: string;
   readonly tags: readonly string[];
   readonly labels: SafeRunLabels;
+  readonly visibility?: VisibilityMetadata;
 }
 
 export interface RunIndexRecord extends RunIndexSeed {
@@ -197,7 +199,8 @@ export function buildRunIndexSeed(call: ToolCall, evidencePath: string, eventsPa
     evidencePath: sanitizeLabel(evidencePath),
     eventsPath: sanitizeLabel(eventsPath),
     tags,
-    labels
+    labels,
+    visibility: buildVisibilityMetadata(call)
   };
 }
 
@@ -273,7 +276,8 @@ function defaultRecordFromEvent(event: CoreEvent): RunIndexRecord {
     evidencePath: "",
     eventsPath: "",
     tags: [],
-    labels: {}
+    labels: {},
+    ...(event.visibility ? { visibility: event.visibility } : {})
   };
 }
 

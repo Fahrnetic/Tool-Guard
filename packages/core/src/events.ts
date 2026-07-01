@@ -5,6 +5,7 @@ import type {
   FailureCard,
   IntegrationVerificationReceipt,
   JsonObject,
+  VisibilityMetadata,
   PolicyDecision,
   PolicySimulationResult,
   RetryLoopFinding,
@@ -51,11 +52,13 @@ export interface CorrelationFields {
 }
 
 export interface CoreEvent extends CorrelationFields {
+  readonly schemaVersion?: "toolguard.visibility.v1";
   readonly eventId: StableId;
   readonly type: CoreEventType;
   readonly occurredAt: string;
   readonly sequence: number;
   readonly summary: string;
+  readonly visibility?: VisibilityMetadata;
   readonly data?:
     | JsonObject
     | ToolResult

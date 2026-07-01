@@ -189,6 +189,43 @@ describe("durable run index", () => {
     });
     expect(JSON.stringify(record)).not.toContain("B".repeat(32));
   });
+
+  it("indexes direct ToolGuard API and demo failures as mediated rather than observed", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-run-index-direct-visibility-"));
+    const registry = new ToolRegistry();
+    registry.register({
+      toolName: "fixture.direct-fail",
+      title: "Direct failure",
+      description: "Failing direct local fixture",
+      protocol: "fixture",
+      downstreamServerId: "server_fixture",
+      inputSchema: { type: "object" },
+      destructiveRisk: "none",
+      execute: () => {
+        throw new Error("safe direct failure");
+      }
+    });
+    const session = new CoreSession({ evidenceRoot: root, runId: createId("run") });
+    const call: ToolCall = {
+      ...makeCall(session.runId, "fixture.direct-fail", "direct visibility failure"),
+      harnessName: "Core API demo",
+      adapterName: "ToolGuard Core"
+    };
+
+    await session.executeToolCall(registry, call);
+
+    const record = (await session.recorder.listRunIndexRecords()).find((entry) => entry.runId === session.runId);
+    expect(record).toMatchObject({
+      routeType: "direct",
+      sourcePath: "non-mcp-direct",
+      visibility: {
+        visibilityLevel: "mediated",
+        coverageClaim: "mediated",
+        harness: { name: "Core API demo" }
+      }
+    });
+    expect(JSON.stringify(record)).not.toContain("\"visibilityLevel\":\"observed\"");
+  });
 });
 
 function makeCall(runId: StableId, toolName: string, sessionLabel: string): ToolCall {

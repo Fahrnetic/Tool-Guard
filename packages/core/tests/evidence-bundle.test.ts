@@ -188,6 +188,33 @@ describe("evidence bundle export", () => {
     );
   });
 
+  it("exports direct ToolGuard failure bundle visibility as mediated", async () => {
+    const { session } = await makeSeededSession("toolguard-bundle-direct-visibility-");
+    const directCall = {
+      ...makeToolCall(session.runId),
+      harnessName: "ToolGuard Core API",
+      adapterName: "ToolGuard Core",
+      runName: "direct local ToolGuard failure"
+    };
+    await session.failToolCall(directCall, "non_zero_exit", ["safe direct ToolGuard failure"]);
+
+    const bundle = await exportEvidenceBundle({ session });
+    const manifest = await readJson<{
+      visibility: {
+        labels: string[];
+        coverageReceipts: Array<{ routeType: string; visibilityLevel: string }>;
+      };
+    }>(bundle.manifestPath);
+
+    expect(manifest.visibility.labels).toEqual(expect.arrayContaining(["mediated", "producing-evidence"]));
+    expect(manifest.visibility.labels).not.toContain("observed");
+
+    const events = await readJsonl<CoreEvent>(path.join(bundle.bundleDir, "events.jsonl"));
+    const directFailureEvents = events.filter((event) => event.toolCallId === directCall.toolCallId);
+    expect(directFailureEvents.length).toBeGreaterThan(0);
+    expect(directFailureEvents.every((event) => event.visibility?.visibilityLevel === "mediated")).toBe(true);
+  });
+
   it("fails closed when bundle manifest hashes are missing or mismatched", async () => {
     const { session } = await makeSeededSession("toolguard-bundle-tamper-");
     const bundle = await exportEvidenceBundle({

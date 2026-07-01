@@ -141,6 +141,60 @@ describe("core event lifecycle", () => {
     }
   });
 
+  it("labels direct ToolGuard Core failures as mediated in JSONL visibility metadata", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-direct-core-visibility-"));
+    const call = {
+      ...makeToolCall("non-mcp-direct"),
+      harnessName: "Core API demo",
+      adapterName: "ToolGuard Core",
+      runName: "direct local ToolGuard failure"
+    };
+    const session = new CoreSession({ evidenceRoot: root, runId: call.runId });
+
+    await session.failToolCall(call, "non_zero_exit", ["safe direct fixture failure"]);
+
+    const persisted = (await readFile(session.recorder.eventsPath, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as CoreEvent);
+
+    expect(persisted.length).toBeGreaterThan(0);
+    for (const event of persisted) {
+      expect(event.visibility).toMatchObject({
+        visibilityLevel: "mediated",
+        coverageClaim: "mediated",
+        harness: { name: "Core API demo" }
+      });
+    }
+  });
+
+  it("preserves explicit observed claims for non-routed imported evidence", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-observed-import-visibility-"));
+    const call = {
+      ...makeToolCall("non-mcp-direct"),
+      routeMetadata: {
+        coverage: {
+          claim: "observed" as const,
+          evidenceScope: "host-config" as const,
+          producingEvidence: false
+        }
+      }
+    };
+    const session = new CoreSession({ evidenceRoot: root, runId: call.runId });
+
+    await session.failToolCall(call, "non_zero_exit", ["safe imported observation"]);
+
+    const persisted = (await readFile(session.recorder.eventsPath, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as CoreEvent);
+
+    expect(persisted.every((event) => event.visibility?.visibilityLevel === "observed")).toBe(true);
+    expect(persisted.every((event) => event.visibility?.coverageClaim === "observed")).toBe(true);
+    expect(persisted.every((event) => event.visibility?.evidenceScope === "host-config")).toBe(true);
+    expect(persisted.every((event) => event.visibility?.producingEvidence === false)).toBe(true);
+  });
+
   it("generates deterministic W3C trace context when route metadata does not provide one", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "toolguard-visibility-generated-trace-"));
     const call = makeToolCall("cli-wrapper");

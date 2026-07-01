@@ -13,7 +13,7 @@ const SOURCE_VISIBILITY: Record<ToolCall["sourcePath"], VisibilityLevel> = {
   "mcp-adapter": "mediated",
   "cli-wrapper": "supervised",
   "framework-adapter": "observed",
-  "non-mcp-direct": "observed"
+  "non-mcp-direct": "mediated"
 };
 
 const TRACEPARENT_PATTERN = /^00-[0-9a-f]{32}-[0-9a-f]{16}-0[0-9a-f]$/;

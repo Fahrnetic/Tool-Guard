@@ -200,6 +200,14 @@ describe("adapter expansion local visibility routes", () => {
           producingEvidence: boolean;
           evidenceFreshness: string;
         }>;
+        coverageHistory: Array<{
+          routeType: string;
+          sourceEventType: string;
+          visibilityLevel: string;
+          evidenceFreshness: string;
+          safeSummary: string;
+          limitations: string[];
+        }>;
       };
       for (const routeType of ["js-ts-wrapper", "http-webhook-import", "browser-evidence-import"]) {
         expect(payload.routeCoverage.find((row) => row.routeType === routeType)).toMatchObject({
@@ -209,6 +217,33 @@ describe("adapter expansion local visibility routes", () => {
           evidenceFreshness: "recent"
         });
       }
+      expect(payload.coverageHistory).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            routeType: "js-ts-wrapper",
+            sourceEventType: "tool.call.completed",
+            visibilityLevel: "mediated",
+            evidenceFreshness: "recent",
+            safeSummary: expect.stringMatching(/Tool call completed: local\.visible/)
+          }),
+          expect.objectContaining({
+            routeType: "http-webhook-import",
+            sourceEventType: "visibility.imported",
+            visibilityLevel: "imported",
+            evidenceFreshness: "recent",
+            safeSummary: expect.stringMatching(/HTTP\/webhook visibility evidence imported/),
+            limitations: expect.arrayContaining([expect.stringMatching(/did not mediate the original action/i)])
+          }),
+          expect.objectContaining({
+            routeType: "browser-evidence-import",
+            sourceEventType: "visibility.imported",
+            visibilityLevel: "observed",
+            evidenceFreshness: "recent",
+            safeSummary: expect.stringMatching(/Browser visibility evidence imported/),
+            limitations: expect.arrayContaining([expect.stringMatching(/did not mediate native browser actions/i)])
+          })
+        ])
+      );
       expect(JSON.stringify(payload)).not.toContain("H".repeat(48));
       expect(JSON.stringify(payload)).not.toContain("secretsecretsecretsecret");
     } finally {

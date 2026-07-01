@@ -2344,7 +2344,7 @@ async function buildIntegrationsPayload(
   return {
     runId,
     generatedAt: new Date().toISOString(),
-    coverageHistory: buildCoverageHistory(receipts),
+    coverageHistory: buildCoverageHistory(coverageEvents),
     routeCoverage,
     integrations: [
       {
@@ -2440,12 +2440,13 @@ function isCoverageEvent(event: CoreEvent): boolean {
   return event.type === "integration.verified" || parseRouteType(event.visibility?.routeType) !== undefined;
 }
 
-function buildCoverageHistory(receipts: readonly { readonly event: CoreEvent; readonly receipt: JsonObject }[]): JsonObject[] {
-  return receipts.map(({ event, receipt }) => {
+function buildCoverageHistory(events: readonly CoreEvent[]): JsonObject[] {
+  const receiptHistory = integrationReceiptsFromEvents(events).map(({ event, receipt }) => {
     const evidenceFreshness = evidenceFreshnessFor(event.occurredAt);
     return {
       receiptId: typeof receipt.receiptId === "string" ? receipt.receiptId : event.eventId,
       routeType: typeof receipt.routeType === "string" ? receipt.routeType : "unknown",
+      sourceEventType: event.type,
       ...(typeof receipt.hostId === "string" ? { hostId: receipt.hostId } : {}),
       ...(typeof receipt.osPlatform === "string" ? { osPlatform: receipt.osPlatform } : {}),
       ...(typeof receipt.transport === "string" ? { transport: receipt.transport } : {}),
@@ -2453,11 +2454,61 @@ function buildCoverageHistory(receipts: readonly { readonly event: CoreEvent; re
       ...(typeof receipt.visibilityLevel === "string" ? { visibilityLevel: receipt.visibilityLevel } : {}),
       lastVerifiedAt: typeof receipt.lastVerifiedAt === "string" ? receipt.lastVerifiedAt : event.occurredAt,
       evidenceFreshness,
+      safeSummary: safeCoverageSummary(event.summary),
+      limitations: coverageLimitationsForEvent(event),
       ...(evidenceFreshness === "recent"
         ? {}
         : { warning: "Coverage evidence is stale. Re-run a local route probe before claiming availability." })
     };
   });
+
+  const routeEventHistory = events.filter(isCoverageHistoryRouteEvent).map((event) => {
+    const routeType = parseRouteType(event.visibility?.routeType);
+    const evidenceFreshness = evidenceFreshnessFor(event.occurredAt);
+    return {
+      receiptId: event.eventId,
+      routeType: routeType ?? "unknown",
+      sourceEventType: event.type,
+      ...(event.visibility?.platform.hostId ? { hostId: event.visibility.platform.hostId } : {}),
+      ...(event.visibility?.platform.osPlatform ? { osPlatform: event.visibility.platform.osPlatform } : {}),
+      ...(event.visibility?.platform.transport ? { transport: event.visibility.platform.transport } : {}),
+      ...(event.visibility?.platform.configHash ? { configHash: event.visibility.platform.configHash } : {}),
+      visibilityLevel: event.visibility?.visibilityLevel ?? "unknown",
+      lastVerifiedAt: event.occurredAt,
+      evidenceFreshness,
+      safeSummary: safeCoverageSummary(event.summary),
+      limitations: coverageLimitationsForEvent(event),
+      ...(evidenceFreshness === "recent"
+        ? {}
+        : { warning: "Coverage evidence is stale. Re-run a local route probe before claiming availability." })
+    };
+  });
+
+  const byReceiptId = new Map<string, JsonObject>();
+  for (const entry of [...receiptHistory, ...routeEventHistory]) {
+    const key = typeof entry.receiptId === "string" ? entry.receiptId : JSON.stringify(entry);
+    byReceiptId.set(key, entry);
+  }
+  return [...byReceiptId.values()];
+}
+
+function isCoverageHistoryRouteEvent(event: CoreEvent): boolean {
+  if (parseRouteType(event.visibility?.routeType) === undefined) return false;
+  if (event.visibility?.producingEvidence !== true) return false;
+  return event.type === "visibility.imported" || event.type === "tool.call.completed" || event.type === "tool.call.failed";
+}
+
+function safeCoverageSummary(summary: string): string {
+  return redactStringWithSummary(summary).value.slice(0, 1_000);
+}
+
+function coverageLimitationsForEvent(event: CoreEvent): string[] {
+  const explicit = isRecord(event.data) && Array.isArray(event.data.limitations)
+    ? event.data.limitations.filter((limitation): limitation is string => typeof limitation === "string")
+    : [];
+  const fallback = limitationForRouteType(parseRouteType(event.visibility?.routeType));
+  const limitations = explicit.length > 0 ? explicit : fallback ? [fallback] : [];
+  return limitations.map((limitation) => redactStringWithSummary(limitation).value.slice(0, 1_000));
 }
 
 function integrationClaimFromRoute(row: JsonObject | undefined): { readonly claimLevel: string; readonly status: string } {
@@ -2766,6 +2817,28 @@ function parseRouteType(value: unknown): IntegrationRouteType | undefined {
     value === "browser-evidence-import"
     ? value
     : undefined;
+}
+
+function limitationForRouteType(routeType: IntegrationRouteType | undefined): string | undefined {
+  if (routeType === "mcp-routed") {
+    return "Covered only when calls route through the ToolGuard MCP proxy. Native host tools remain outside the claim.";
+  }
+  if (routeType === "cli-supervised") {
+    return "Covered at the process boundary through `toolguard run --`; native agent tool calls still need MCP, SDK wrapper, or API routing.";
+  }
+  if (routeType === "sdk-wrapped-python") {
+    return "Observed only for explicit wrapper and loopback sidecar usage. Direct framework tools are not intercepted.";
+  }
+  if (routeType === "js-ts-wrapper") {
+    return "Mediated only for explicit local wrapper calls; native provider or host tool calls that bypass the wrapper are not covered.";
+  }
+  if (routeType === "http-webhook-import") {
+    return "Imported evidence is organized and redacted after receipt; ToolGuard did not control the original downstream call.";
+  }
+  if (routeType === "browser-evidence-import") {
+    return "Observed browser summaries depend on explicit local import data and do not imply browser-native tool interception.";
+  }
+  return undefined;
 }
 
 function optionalStringField<T extends string>(

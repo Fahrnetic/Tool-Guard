@@ -112,6 +112,16 @@ export async function runPortfolioDemo(options: PortfolioDemoOptions = {}): Prom
       { routeType: "mcp-routed" },
       "integration verification"
     );
+    await postJson(
+      `${CORE_URL}/api/integrations/verify`,
+      { routeType: "sdk-wrapped-python" },
+      "Python integration verification"
+    );
+    await postJson(
+      `${CORE_URL}/api/integrations/verify`,
+      { routeType: "cli-supervised" },
+      "CLI integration verification"
+    );
     const replay = await assertJson<{ readonly replayableRuns: readonly unknown[] }>(`${CORE_URL}/api/replay`, "replay metadata");
     const replayResult = await postJson<{ readonly status: string }>(
       `${CORE_URL}/api/replay`,

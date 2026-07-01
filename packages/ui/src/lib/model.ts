@@ -485,6 +485,7 @@ export type IntegrationEvidenceFreshness = "recent" | "stale" | "missing";
 export interface IntegrationCoverageHistoryView {
   readonly receiptId: string;
   readonly routeType: string;
+  readonly sourceEventType?: string;
   readonly hostId?: string;
   readonly osPlatform?: string;
   readonly transport?: string;
@@ -492,6 +493,8 @@ export interface IntegrationCoverageHistoryView {
   readonly visibilityLevel?: string;
   readonly lastVerifiedAt: string;
   readonly evidenceFreshness: IntegrationEvidenceFreshness;
+  readonly safeSummary?: string;
+  readonly limitations?: readonly string[];
   readonly warning?: string;
 }
 

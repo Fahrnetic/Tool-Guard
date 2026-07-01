@@ -92,7 +92,17 @@ export async function fetchIntegrations(signal?: AbortSignal): Promise<Integrati
   return await fetchJson<IntegrationsPayload>("/api/integrations", signal);
 }
 
-export async function verifyIntegration(input: { routeType: VerificationRouteType }, signal?: AbortSignal): Promise<VerificationReceipt> {
+export async function verifyIntegration(input: {
+  routeType: VerificationRouteType;
+  integrationId?: string;
+  hostId?: string;
+  hostName?: string;
+  hostFamily?: string;
+  supportedHostIds?: readonly string[];
+  platform?: string;
+  transport?: string;
+  configHash?: string;
+}, signal?: AbortSignal): Promise<VerificationReceipt> {
   return await fetchJson<VerificationReceipt>("/api/integrations/verify", signal, {
     method: "POST",
     body: JSON.stringify(input),

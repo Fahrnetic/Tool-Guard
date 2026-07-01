@@ -322,7 +322,18 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
           sendJson(response, 400, { error: "unknown_integration_route_type" });
           return;
         }
-        sendJson(response, 200, await verifyIntegrationRoute({ session, routeType }));
+        sendJson(response, 200, await verifyIntegrationRoute({
+          session,
+          routeType,
+          ...optionalStringField(body.payload, "integrationId"),
+          ...optionalStringField(body.payload, "hostId"),
+          ...optionalStringField(body.payload, "hostName"),
+          ...optionalStringField(body.payload, "hostFamily"),
+          ...optionalStringArrayField(body.payload, "supportedHostIds"),
+          ...optionalStringField(body.payload, "platform"),
+          ...optionalStringField(body.payload, "transport"),
+          ...optionalStringField(body.payload, "configHash")
+        }));
         return;
       }
 
@@ -2755,6 +2766,24 @@ function parseRouteType(value: unknown): IntegrationRouteType | undefined {
     value === "browser-evidence-import"
     ? value
     : undefined;
+}
+
+function optionalStringField<T extends string>(
+  source: Record<string, unknown>,
+  key: T
+): Record<T, string> | Record<string, never> {
+  const value = source[key];
+  return typeof value === "string" && value.length > 0 ? { [key]: value } as Record<T, string> : {};
+}
+
+function optionalStringArrayField<T extends string>(
+  source: Record<string, unknown>,
+  key: T
+): Record<T, readonly string[]> | Record<string, never> {
+  const value = source[key];
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string")
+    ? { [key]: value } as unknown as Record<T, readonly string[]>
+    : {};
 }
 
 function correlationFromCoreEvent(event: CoreEvent): JsonObject {

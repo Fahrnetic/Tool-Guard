@@ -28,6 +28,14 @@ import type {
 export interface IntegrationVerificationInput {
   readonly session: CoreSession;
   readonly routeType: IntegrationRouteType;
+  readonly integrationId?: string;
+  readonly hostId?: string;
+  readonly hostName?: string;
+  readonly hostFamily?: string;
+  readonly supportedHostIds?: readonly string[];
+  readonly platform?: string;
+  readonly transport?: string;
+  readonly configHash?: string;
   readonly workspaceRoot?: string;
   readonly probeTimeoutMs?: number;
 }
@@ -66,7 +74,7 @@ export async function verifyIntegrationRoute(
   const checkedCapabilities = await buildCapabilityChecks(input);
   const routeEvidenceProduced = routeProducesEvidence(input.routeType, checkedCapabilities);
   const routeCoverage = buildRouteCoverage(input.routeType, checkedCapabilities, routeEvidenceProduced);
-  const passportMetadata = buildPlatformPassportMetadata(input.routeType, checkedCapabilities, timestamp);
+  const passportMetadata = buildPlatformPassportMetadata(input, checkedCapabilities, timestamp);
   const visibilityLevel = passportMetadata.visibilityLevel ?? "unknown";
   const platformPassport = passportMetadata.platformPassport;
   const receiptWithoutLinks = {
@@ -131,7 +139,7 @@ export async function verifyIntegrationRoute(
 }
 
 function buildPlatformPassportMetadata(
-  routeType: IntegrationRouteType,
+  input: IntegrationVerificationInput,
   checkedCapabilities: readonly IntegrationCapabilityCheck[],
   timestamp: string
 ): Pick<
@@ -151,9 +159,15 @@ function buildPlatformPassportMetadata(
   | "lastVerifiedAt"
   | "platformPassport"
 > {
+  const routeType = input.routeType;
   const base = routePassportBase(routeType);
   const smokeTestStatus = smokeStatusFromCapabilities(checkedCapabilities);
-  const configHashValue = base.configHash ?? routeConfigHash(routeType, base.hostId, base.transport);
+  const hostId = input.hostId ?? base.hostId;
+  const hostName = input.hostName ?? base.hostName;
+  const transport = input.transport ?? base.transport;
+  const osPlatform = input.platform ?? process.platform;
+  const supportedHostIds = input.supportedHostIds ?? base.supportedHostIds;
+  const configHashValue = input.configHash ?? base.configHash ?? routeConfigHash(routeType, hostId, transport);
   const evidenceFields = [
     "receiptId",
     "routeType",
@@ -163,12 +177,12 @@ function buildPlatformPassportMetadata(
     "platformPassport"
   ];
   const platformPassport: HostPlatformPassport = {
-    passportId: `passport_${base.hostId}_${routeType.replace(/[^a-z0-9]+/gi, "_")}`,
-    hostId: base.hostId,
-    hostName: base.hostName,
-    osPlatform: process.platform,
+    passportId: `passport_${hostId}_${routeType.replace(/[^a-z0-9]+/gi, "_")}`,
+    hostId,
+    hostName,
+    osPlatform,
     osFamily: currentOsFamily(),
-    transport: base.transport,
+    transport,
     routeType,
     configHash: configHashValue,
     visibilityLevel: base.visibilityLevel,
@@ -178,10 +192,10 @@ function buildPlatformPassportMetadata(
     lastVerifiedAt: timestamp
   };
   return {
-    ...(base.integrationId ? { integrationId: base.integrationId } : {}),
-    hostId: base.hostId,
-    ...(base.hostFamily ? { hostFamily: base.hostFamily } : {}),
-    ...(base.supportedHostIds ? { supportedHostIds: base.supportedHostIds } : {}),
+    ...(input.integrationId ?? base.integrationId ? { integrationId: input.integrationId ?? base.integrationId } : {}),
+    hostId,
+    ...(input.hostFamily ?? base.hostFamily ? { hostFamily: input.hostFamily ?? base.hostFamily } : {}),
+    ...(supportedHostIds ? { supportedHostIds } : {}),
     configHash: configHashValue,
     osPlatform: platformPassport.osPlatform,
     osFamily: platformPassport.osFamily,

@@ -14,10 +14,11 @@ describe("policy simulator and integration copy safeguards", () => {
   });
 
   it("uses safe evidence bundle language with local receipts and visibility labels", async () => {
-    expect(harnessIntegrationsSource).toContain("ready for report export");
+    expect(harnessIntegrationsSource).toContain("ready for evidence bundle export");
     expect(harnessIntegrationsSource).toContain("Safe evidence bundle ready");
     expect(harnessIntegrationsSource).toContain("Export safe evidence bundle");
     expect(harnessIntegrationsSource).toContain("Redacted visibility labels, route receipts, passports, and diagnostics are included.");
+    expect(harnessIntegrationsSource).not.toContain("ready for report export");
     expect(harnessIntegrationsSource).not.toContain("Evidence bundle export ready");
     expect(harnessIntegrationsSource).not.toContain("Export receipts to evidence bundle");
   });

@@ -33,7 +33,9 @@ describe("Harness Integrations workbench interactions", () => {
   });
 
   it("switches harness and platform selectors while keeping receipts scoped to the exact passport", async () => {
-    vi.mocked(verifyIntegration).mockResolvedValue(clineReceipt);
+    vi.mocked(verifyIntegration)
+      .mockResolvedValueOnce(clineReceipt)
+      .mockResolvedValueOnce(rooReceipt);
     vi.mocked(exportBundle).mockResolvedValue({
       runId: "run_integrations",
       bundleDir: "/tmp/toolguard/run_integrations/bundle",
@@ -52,6 +54,17 @@ describe("Harness Integrations workbench interactions", () => {
     expect(selectedSnippetText()).toContain('"autoApprove": []');
 
     await clickProbe();
+    expect(vi.mocked(verifyIntegration)).toHaveBeenLastCalledWith(expect.objectContaining({
+      routeType: "mcp-routed",
+      integrationId: "cline",
+      hostId: "cline",
+      hostName: "Cline",
+      hostFamily: "cline-roo-style",
+      supportedHostIds: ["cline"],
+      platform: "posix",
+      transport: "stdio",
+      configHash: expect.stringMatching(/^fnv1a-/)
+    }));
     expect(selectedWizardText()).toContain("Cline-specific virtual routed tool evidence probe");
     expect(selectedWizardText()).toContain("Coverage passport");
     expect(selectedWizardText()).toContain("Friendly diagnostic record");
@@ -69,6 +82,22 @@ describe("Harness Integrations workbench interactions", () => {
     expect(selectedSnippetText()).toContain("$env:TOOLGUARD_CORE_URL = 'http://127.0.0.1:3660'");
     expect(selectedSnippetText()).toContain('"alwaysAllow": []');
 
+    await clickProbe();
+    expect(vi.mocked(verifyIntegration)).toHaveBeenLastCalledWith(expect.objectContaining({
+      routeType: "mcp-routed",
+      integrationId: "roo-code",
+      hostId: "roo-code",
+      hostName: "Roo Code",
+      hostFamily: "cline-roo-style",
+      supportedHostIds: ["roo-code"],
+      platform: "powershell",
+      transport: "stdio",
+      configHash: expect.stringMatching(/^fnv1a-/)
+    }));
+    expect(selectedWizardText()).toContain("Roo-specific virtual routed tool evidence probe");
+    expect(selectedWizardText()).toContain("Roo Code on powershell");
+    expect(selectedWizardText()).not.toContain("Cline-specific virtual routed tool evidence probe");
+
     changeSelect("Choose harness", "cline");
     expect(selectedSnippetText()).toContain("# Cline (cline-roo-style)");
     expect(selectedSnippetText()).toContain("$env:TOOLGUARD_CORE_URL = 'http://127.0.0.1:3660'");
@@ -78,6 +107,7 @@ describe("Harness Integrations workbench interactions", () => {
     expect(vi.mocked(exportBundle)).toHaveBeenCalledTimes(1);
     expect(dom?.window.document.body.textContent).toContain("Safe evidence bundle ready: manifest valid");
     expect(dom?.window.document.body.textContent).toContain("Redacted visibility labels, route receipts, passports, and diagnostics are included.");
+    expect(dom?.window.document.body.textContent).not.toContain("ready for report export");
   });
 
   function renderWorkbench(): void {
@@ -208,6 +238,38 @@ const clineReceipt: VerificationReceipt = {
   ],
   limitation: "Local-only MCP verification checks calls routed through ToolGuard MCP configuration only.",
   evidenceLinks: []
+};
+
+const rooReceipt: VerificationReceipt = {
+  ...clineReceipt,
+  receiptId: "receipt_roo",
+  hostId: "roo-code",
+  supportedHostIds: ["roo-code"],
+  configHash: "fnv1a-roo",
+  platformPassport: {
+    ...clineReceipt.platformPassport!,
+    passportId: "passport_roo",
+    hostId: "roo-code",
+    hostName: "Roo Code",
+    osPlatform: "powershell",
+    configHash: "fnv1a-roo"
+  },
+  checkedCapabilities: [
+    {
+      capability: "virtual routed tool evidence",
+      status: "available",
+      localOnly: true,
+      evidence: "Roo-specific virtual routed tool evidence probe passed."
+    }
+  ],
+  routeCoverage: [
+    {
+      state: "producing-evidence",
+      label: "MCP routed adapter path producing evidence",
+      localOnly: true,
+      evidence: "The Roo Code host-specific route produced evidence."
+    }
+  ]
 };
 
 function mcpIntegration(id: string, name: string, supportedHostIds: readonly string[]): IntegrationView {

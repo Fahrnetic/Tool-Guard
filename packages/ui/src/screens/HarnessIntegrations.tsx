@@ -45,13 +45,13 @@ export function HarnessIntegrations({ payload, status, error }: HarnessIntegrati
     return <StatePanel status="empty" title="No integrations listed" message="Integration claim metadata is not available yet. The wizard will show configured, available, unsupported, and not-yet-verified routes after Core responds." />;
   }
 
-  async function runProbe(routeType: VerificationRouteType) {
+  async function runProbe(routeType: VerificationRouteType, integration: IntegrationView, platform: PlatformCommandSnippet["platform"]) {
     setVerifying(routeType);
     setVerifyError(undefined);
     try {
-      const receipt = await verifyIntegration({ routeType });
+      const receipt = await verifyIntegration(verificationRequestFor(integration, routeType, platform));
       setReceipts((current) => [receipt, ...current.filter((candidate) => candidate.receiptId !== receipt.receiptId)].slice(0, 6));
-      setExportMessage("Receipt recorded as a redacted evidence artifact and ready for report export.");
+      setExportMessage("Receipt recorded as a redacted evidence artifact and ready for evidence bundle export.");
     } catch (caught) {
       setVerifyError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -697,7 +697,7 @@ function WizardPanel({ integration, platform, receipts, verifying, onVerify, exp
   readonly platform: PlatformCommandSnippet["platform"];
   readonly receipts: readonly VerificationReceipt[];
   readonly verifying: VerificationRouteType | undefined;
-  readonly onVerify: (routeType: VerificationRouteType) => void;
+  readonly onVerify: (routeType: VerificationRouteType, integration: IntegrationView, platform: PlatformCommandSnippet["platform"]) => void;
   readonly exporting: boolean;
   readonly onExport: () => void;
 }) {
@@ -737,7 +737,7 @@ function WizardPanel({ integration, platform, receipts, verifying, onVerify, exp
         <button
           type="button"
           disabled={!routeType || integration.status === "unsupported" || verifying === routeType}
-          onClick={() => routeType ? onVerify(routeType) : undefined}
+          onClick={() => routeType ? onVerify(routeType, integration, platform) : undefined}
           className="rounded-xl border border-primary/50 bg-primary/15 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/25 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {probeButtonLabel}
@@ -762,6 +762,41 @@ function WizardPanel({ integration, platform, receipts, verifying, onVerify, exp
       </div>
     </div>
   );
+}
+
+function verificationRequestFor(
+  integration: IntegrationView,
+  routeType: VerificationRouteType,
+  platform: PlatformCommandSnippet["platform"]
+): Parameters<typeof verifyIntegration>[0] {
+  if (routeType === "mcp-routed") {
+    const snippets = generateVisibilitySetupSnippets();
+    const host = mcpHostSnippetsForIntegration(integration, snippets.mcpHosts)[0];
+    return {
+      routeType,
+      integrationId: integration.id,
+      ...(host
+        ? {
+            hostId: host.hostId,
+            hostName: host.hostName,
+            hostFamily: host.hostFamily,
+            supportedHostIds: [host.hostId],
+            transport: host.transport,
+            configHash: configHash(host.configJson)
+          }
+        : integration.supportedHostIds
+          ? { supportedHostIds: integration.supportedHostIds }
+          : {}),
+      platform
+    };
+  }
+  return {
+    routeType,
+    integrationId: integration.id,
+    hostId: integration.id,
+    platform,
+    transport: routeType === "cli-supervised" ? "process-argv" : "http-loopback-sidecar"
+  };
 }
 
 function ReceiptCard({ receipt }: { readonly receipt: VerificationReceipt }) {

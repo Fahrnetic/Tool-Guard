@@ -33,6 +33,45 @@ async function readJsonl<T>(filePath: string): Promise<T[]> {
 }
 
 describe("integration doctor route coverage", () => {
+  it("scopes verification receipts to the selected non-default MCP host and platform", async () => {
+    const evidenceRoot = await mkdtemp(path.join(tmpdir(), "toolguard-selected-mcp-receipt-"));
+    const session = new CoreSession({ evidenceRoot, runId: "run_selected_roo_mcp" as StableId });
+
+    const receipt = await verifyIntegrationRoute({
+      session,
+      routeType: "mcp-routed",
+      integrationId: "roo-code",
+      hostId: "roo-code",
+      hostName: "Roo Code",
+      hostFamily: "cline-roo-style",
+      supportedHostIds: ["roo-code"],
+      platform: "powershell",
+      transport: "stdio",
+      configHash: "fnv1a-roo-selected",
+      workspaceRoot: path.resolve("."),
+      probeTimeoutMs: 10_000
+    });
+
+    expect(receipt.integrationId).toBe("roo-code");
+    expect(receipt.hostId).toBe("roo-code");
+    expect(receipt.supportedHostIds).toEqual(["roo-code"]);
+    expect(receipt.osPlatform).toBe("powershell");
+    expect(receipt.transport).toBe("stdio");
+    expect(receipt.configHash).toBe("fnv1a-roo-selected");
+    expect(receipt.platformPassport).toEqual(expect.objectContaining({
+      hostId: "roo-code",
+      hostName: "Roo Code",
+      osPlatform: "powershell",
+      transport: "stdio",
+      configHash: "fnv1a-roo-selected"
+    }));
+    expect(receipt.evidenceLinks[0]).toEqual(expect.objectContaining({
+      hostId: "roo-code",
+      configHash: "fnv1a-roo-selected"
+    }));
+    expect(receipt.hostId).not.toBe("cline");
+  }, 20_000);
+
   it("builds a stable no-secret machine JSON schema with route passports and CI receipt paths", () => {
     const receipt = makeDoctorReceipt({
       runId: "run_doctor_json_seed" as StableId,

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { generateVisibilitySetupSnippets } from "@toolplane/core/setup-snippets";
-import type { PlatformCommandSnippet } from "@toolplane/core/setup-snippets";
+import type { HostConfigSnippet, PlatformCommandSnippet, SupportedMcpHostId } from "@toolplane/core/setup-snippets";
 import { StatePanel } from "../components/StatePanel.js";
 import { StatusChip } from "../components/StatusChip.js";
 import { exportReport, verifyIntegration } from "../lib/api.js";
@@ -191,14 +191,18 @@ function OnboardingWorkbench(input: {
   const selectedSnippet =
     routeSnippets.find((snippet) => snippet.platform === input.selectedPlatform) ??
     routeSnippets[0];
-  const latestReceipt = routeType ? input.receipts.find((receipt) => receipt.routeType === routeType) : undefined;
+  const setupSnippet = setupSnippetFor(selected, input.selectedPlatform);
+  const latestReceipt = selected ? input.receipts.find((receipt) => receiptMatchesIntegration(receipt, selected)) : undefined;
   const coverage = input.coverageRows.find((row) => row.routeType === (routeType ?? "native-host-tools"));
+  const routeLevelCoverageAppliesToPassport = routeType !== "mcp-routed";
   const smokeStatus = latestReceipt
     ? `Success. Smoke-test receipt ${latestReceipt.receiptId} was recorded at ${new Date(latestReceipt.timestamp).toLocaleString()}.`
-    : coverage?.evidenceFreshness === "recent" && coverage.lastEvidenceAt
+    : routeLevelCoverageAppliesToPassport && coverage?.evidenceFreshness === "recent" && coverage.lastEvidenceAt
       ? `Success. Local proof exists from ${new Date(coverage.lastEvidenceAt).toLocaleString()}.`
       : selected?.status === "unsupported"
         ? "Unsupported. Route this harness through MCP, SDK wrappers, CLI supervision, or the ToolGuard API before expecting evidence."
+        : routeType === "mcp-routed" && coverage?.evidenceFreshness === "recent"
+          ? "Warning. Route-level MCP evidence exists, but no exact harness passport receipt matched this host identity, host family, or config hash."
         : "Warning. No local smoke-test receipt is visible yet. Run the next setup command below.";
 
   return (
@@ -277,18 +281,18 @@ function OnboardingWorkbench(input: {
 
           <section className="rounded-2xl border border-border bg-bg/55 p-4" aria-label="Copyable setup snippet">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h4 className="text-base font-semibold text-text">{selectedSnippet?.title ?? "Unsupported route"}</h4>
+              <h4 className="text-base font-semibold text-text">{setupSnippet.title}</h4>
               <button
                 type="button"
                 className="rounded-xl border border-primary/50 bg-primary/15 px-3 py-2 text-xs font-semibold text-primary transition hover:bg-primary/25 active:scale-[0.98]"
                 aria-label="Copy setup snippet"
-                onClick={() => void navigator.clipboard?.writeText(selectedSnippet?.command ?? setupSnippetFor(selected))}
+                onClick={() => void navigator.clipboard?.writeText(setupSnippet.command)}
               >
                 Copy snippet
               </button>
             </div>
             <pre className="mt-3 max-h-64 overflow-auto rounded-xl border border-border bg-bg p-4 text-xs leading-5 text-text-muted">
-              <code>{selectedSnippet?.command ?? setupSnippetFor(selected)}</code>
+              <code>{setupSnippet.command}</code>
             </pre>
             <p className="mt-3 text-xs leading-5 text-text-subtle">
               Snippet source: shared ToolGuard setup generator. Placeholders such as &lt;TOOLPLANE_REPO&gt; avoid developer-machine absolute paths.
@@ -297,7 +301,7 @@ function OnboardingWorkbench(input: {
 
           <section className="rounded-2xl border border-border bg-bg/55 p-4" aria-live="polite" aria-label="Smoke-test receipt status">
             <div className="flex flex-wrap gap-2">
-              <StatusChip label={latestReceipt || coverage?.evidenceFreshness === "recent" ? "success" : selected?.status === "unsupported" ? "unsupported" : "warning"} tone={latestReceipt || coverage?.evidenceFreshness === "recent" ? "healthy" : selected?.status === "unsupported" ? "failed" : "warning"} />
+              <StatusChip label={latestReceipt || (routeLevelCoverageAppliesToPassport && coverage?.evidenceFreshness === "recent") ? "success" : selected?.status === "unsupported" ? "unsupported" : "warning"} tone={latestReceipt || (routeLevelCoverageAppliesToPassport && coverage?.evidenceFreshness === "recent") ? "healthy" : selected?.status === "unsupported" ? "failed" : "warning"} />
               {coverage?.claim === "not-covered" ? <StatusChip label="not-covered" tone="failed" /> : null}
             </div>
             <p className="mt-3 text-sm leading-6 text-text-muted">{smokeStatus}</p>
@@ -328,7 +332,7 @@ function PassportDeck(input: {
         {input.integrations.map((integration) => {
           const routeType = routeTypeForIntegration(integration);
           const coverage = input.coverageRows.find((row) => row.routeType === (routeType ?? "native-host-tools"));
-          const receipt = routeType ? input.receipts.find((candidate) => candidate.routeType === routeType) : undefined;
+          const receipt = input.receipts.find((candidate) => receiptMatchesIntegration(candidate, integration));
           return <PassportCard key={integration.id} integration={integration} coverage={coverage} receipt={receipt} />;
         })}
       </div>
@@ -341,9 +345,12 @@ function PassportCard({ integration, coverage, receipt }: {
   readonly coverage: IntegrationRouteCoverageView | undefined;
   readonly receipt: VerificationReceipt | undefined;
 }) {
-  const freshness = receipt ? "recent" : (coverage?.evidenceFreshness ?? "missing");
+  const requiresExactPassportEvidence = integration.route === "MCP-routed";
+  const freshness = receipt ? "recent" : requiresExactPassportEvidence ? "missing" : (coverage?.evidenceFreshness ?? "missing");
   const evidenceFields = receipt
     ? receipt.checkedCapabilities.map((check) => `${check.capability}: ${check.status}`)
+    : requiresExactPassportEvidence && coverage?.evidenceFreshness === "recent"
+      ? ["Exact harness receipt: not verified", "Route-level MCP evidence was not projected onto this host passport"]
     : coverage?.checks.map((check) => `${check.label}: ${check.state}`) ?? ["Smoke-test receipt: not verified"];
   return (
     <article className="rounded-2xl border border-border bg-bg/55 p-4" tabIndex={0}>
@@ -361,7 +368,7 @@ function PassportCard({ integration, coverage, receipt }: {
         <div>
           <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-text-dim">Last verified</dt>
           <dd className="mt-2 text-text-muted">
-            {receipt ? new Date(receipt.timestamp).toLocaleString() : coverage?.lastEvidenceAt ? new Date(coverage.lastEvidenceAt).toLocaleString() : "No local proof yet"}
+            {receipt ? new Date(receipt.timestamp).toLocaleString() : requiresExactPassportEvidence ? "No exact harness proof yet" : coverage?.lastEvidenceAt ? new Date(coverage.lastEvidenceAt).toLocaleString() : "No local proof yet"}
           </dd>
         </div>
         <div>
@@ -575,7 +582,7 @@ function WizardPanel({ integration, platform, receipts, verifying, onVerify, exp
 
       <div className="mt-5">
         <h4 className="text-sm font-semibold text-text">Copy-ready setup snippet</h4>
-        <pre className="mt-2 overflow-x-auto rounded-xl border border-border bg-bg p-4 text-xs leading-5 text-text-muted"><code>{setupSnippetFor(integration, platform)}</code></pre>
+        <pre className="mt-2 overflow-x-auto rounded-xl border border-border bg-bg p-4 text-xs leading-5 text-text-muted"><code>{setupSnippetFor(integration, platform).command}</code></pre>
       </div>
 
       <div className="mt-5 flex flex-wrap gap-2">
@@ -647,20 +654,127 @@ function stateLabel(status: string): string {
   return status;
 }
 
-function setupSnippetFor(integration: IntegrationView | undefined, platform: PlatformCommandSnippet["platform"] = "posix"): string {
+interface RenderedSetupSnippet {
+  readonly title: string;
+  readonly command: string;
+}
+
+export function setupSnippetFor(integration: IntegrationView | undefined, platform: PlatformCommandSnippet["platform"] = "posix"): RenderedSetupSnippet {
   const snippets = generateVisibilitySetupSnippets();
-  if (!integration) return "";
+  if (!integration) return { title: "Unsupported route", command: "" };
   if (integration.route === "MCP-routed") {
-    return snippets.mcpHosts[0]?.configJson ?? "";
+    const hosts = mcpHostSnippetsForIntegration(integration, snippets.mcpHosts);
+    const command = snippetForRouteAndPlatform(snippets.platforms, "mcp-routed", platform)?.command ??
+      snippetCommand(snippets.platforms, "mcp-posix");
+    if (hosts.length === 0) {
+      return {
+        title: `${integration.name} MCP setup`,
+        command: [
+          "# No exact MCP host card is available for this selection.",
+          "# Choose a listed MCP host or route through CLI/SDK supervision.",
+          command
+        ].join("\n")
+      };
+    }
+    const firstHost = hosts[0];
+    return {
+      title: hosts.length === 1 && firstHost ? `${firstHost.hostName} MCP host config` : `${integration.name} MCP host-family configs`,
+      command: hosts.map((host) => renderMcpHostSetup(host, command)).join("\n\n")
+    };
   }
   if (integration.route === "SDK-wrapped") {
-    return snippetForRouteAndPlatform(snippets.platforms, "sdk-wrapped-python", platform)?.command ?? snippetCommand(snippets.platforms, "python-wrapper");
+    const snippet = snippetForRouteAndPlatform(snippets.platforms, "sdk-wrapped-python", platform);
+    return { title: snippet?.title ?? "Python SDK wrapper", command: snippet?.command ?? snippetCommand(snippets.platforms, "python-wrapper") };
   }
   if (integration.route === "CLI-supervised") {
-    return snippetForRouteAndPlatform(snippets.platforms, "cli-supervised", platform)?.command ?? snippetCommand(snippets.platforms, "cli-posix");
+    const snippet = snippetForRouteAndPlatform(snippets.platforms, "cli-supervised", platform);
+    return { title: snippet?.title ?? "CLI supervised command", command: snippet?.command ?? snippetCommand(snippets.platforms, "cli-posix") };
   }
-  return `# Unsupported route in v0
-# Route calls through MCP, an SDK wrapper, the CLI shim, or the ToolGuard API before claiming protection.`;
+  return {
+    title: "Unsupported route",
+    command: `# Unsupported route in v0
+# Route calls through MCP, an SDK wrapper, the CLI shim, or the ToolGuard API before claiming protection.`
+  };
+}
+
+function renderMcpHostSetup(host: HostConfigSnippet, platformCommand: string): string {
+  return [
+    `# ${host.hostName} (${host.hostFamily})`,
+    `# Host ID: ${host.hostId}`,
+    `# Config hash: ${configHash(host.configJson)}`,
+    `# ${host.boundary}`,
+    host.configJson,
+    "",
+    "# Platform launcher for the ToolGuard MCP stdio server:",
+    platformCommand
+  ].join("\n");
+}
+
+function mcpHostSnippetsForIntegration(
+  integration: IntegrationView,
+  hosts: readonly HostConfigSnippet[]
+): readonly HostConfigSnippet[] {
+  const hostIds = mcpHostIdsForIntegration(integration);
+  if (hostIds.length > 0) {
+    return hosts.filter((host) => hostIds.includes(host.hostId));
+  }
+  if (integration.hostFamily) {
+    return hosts.filter((host) => host.hostFamily === integration.hostFamily);
+  }
+  return [];
+}
+
+export function mcpHostIdsForIntegration(integration: IntegrationView): readonly SupportedMcpHostId[] {
+  const supported = integration.supportedHostIds?.filter(isSupportedMcpHostId) ?? [];
+  if (supported.length > 0) return supported;
+  if (isSupportedMcpHostId(integration.id)) return [integration.id];
+  if (integration.id === "claude-desktop-code") return ["claude-desktop", "claude-code"];
+  if (integration.id === "cursor-windsurf") return ["cursor", "windsurf"];
+  return [];
+}
+
+function isSupportedMcpHostId(value: string): value is SupportedMcpHostId {
+  return [
+    "cline",
+    "roo-code",
+    "claude-desktop",
+    "claude-code",
+    "cursor",
+    "windsurf",
+    "codex-cli",
+    "opencode",
+    "hermes"
+  ].includes(value);
+}
+
+export function receiptMatchesIntegration(receipt: VerificationReceipt, integration: IntegrationView): boolean {
+  const routeType = routeTypeForIntegration(integration);
+  if (!routeType || receipt.routeType !== routeType) return false;
+  if (routeType !== "mcp-routed") return true;
+  const hostIds = mcpHostIdsForIntegration(integration);
+  const snippets = generateVisibilitySetupSnippets();
+  const hostConfigs = mcpHostSnippetsForIntegration(integration, snippets.mcpHosts);
+  const configHashes = new Set(hostConfigs.map((host) => configHash(host.configJson)));
+  if (receipt.integrationId === integration.id) return true;
+  if (receipt.hostId && hostIds.includes(receipt.hostId as SupportedMcpHostId)) return true;
+  if (receipt.hostFamily && receipt.hostFamily === (integration.hostFamily ?? hostConfigs[0]?.hostFamily)) return true;
+  if (receipt.supportedHostIds?.some((hostId) => hostIds.includes(hostId as SupportedMcpHostId))) return true;
+  if (receipt.configHash && configHashes.has(receipt.configHash)) return true;
+  return receipt.evidenceLinks.some((link) =>
+    link.integrationId === integration.id ||
+    (link.hostId ? hostIds.includes(link.hostId as SupportedMcpHostId) : false) ||
+    (link.hostFamily ? link.hostFamily === (integration.hostFamily ?? hostConfigs[0]?.hostFamily) : false) ||
+    (link.configHash ? configHashes.has(link.configHash) : false)
+  );
+}
+
+export function configHash(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `fnv1a-${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
 function snippetForRouteAndPlatform(

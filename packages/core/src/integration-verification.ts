@@ -1,11 +1,13 @@
 import { execFile } from "node:child_process";
-import { access, readFile } from "node:fs/promises";
+import { access, mkdtemp, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { createId } from "./ids.js";
 import type { StableId } from "./ids.js";
 import type { CoreSession } from "./session.js";
+import { generateHostConfigSnippets } from "./setup-snippets.js";
 import { SIDECAR_PROTOCOL_VERSION } from "./sidecar-protocol.js";
 import type {
   EvidenceLink,
@@ -47,11 +49,13 @@ export async function verifyIntegrationRoute(
   const timestamp = new Date().toISOString();
   const checkedCapabilities = await buildCapabilityChecks(input);
   const routeCoverage = buildRouteCoverage(input.routeType, checkedCapabilities);
+  const passportMetadata = input.routeType === "mcp-routed" ? defaultMcpPassportMetadata() : {};
   const receiptWithoutLinks = {
     receiptId,
     runId: input.session.runId,
     timestamp,
     routeType: input.routeType,
+    ...passportMetadata,
     checkedCapabilities,
     routeCoverage,
     limitation: LIMITATIONS[input.routeType]
@@ -67,12 +71,34 @@ export async function verifyIntegrationRoute(
     {
       artifactId: artifact.artifactId,
       href: artifact.relativePath,
-      label: `Verification receipt for ${input.routeType}`
+      label: `Verification receipt for ${input.routeType}`,
+      routeType: input.routeType,
+      evidenceScope: input.routeType === "mcp-routed" ? "harness" : "route",
+      ...passportMetadata
     }
   ];
   const receipt: IntegrationVerificationReceipt = { ...receiptWithoutLinks, evidenceLinks };
   await input.session.emitIntegrationVerified(receipt);
   return receipt;
+}
+
+function defaultMcpPassportMetadata(): Pick<IntegrationVerificationReceipt, "hostId" | "hostFamily" | "supportedHostIds" | "configHash"> {
+  const cline = generateHostConfigSnippets().find((host) => host.hostId === "cline");
+  return {
+    hostId: "cline",
+    hostFamily: "cline-roo-style",
+    supportedHostIds: ["cline"],
+    ...(cline ? { configHash: configHash(cline.configJson) } : {})
+  };
+}
+
+function configHash(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `fnv1a-${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
 function buildRouteCoverage(
@@ -422,9 +448,10 @@ async function probeCliDestructiveGuard(workspaceRoot: string, timeoutMs: number
 }
 
 async function runCliProbe(workspaceRoot: string, args: readonly string[], timeoutMs: number): Promise<Record<string, any>> {
+  const evidenceRoot = await mkdtemp(path.join(tmpdir(), "toolguard-cli-probe-"));
   const output = await execFileChecked(
     process.execPath,
-    [path.join(workspaceRoot, "packages/cli/dist/bin/toolplane.js"), ...args],
+    [path.join(workspaceRoot, "packages/cli/dist/bin/toolplane.js"), "run", "--evidence-root", evidenceRoot, ...args.slice(1)],
     workspaceRoot,
     timeoutMs,
     true

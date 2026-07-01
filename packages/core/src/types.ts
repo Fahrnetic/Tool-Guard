@@ -277,6 +277,13 @@ export interface EvidenceLink {
   readonly artifactId: StableId;
   readonly href: string;
   readonly label: string;
+  readonly routeType?: IntegrationRouteType;
+  readonly evidenceScope?: "route" | "harness" | "host-config";
+  readonly integrationId?: string;
+  readonly hostId?: string;
+  readonly hostFamily?: string;
+  readonly supportedHostIds?: readonly string[];
+  readonly configHash?: string;
 }
 
 export interface PolicyDecision {
@@ -472,6 +479,11 @@ export interface IntegrationVerificationReceipt {
   readonly runId: StableId;
   readonly timestamp: string;
   readonly routeType: IntegrationRouteType;
+  readonly integrationId?: string;
+  readonly hostId?: string;
+  readonly hostFamily?: string;
+  readonly supportedHostIds?: readonly string[];
+  readonly configHash?: string;
   readonly checkedCapabilities: readonly IntegrationCapabilityCheck[];
   readonly routeCoverage: readonly IntegrationRouteCoverageEntry[];
   readonly limitation: string;

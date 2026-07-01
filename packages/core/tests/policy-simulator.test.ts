@@ -339,4 +339,85 @@ describe("policy simulator and integration verification core", () => {
       ])
     );
   });
+
+  it("keeps MCP passport availability scoped to exact host metadata", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "toolguard-integrations-passports-"));
+    const session = new CoreSession({ evidenceRoot: root, runId: createId("run") });
+    const handle = createCoreApiServer({ host: "127.0.0.1", port: 0, evidenceRoot: root, session });
+    serverHandles.push(handle);
+    await handle.ready;
+    const address = handle.server.address();
+    expect(typeof address).toBe("object");
+    const baseUrl = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
+
+    await session.emitIntegrationVerified({
+      receiptId: createId("receipt"),
+      runId: session.runId,
+      timestamp: new Date().toISOString(),
+      routeType: "mcp-routed",
+      hostId: "cline",
+      supportedHostIds: ["cline"],
+      checkedCapabilities: [
+        {
+          capability: "adapter availability",
+          status: "available",
+          localOnly: true,
+          evidence: "Executed adapter import probe for @toolplane/mcp-adapter."
+        },
+        {
+          capability: "config snippet validity",
+          status: "configured",
+          localOnly: true,
+          evidence: "Executed Cline config generation probe for MCP snippets."
+        },
+        {
+          capability: "virtual routed tool evidence",
+          status: "available",
+          localOnly: true,
+          evidence: "Executed Cline-specific virtual routed tool evidence probe."
+        }
+      ],
+      routeCoverage: [
+        {
+          state: "configured",
+          label: "MCP routed adapter path configured",
+          localOnly: true,
+          evidence: "At least one local route configuration check passed."
+        },
+        {
+          state: "available",
+          label: "MCP routed adapter path available",
+          localOnly: true,
+          evidence: "At least one local route availability probe passed."
+        },
+        {
+          state: "producing-evidence",
+          label: "MCP routed adapter path producing evidence",
+          localOnly: true,
+          evidence: "The Cline host-specific route produced evidence."
+        }
+      ],
+      limitation: "Local-only MCP verification checks calls routed through ToolGuard MCP configuration only.",
+      evidenceLinks: []
+    });
+
+    const payload = await getJson<{
+      routeCoverage: Array<{ routeType: string; producingEvidence: boolean; evidenceFreshness: string }>;
+      integrations: Array<{ id: string; claimLevel: string; status: string; supportedHostIds?: string[] }>;
+    }>(`${baseUrl}/api/integrations`);
+    expect(payload.routeCoverage.find((row) => row.routeType === "mcp-routed")).toMatchObject({
+      producingEvidence: true,
+      evidenceFreshness: "recent"
+    });
+    expect(payload.integrations.find((integration) => integration.id === "cline")).toMatchObject({
+      claimLevel: "available",
+      status: "available",
+      supportedHostIds: ["cline"]
+    });
+    expect(payload.integrations.find((integration) => integration.id === "roo-code")).toMatchObject({
+      claimLevel: "not-yet-verified",
+      status: "not-yet-verified",
+      supportedHostIds: ["roo-code"]
+    });
+  });
 });

@@ -2169,6 +2169,7 @@ function buildPolicyPayload(runId: StableId, events: readonly CoreEvent[], draft
 }
 
 function buildIntegrationsPayload(runId: StableId, events: readonly CoreEvent[]): JsonObject {
+  const receipts = integrationReceiptsFromEvents(events);
   const routeCoverage = buildIntegrationCoverageMatrix(events);
   const routeRows = new Map(routeCoverage.map((row) => [String(row.routeType), row]));
   return {
@@ -2180,28 +2181,52 @@ function buildIntegrationsPayload(runId: StableId, events: readonly CoreEvent[])
         id: "cline",
         name: "Cline",
         route: "MCP-routed",
-        ...integrationClaimFromRoute(routeRows.get("mcp-routed")),
+        supportedHostIds: ["cline"],
+        hostFamily: "cline-roo-style",
+        ...integrationClaimFromPassport(routeRows.get("mcp-routed"), receipts, {
+          id: "cline",
+          supportedHostIds: ["cline"],
+          hostFamily: "cline-roo-style"
+        }),
         limitation: "ToolGuard protects calls routed through the MCP proxy only, not native host tools."
       },
       {
         id: "roo-code",
         name: "Roo Code",
         route: "MCP-routed",
-        ...integrationClaimFromRoute(routeRows.get("mcp-routed")),
+        supportedHostIds: ["roo-code"],
+        hostFamily: "cline-roo-style",
+        ...integrationClaimFromPassport(routeRows.get("mcp-routed"), receipts, {
+          id: "roo-code",
+          supportedHostIds: ["roo-code"],
+          hostFamily: "cline-roo-style"
+        }),
         limitation: "Use generated MCP config snippets with local ToolGuard Core on loopback."
       },
       {
         id: "claude-desktop-code",
         name: "Claude Desktop / Code",
         route: "MCP-routed",
-        ...integrationClaimFromRoute(routeRows.get("mcp-routed")),
+        supportedHostIds: ["claude-desktop", "claude-code"],
+        hostFamily: "claude-style",
+        ...integrationClaimFromPassport(routeRows.get("mcp-routed"), receipts, {
+          id: "claude-desktop-code",
+          supportedHostIds: ["claude-desktop", "claude-code"],
+          hostFamily: "claude-style"
+        }),
         limitation: "Native host tools are outside ToolGuard unless configured through MCP."
       },
       {
         id: "cursor-windsurf",
         name: "Cursor / Windsurf",
         route: "MCP-routed",
-        ...integrationClaimFromRoute(routeRows.get("mcp-routed")),
+        supportedHostIds: ["cursor", "windsurf"],
+        hostFamily: "cursor-windsurf-style",
+        ...integrationClaimFromPassport(routeRows.get("mcp-routed"), receipts, {
+          id: "cursor-windsurf",
+          supportedHostIds: ["cursor", "windsurf"],
+          hostFamily: "cursor-windsurf-style"
+        }),
         limitation: "MCP route is the supported claim. Native IDE tool interception is not claimed."
       },
       {
@@ -2245,11 +2270,23 @@ function integrationClaimFromRoute(row: JsonObject | undefined): { readonly clai
   return { claimLevel: "not-yet-verified", status: "not-yet-verified" };
 }
 
+function integrationClaimFromPassport(
+  row: JsonObject | undefined,
+  receipts: readonly { readonly event: CoreEvent; readonly receipt: JsonObject }[],
+  passport: { readonly id: string; readonly supportedHostIds: readonly string[]; readonly hostFamily: string }
+): { readonly claimLevel: string; readonly status: string } {
+  if (!row) return { claimLevel: "not-yet-verified", status: "not-yet-verified" };
+  const exactReceipt = receipts.find(({ receipt }) => receiptMatchesMcpPassport(receipt, passport));
+  if (!exactReceipt) return { claimLevel: "not-yet-verified", status: "not-yet-verified" };
+  return integrationClaimFromRoute({
+    ...row,
+    evidenceFreshness: evidenceFreshnessFor(exactReceipt.event.occurredAt),
+    producingEvidence: true
+  });
+}
+
 function buildIntegrationCoverageMatrix(events: readonly CoreEvent[]): JsonObject[] {
-  const receipts = events
-    .filter((event) => event.type === "integration.verified" && isRecord(event.data))
-    .map((event) => ({ event, receipt: event.data as JsonObject }))
-    .filter(({ receipt }) => parseRouteType(receipt.routeType) !== undefined);
+  const receipts = integrationReceiptsFromEvents(events);
   return [
     buildRouteCoverageRow({
       routeType: "mcp-routed",
@@ -2291,6 +2328,13 @@ function buildIntegrationCoverageMatrix(events: readonly CoreEvent[]): JsonObjec
       ]
     }
   ];
+}
+
+function integrationReceiptsFromEvents(events: readonly CoreEvent[]): readonly { readonly event: CoreEvent; readonly receipt: JsonObject }[] {
+  return events
+    .filter((event) => event.type === "integration.verified" && isRecord(event.data))
+    .map((event) => ({ event, receipt: event.data as JsonObject }))
+    .filter(({ receipt }) => parseRouteType(receipt.routeType) !== undefined);
 }
 
 function buildRouteCoverageRow(input: {
@@ -2372,6 +2416,26 @@ function hasExplicitRouteEvidenceLink(routeType: IntegrationRouteType, receipt: 
       typeof link.artifactId === "string" &&
       link.routeType === routeType &&
       link.evidenceScope === "route"
+  );
+}
+
+function receiptMatchesMcpPassport(
+  receipt: JsonObject,
+  passport: { readonly id: string; readonly supportedHostIds: readonly string[]; readonly hostFamily: string }
+): boolean {
+  if (receipt.routeType !== "mcp-routed") return false;
+  if (receipt.integrationId === passport.id) return true;
+  if (typeof receipt.hostId === "string" && passport.supportedHostIds.includes(receipt.hostId)) return true;
+  if (typeof receipt.hostFamily === "string" && receipt.hostFamily === passport.hostFamily) return true;
+  const receiptHosts = Array.isArray(receipt.supportedHostIds) ? receipt.supportedHostIds.filter((host): host is string => typeof host === "string") : [];
+  if (receiptHosts.some((host) => passport.supportedHostIds.includes(host))) return true;
+  const evidenceLinks = Array.isArray(receipt.evidenceLinks) ? receipt.evidenceLinks : [];
+  return evidenceLinks.some(
+    (link) =>
+      isRecord(link) &&
+      (link.integrationId === passport.id ||
+        (typeof link.hostId === "string" && passport.supportedHostIds.includes(link.hostId)) ||
+        link.hostFamily === passport.hostFamily)
   );
 }
 

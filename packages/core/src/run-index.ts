@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { CoreEvent } from "./events.js";
 import { redactString } from "./redaction.js";
@@ -133,7 +133,10 @@ export class RunIndexStore {
         if (!line.trim()) {
           continue;
         }
-        const parsed = JSON.parse(line) as RunIndexRecord;
+        const parsed = safeParseRunIndexRecord(line);
+        if (!parsed) {
+          continue;
+        }
         if (typeof parsed.runId === "string" && typeof parsed.startedAt === "string") {
           const runIndexRecordId =
             typeof parsed.runIndexRecordId === "string" ? parsed.runIndexRecordId : legacyRunIndexRecordId(parsed);
@@ -152,7 +155,17 @@ export class RunIndexStore {
     const lines = [...this.#records.values()]
       .sort((a, b) => a.startedAt.localeCompare(b.startedAt))
       .map((record) => JSON.stringify(record));
-    await writeFile(this.#indexPath, `${lines.join("\n")}${lines.length > 0 ? "\n" : ""}`, "utf8");
+    const tempPath = `${this.#indexPath}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
+    await writeFile(tempPath, `${lines.join("\n")}${lines.length > 0 ? "\n" : ""}`, "utf8");
+    await rename(tempPath, this.#indexPath);
+  }
+}
+
+function safeParseRunIndexRecord(line: string): RunIndexRecord | undefined {
+  try {
+    return JSON.parse(line) as RunIndexRecord;
+  } catch {
+    return undefined;
   }
 }
 

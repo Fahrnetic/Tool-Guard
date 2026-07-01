@@ -473,6 +473,8 @@ export interface IntegrationView {
   readonly route: "MCP-routed" | "SDK-wrapped" | "CLI-supervised" | "unsupported" | "not-yet-verified";
   readonly claimLevel: "configured" | "available" | "unsupported" | "not-yet-verified";
   readonly status: "configured" | "available" | "unsupported" | "not-yet-verified";
+  readonly supportedHostIds?: readonly string[];
+  readonly hostFamily?: string;
   readonly limitation: string;
 }
 

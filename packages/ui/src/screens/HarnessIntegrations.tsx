@@ -194,7 +194,8 @@ function OnboardingWorkbench(input: {
     routeSnippets.find((snippet) => snippet.platform === input.selectedPlatform) ??
     routeSnippets[0];
   const setupSnippet = setupSnippetFor(selected, input.selectedPlatform);
-  const latestReceipt = selected ? input.receipts.find((receipt) => receiptMatchesIntegration(receipt, selected)) : undefined;
+  const receiptScope = selected ? receiptMatchScopeFor(selected, input.selectedPlatform) : undefined;
+  const latestReceipt = selected ? input.receipts.find((receipt) => receiptMatchesIntegration(receipt, selected, receiptScope)) : undefined;
   const coverage = input.coverageRows.find((row) => row.routeType === (routeType ?? "native-host-tools"));
   const routeLevelCoverageAppliesToPassport = routeType !== "mcp-routed";
   const smokeStatus = latestReceipt
@@ -311,7 +312,7 @@ function OnboardingWorkbench(input: {
         </div>
       </div>
 
-      <PassportDeck integrations={input.integrations} coverageRows={input.coverageRows} receipts={input.receipts} />
+      <PassportDeck integrations={input.integrations} coverageRows={input.coverageRows} receipts={input.receipts} selectedPlatform={input.selectedPlatform} />
     </section>
   );
 }
@@ -320,6 +321,7 @@ function PassportDeck(input: {
   readonly integrations: readonly IntegrationView[];
   readonly coverageRows: readonly IntegrationRouteCoverageView[];
   readonly receipts: readonly VerificationReceipt[];
+  readonly selectedPlatform: PlatformCommandSnippet["platform"];
 }) {
   return (
     <section className="mt-6" aria-label="Harness passports">
@@ -334,7 +336,9 @@ function PassportDeck(input: {
         {input.integrations.map((integration) => {
           const routeType = routeTypeForIntegration(integration);
           const coverage = input.coverageRows.find((row) => row.routeType === (routeType ?? "native-host-tools"));
-          const receipt = input.receipts.find((candidate) => receiptMatchesIntegration(candidate, integration));
+          const receipt = input.receipts.find((candidate) =>
+            receiptMatchesIntegration(candidate, integration, receiptMatchScopeFor(integration, input.selectedPlatform))
+          );
           return <PassportCard key={integration.id} integration={integration} coverage={coverage} receipt={receipt} />;
         })}
       </div>
@@ -702,7 +706,8 @@ function WizardPanel({ integration, platform, receipts, verifying, onVerify, exp
   readonly onExport: () => void;
 }) {
   const routeType = routeTypeForIntegration(integration);
-  const matchingReceipts = routeType ? receipts.filter((receipt) => receiptMatchesIntegration(receipt, integration)) : [];
+  const receiptScope = receiptMatchScopeFor(integration, platform);
+  const matchingReceipts = routeType ? receipts.filter((receipt) => receiptMatchesIntegration(receipt, integration, receiptScope)) : [];
   const probeButtonLabel = integration.status === "unsupported"
     ? "Unsupported route"
     : !routeType
@@ -963,6 +968,30 @@ export function mcpHostIdsForIntegration(integration: IntegrationView): readonly
   return [];
 }
 
+interface ReceiptMatchScope {
+  readonly platform?: PlatformCommandSnippet["platform"];
+  readonly transport?: string;
+}
+
+function receiptMatchScopeFor(integration: IntegrationView, platform: PlatformCommandSnippet["platform"]): ReceiptMatchScope {
+  const transport = selectedTransportForIntegration(integration);
+  return {
+    platform,
+    ...(transport ? { transport } : {})
+  };
+}
+
+function selectedTransportForIntegration(integration: IntegrationView): string | undefined {
+  const routeType = routeTypeForIntegration(integration);
+  if (routeType === "mcp-routed") {
+    const snippets = generateVisibilitySetupSnippets();
+    return mcpHostSnippetsForIntegration(integration, snippets.mcpHosts)[0]?.transport;
+  }
+  if (routeType === "cli-supervised") return "process-argv";
+  if (routeType === "sdk-wrapped-python") return "http-loopback-sidecar";
+  return undefined;
+}
+
 function isSupportedMcpHostId(value: string): value is SupportedMcpHostId {
   return [
     "cline",
@@ -977,9 +1006,10 @@ function isSupportedMcpHostId(value: string): value is SupportedMcpHostId {
   ].includes(value);
 }
 
-export function receiptMatchesIntegration(receipt: VerificationReceipt, integration: IntegrationView): boolean {
+export function receiptMatchesIntegration(receipt: VerificationReceipt, integration: IntegrationView, scope: ReceiptMatchScope = {}): boolean {
   const routeType = routeTypeForIntegration(integration);
   if (!routeType || receipt.routeType !== routeType) return false;
+  if (!receiptMatchesSelectedRouteScope(receipt, scope)) return false;
   if (routeType !== "mcp-routed") return true;
   const hostIds = mcpHostIdsForIntegration(integration);
   const snippets = generateVisibilitySetupSnippets();
@@ -997,6 +1027,14 @@ export function receiptMatchesIntegration(receipt: VerificationReceipt, integrat
     (link.configHash ? configHashes.has(link.configHash) : false) ||
     (link.hostFamily ? link.hostFamily === (integration.hostFamily ?? hostConfigs[0]?.hostFamily) && !hasExactReceiptHostMetadata(link) : false)
   );
+}
+
+function receiptMatchesSelectedRouteScope(receipt: VerificationReceipt, scope: ReceiptMatchScope): boolean {
+  const receiptPlatform = receipt.osPlatform ?? receipt.platformPassport?.osPlatform;
+  const receiptTransport = receipt.transport ?? receipt.platformPassport?.transport;
+  if (scope.platform && receiptPlatform && receiptPlatform !== scope.platform) return false;
+  if (scope.transport && receiptTransport && receiptTransport !== scope.transport) return false;
+  return true;
 }
 
 function hasExactReceiptHostMetadata(scope: {

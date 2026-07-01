@@ -71,6 +71,11 @@ describe("Harness Integrations workbench interactions", () => {
     expect(selectedWizardText()).toContain("Native host file edit");
     expect(selectedWizardText()).toContain("not-covered");
 
+    changeSelect("Choose platform", "powershell");
+    expect(selectedSnippetText()).toContain("$env:TOOLGUARD_CORE_URL = 'http://127.0.0.1:3660'");
+    expect(selectedWizardText()).toContain("No receipt for this route");
+    expect(selectedWizardText()).not.toContain("Cline-specific virtual routed tool evidence probe");
+
     changeSelect("Choose harness", "roo-code");
     expect(selectedSnippetText()).toContain("# Roo Code (cline-roo-style)");
     expect(selectedSnippetText()).toContain('"alwaysAllow": []');
@@ -78,7 +83,6 @@ describe("Harness Integrations workbench interactions", () => {
     expect(selectedWizardText()).toContain("No receipt for this route");
     expect(selectedWizardText()).not.toContain("Cline-specific virtual routed tool evidence probe");
 
-    changeSelect("Choose platform", "powershell");
     expect(selectedSnippetText()).toContain("$env:TOOLGUARD_CORE_URL = 'http://127.0.0.1:3660'");
     expect(selectedSnippetText()).toContain('"alwaysAllow": []');
 
@@ -101,6 +105,10 @@ describe("Harness Integrations workbench interactions", () => {
     changeSelect("Choose harness", "cline");
     expect(selectedSnippetText()).toContain("# Cline (cline-roo-style)");
     expect(selectedSnippetText()).toContain("$env:TOOLGUARD_CORE_URL = 'http://127.0.0.1:3660'");
+    expect(selectedWizardText()).toContain("No receipt for this route");
+    expect(selectedWizardText()).not.toContain("Cline-specific virtual routed tool evidence probe");
+
+    changeSelect("Choose platform", "posix");
     expect(selectedWizardText()).toContain("Cline-specific virtual routed tool evidence probe");
 
     await clickExportBundle();
@@ -193,7 +201,7 @@ const clineReceipt: VerificationReceipt = {
   visibilityLevel: "mediated",
   hostId: "cline",
   hostFamily: "cline-roo-style",
-  osPlatform: "linux",
+  osPlatform: "posix",
   osFamily: "linux",
   transport: "stdio",
   configHash: "fnv1a-cline",
@@ -202,7 +210,7 @@ const clineReceipt: VerificationReceipt = {
     passportId: "passport_cline",
     hostId: "cline",
     hostName: "Cline",
-    osPlatform: "linux",
+    osPlatform: "posix",
     osFamily: "linux",
     transport: "stdio",
     routeType: "mcp-routed",
@@ -246,6 +254,7 @@ const rooReceipt: VerificationReceipt = {
   hostId: "roo-code",
   supportedHostIds: ["roo-code"],
   configHash: "fnv1a-roo",
+  osPlatform: "powershell",
   platformPassport: {
     ...clineReceipt.platformPassport!,
     passportId: "passport_roo",

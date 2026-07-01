@@ -120,6 +120,9 @@ describe("Harness Integrations coverage matrix", () => {
 
     expect(receiptMatchesIntegration(clineReceipt, cline)).toBe(true);
     expect(receiptMatchesIntegration(clineReceipt, roo)).toBe(false);
+    expect(receiptMatchesIntegration(clineReceipt, cline, { platform: "posix", transport: "stdio" })).toBe(true);
+    expect(receiptMatchesIntegration(clineReceipt, cline, { platform: "powershell", transport: "stdio" })).toBe(false);
+    expect(receiptMatchesIntegration(clineReceipt, cline, { platform: "posix", transport: "http-loopback-sidecar" })).toBe(false);
     expect(receiptMatchesIntegration(routeOnlyReceipt, cline)).toBe(false);
     expect(receiptMatchesIntegration(familyOnlyReceipt, roo)).toBe(true);
     expect(receiptMatchesIntegration(familyReceipt, roo)).toBe(true);
@@ -282,6 +285,8 @@ function receiptFor(scope: Partial<Pick<VerificationReceipt, "hostId" | "hostFam
     runId: "run_test",
     timestamp: "2026-06-29T02:00:00.000Z",
     routeType: "mcp-routed",
+    osPlatform: "posix",
+    transport: "stdio",
     ...scope,
     checkedCapabilities: [
       {

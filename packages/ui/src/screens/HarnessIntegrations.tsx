@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { generateVisibilitySetupSnippets } from "@toolplane/core/setup-snippets";
 import { StatePanel } from "../components/StatePanel.js";
 import { StatusChip } from "../components/StatusChip.js";
 import { exportReport, verifyIntegration } from "../lib/api.js";
@@ -370,29 +371,22 @@ function stateLabel(status: string): string {
 }
 
 function setupSnippetFor(integration: IntegrationView): string {
+  const snippets = generateVisibilitySetupSnippets();
   if (integration.route === "MCP-routed") {
-    return `{
-  "mcpServers": {
-    "toolguard": {
-      "command": "pnpm",
-      "args": ["--filter", "@toolplane/mcp-adapter", "start"],
-      "env": { "TOOLGUARD_CORE_URL": "http://127.0.0.1:3660" }
-    }
-  }
-}`;
+    return snippets.mcpHosts[0]?.configJson ?? "";
   }
   if (integration.route === "SDK-wrapped") {
-    return `from toolplane import ToolGuardSidecarClient
-
-client = ToolGuardSidecarClient("http://127.0.0.1:3660")
-# Wrap framework tools explicitly. Direct framework tools are not intercepted.`;
+    return snippetCommand(snippets.platforms, "python-wrapper");
   }
   if (integration.route === "CLI-supervised") {
-    return `toolguard run -- <safe command>
-# Process-level supervision only. Native agent tool calls need MCP, SDK wrapper, or API routing.`;
+    return snippetCommand(snippets.platforms, "cli-posix");
   }
   return `# Unsupported route in v0
 # Route calls through MCP, an SDK wrapper, the CLI shim, or the ToolGuard API before claiming protection.`;
+}
+
+function snippetCommand(snippets: ReturnType<typeof generateVisibilitySetupSnippets>["platforms"], id: string): string {
+  return snippets.find((snippet) => snippet.id === id)?.command ?? "";
 }
 
 function toneFor(status: string): "healthy" | "degraded" | "failed" | "neutral" {

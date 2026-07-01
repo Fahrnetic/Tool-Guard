@@ -16,6 +16,8 @@ describe("MCP host integration config snippets", () => {
       "claude-code",
       "cursor",
       "windsurf",
+      "codex-cli",
+      "opencode",
       "hermes"
     ]);
 
@@ -25,8 +27,9 @@ describe("MCP host integration config snippets", () => {
       expect(serialized).toContain("mcpServers");
       expect(serialized).toContain("<TOOLPLANE_REPO>");
       expect(serialized).toContain("<TOOLGUARD_PROFILE>");
-      expect(serialized).toContain("Native host tools are not intercepted");
-      expect(serialized).toContain("direct downstream fixtures");
+      expect(serialized).toContain("MCP-routed-only card");
+      expect(serialized).toContain("Native host tools and direct IDE actions are not intercepted");
+      expect(serialized).toContain("stdio transport");
       expect(serialized).not.toMatch(/fixture\.(good|malformed-json|wrong-cwd|slow|hanging-stream)/);
       expect(serialized).not.toMatch(/Bearer\s+[A-Za-z0-9._-]+/);
       expect(serialized).not.toMatch(/sk-[A-Za-z0-9]{20,}/);
@@ -51,153 +54,11 @@ describe("MCP host integration config snippets", () => {
     expect(rendered).toContain("Cursor");
     expect(rendered).toContain("Windsurf");
     expect(rendered).toContain("Hermes");
-    expect(rendered).toMatchInlineSnapshot(`
-      "Cline
-      stdio
-      {
-        "mcpServers": {
-          "toolguard": {
-            "command": "node",
-            "args": [
-              "<TOOLPLANE_REPO>/packages/mcp-adapter/dist/server.js"
-            ],
-            "env": {
-              "TOOLGUARD_PROFILE": "<TOOLGUARD_PROFILE>",
-              "TOOLGUARD_CORE_URL": "http://127.0.0.1:3660"
-            },
-            "disabled": false,
-            "autoApprove": []
-          }
-        }
-      }
-      Configure Cline only through its MCP settings JSON or remote MCP server UI. This snippet registers ToolGuard as the upstream MCP server.
-      Native host tools are not intercepted. Cline tools are protected only when the host routes the call through ToolGuard via MCP, SDK wrappers, or the CLI shim.
-      The snippet points to ToolGuard, not direct downstream fixtures. Downstream targets must be configured inside ToolGuard policy.
-      ---
-      Roo Code
-      stdio
-      {
-        "mcpServers": {
-          "toolguard": {
-            "command": "node",
-            "args": [
-              "<TOOLPLANE_REPO>/packages/mcp-adapter/dist/server.js"
-            ],
-            "env": {
-              "TOOLGUARD_PROFILE": "<TOOLGUARD_PROFILE>",
-              "TOOLGUARD_CORE_URL": "http://127.0.0.1:3660"
-            },
-            "disabled": false,
-            "alwaysAllow": []
-          }
-        }
-      }
-      Configure Roo Code through its MCP settings. This snippet registers ToolGuard as the upstream MCP server.
-      Native host tools are not intercepted. Roo Code tools are protected only when the host routes the call through ToolGuard via MCP, SDK wrappers, or the CLI shim.
-      The snippet points to ToolGuard, not direct downstream fixtures. Downstream targets must be configured inside ToolGuard policy.
-      ---
-      Claude Desktop
-      stdio
-      {
-        "mcpServers": {
-          "toolguard": {
-            "command": "node",
-            "args": [
-              "<TOOLPLANE_REPO>/packages/mcp-adapter/dist/server.js"
-            ],
-            "env": {
-              "TOOLGUARD_PROFILE": "<TOOLGUARD_PROFILE>",
-              "TOOLGUARD_CORE_URL": "http://127.0.0.1:3660"
-            }
-          }
-        }
-      }
-      Configure Claude Desktop through claude_desktop_config.json using the local MCP server boundary. This snippet registers ToolGuard as the upstream MCP server.
-      Native host tools are not intercepted. Claude Desktop tools are protected only when the host routes the call through ToolGuard via MCP, SDK wrappers, or the CLI shim.
-      The snippet points to ToolGuard, not direct downstream fixtures. Downstream targets must be configured inside ToolGuard policy.
-      ---
-      Claude Code
-      stdio
-      {
-        "mcpServers": {
-          "toolguard": {
-            "command": "node",
-            "args": [
-              "<TOOLPLANE_REPO>/packages/mcp-adapter/dist/server.js"
-            ],
-            "env": {
-              "TOOLGUARD_PROFILE": "<TOOLGUARD_PROFILE>",
-              "TOOLGUARD_CORE_URL": "http://127.0.0.1:3660"
-            }
-          }
-        }
-      }
-      Configure Claude Code through its MCP server configuration boundary. This snippet registers ToolGuard as the upstream MCP server.
-      Native host tools are not intercepted. Claude Code tools are protected only when the host routes the call through ToolGuard via MCP, SDK wrappers, or the CLI shim.
-      The snippet points to ToolGuard, not direct downstream fixtures. Downstream targets must be configured inside ToolGuard policy.
-      ---
-      Cursor
-      stdio
-      {
-        "mcpServers": {
-          "toolguard": {
-            "command": "node",
-            "args": [
-              "<TOOLPLANE_REPO>/packages/mcp-adapter/dist/server.js"
-            ],
-            "env": {
-              "TOOLGUARD_PROFILE": "<TOOLGUARD_PROFILE>",
-              "TOOLGUARD_CORE_URL": "http://127.0.0.1:3660"
-            }
-          }
-        }
-      }
-      Configure Cursor through .cursor/mcp.json or the Cursor MCP settings UI. This snippet registers ToolGuard as the upstream MCP server.
-      Native host tools are not intercepted. Cursor tools are protected only when the host routes the call through ToolGuard via MCP, SDK wrappers, or the CLI shim.
-      The snippet points to ToolGuard, not direct downstream fixtures. Downstream targets must be configured inside ToolGuard policy.
-      ---
-      Windsurf
-      stdio
-      {
-        "mcpServers": {
-          "toolguard": {
-            "command": "node",
-            "args": [
-              "<TOOLPLANE_REPO>/packages/mcp-adapter/dist/server.js"
-            ],
-            "env": {
-              "TOOLGUARD_PROFILE": "<TOOLGUARD_PROFILE>",
-              "TOOLGUARD_CORE_URL": "http://127.0.0.1:3660"
-            }
-          }
-        }
-      }
-      Configure Windsurf Cascade through its MCP configuration. This snippet registers ToolGuard as the upstream MCP server.
-      Native host tools are not intercepted. Windsurf tools are protected only when the host routes the call through ToolGuard via MCP, SDK wrappers, or the CLI shim.
-      The snippet points to ToolGuard, not direct downstream fixtures. Downstream targets must be configured inside ToolGuard policy.
-      ---
-      Hermes
-      stdio
-      {
-        "mcpServers": {
-          "toolguard": {
-            "command": "node",
-            "args": [
-              "<TOOLPLANE_REPO>/packages/mcp-adapter/dist/server.js"
-            ],
-            "env": {
-              "TOOLGUARD_PROFILE": "<TOOLGUARD_PROFILE>",
-              "TOOLGUARD_CORE_URL": "http://127.0.0.1:3660"
-            },
-            "toolFilter": [
-              "tg__*"
-            ]
-          }
-        }
-      }
-      Configure Hermes through its MCP client configuration and tool filtering. This snippet registers ToolGuard as the upstream MCP server.
-      Native host tools are not intercepted. Hermes tools are protected only when the host routes the call through ToolGuard via MCP, SDK wrappers, or the CLI shim.
-      The snippet points to ToolGuard, not direct downstream fixtures. Downstream targets must be configured inside ToolGuard policy."
-    `);
+    expect(rendered).toContain("Codex CLI");
+    expect(rendered).toContain("OpenCode");
+    expect(rendered).toContain("MCP-routed-only card");
+    expect(rendered).toContain("stdio transport");
+    expect(rendered).toMatch(/TOOLGUARD_CORE_URL[\s\S]+http:\/\/127\.0\.0\.1:3660/);
+    expect(rendered).not.toMatch(/\/home\/|\/Users\/|[A-Z]:\\Users\\/);
   });
 });

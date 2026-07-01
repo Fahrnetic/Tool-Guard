@@ -10,6 +10,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./setup-snippets": {
+      "types": "./dist/setup-snippets.d.ts",
+      "default": "./dist/setup-snippets.js"
     }
   },
   "files": [

@@ -16,6 +16,7 @@ import {
   type ToolCall,
   type ToolResult
 } from "@toolplane/core";
+import { generateVisibilitySetupSnippets } from "@toolplane/core/setup-snippets";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_OUTPUT_LIMIT_BYTES = 64 * 1024;
@@ -39,6 +40,7 @@ export interface ToolplaneRunResult {
   readonly result?: ToolResult;
   readonly failureCard?: FailureCard;
   readonly trustSummary?: EvidenceTrustSummary;
+  readonly setupSnippets?: ReturnType<typeof generateVisibilitySetupSnippets>;
 }
 
 export interface EvidenceTrustSummary {
@@ -101,6 +103,9 @@ export async function runToolplaneCli(
   options: ToolplaneCliOptions = {}
 ): Promise<ToolplaneRunResult> {
   const executableName = options.executableName ?? "toolplane";
+  if (argv[0] === "setup-snippets") {
+    return renderSetupSnippets(argv, options);
+  }
   const parsed = parseToolplaneRunArgs(argv);
   await mkdir(parsed.evidenceRoot, { recursive: true });
 
@@ -263,7 +268,10 @@ export async function runToolplaneCli(
 
 export function parseToolplaneRunArgs(argv: readonly string[]): ParsedRunOptions {
   if (argv[0] !== "run") {
-    throw new Error("Usage: toolplane run [--timeout-ms N] [--cwd PATH] [--env KEY=VALUE] [--stdin TEXT] -- <command>");
+    throw new Error(
+      "Usage: toolplane run [--timeout-ms N] [--cwd PATH] [--env KEY=VALUE] [--stdin TEXT] -- <command>\n" +
+        "   or: toolplane setup-snippets [--json]"
+    );
   }
 
   const separatorIndex = argv.indexOf("--");
@@ -790,6 +798,36 @@ function renderRunResult(result: ToolplaneRunResult, parsed: ParsedRunOptions, o
       stdout(`Trust warnings: ${result.trustSummary.validationErrors.join("; ")}\n`);
     }
   }
+}
+
+function renderSetupSnippets(argv: readonly string[], options: ToolplaneCliOptions): ToolplaneRunResult {
+  const json = argv.includes("--json");
+  const snippets = generateVisibilitySetupSnippets();
+  const stdout = options.stdout ?? (() => undefined);
+  if (json) {
+    stdout(`${JSON.stringify(snippets, null, 2)}\n`);
+  } else {
+    stdout("ToolGuard setup snippets\n");
+    stdout("Shared source: @toolplane/core setup-snippets\n\n");
+    for (const snippet of snippets.platforms) {
+      stdout(`[${snippet.platform}] ${snippet.title}\n`);
+      stdout(`${snippet.command}\n`);
+      stdout(`Limitations: ${snippet.limitations.join(" ")}\n\n`);
+    }
+    stdout("MCP host cards\n");
+    for (const host of snippets.mcpHosts) {
+      stdout(`[${host.hostFamily}] ${host.hostName} (${host.transport}, ${host.claimLevel})\n`);
+      stdout(`${host.configJson}\n`);
+      stdout(`Limitations: ${host.limitations.join(" ")}\n\n`);
+    }
+  }
+  return {
+    runId: "run_setup_snippets" as StableId,
+    eventsPath: "",
+    evidenceDir: "",
+    exitCode: 0,
+    setupSnippets: snippets
+  };
 }
 
 function displayReplaySafety(reason: string): string {

@@ -93,6 +93,19 @@ export {
   type IntegrationDoctorResult
 } from "./integration-doctor.js";
 export {
+  generateHostConfigSnippets,
+  generatePlatformCommandSnippets,
+  generateVisibilitySetupSnippets,
+  type HostConfigSnippet,
+  type PlatformCommandSnippet,
+  type SetupSnippetLanguage,
+  type SetupSnippetOptions,
+  type SetupSnippetPlatform,
+  type SetupSnippetRoute,
+  type SupportedMcpHostId,
+  type VisibilitySetupSnippets
+} from "./setup-snippets.js";
+export {
   DEMO_STORY_SCENARIOS,
   DEMO_STORY_STAGE_ORDER,
   DemoStoryScenarioRuntime,

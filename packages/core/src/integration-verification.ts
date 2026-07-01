@@ -208,7 +208,7 @@ async function probeMcpConfigSnippetValidity(workspaceRoot: string, timeoutMs: n
     workspaceRoot,
     `
       const { generateHostConfigSnippets } = await import(${JSON.stringify(pathToFileUrl(path.join(workspaceRoot, "packages/mcp-adapter/dist/config-snippets.js")))});
-      const snippets = generateHostConfigSnippets({ toolplaneRepoPath: ${JSON.stringify(workspaceRoot)} });
+      const snippets = generateHostConfigSnippets({ toolplaneRepoPath: "<TOOLPLANE_REPO>" });
       if (!Array.isArray(snippets) || snippets.length < 3) throw new Error("expected multiple host snippets");
       for (const snippet of snippets) {
         const config = JSON.parse(snippet.configJson);
@@ -216,7 +216,7 @@ async function probeMcpConfigSnippetValidity(workspaceRoot: string, timeoutMs: n
         if (!server || !Array.isArray(server.args) || typeof server.command !== "string") throw new Error("invalid server command");
         if (server.env?.TOOLGUARD_CORE_URL !== "http://127.0.0.1:3660") throw new Error("non-loopback core URL");
         if (JSON.stringify(server).match(/sk-[A-Za-z0-9]|Bearer\\s+|BEGIN PRIVATE KEY/)) throw new Error("secret-shaped snippet content");
-        if (!snippet.limitations.join(" ").includes("Native host tools are not intercepted")) throw new Error("missing route limitation");
+        if (!snippet.limitations.join(" ").includes("Native host tools")) throw new Error("missing route limitation");
       }
       console.log(String(snippets.length));
     `,

@@ -510,6 +510,25 @@ describe("toolplane run process wrapper", () => {
     expect(toolguard.process?.stdout).toContain(toolplane.process?.stdout.trim());
   });
 
+
+  it("prints shared setup snippets for CLI copy surfaces without local paths or stale MCP scripts", async () => {
+    let stdout = "";
+    const result = await runToolplaneCli(["setup-snippets", "--json"], {
+      stdout: (chunk) => {
+        stdout += chunk;
+      }
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.setupSnippets?.generatedBy).toBe("toolguard-shared-setup-snippets");
+    expect(stdout).toContain("\"platform\": \"powershell\"");
+    expect(stdout).toContain("\"platform\": \"cmd\"");
+    expect(stdout).toContain("\"hostFamily\": \"codex-opencode-style\"");
+    expect(stdout).toContain("packages/mcp-adapter/dist/server.js");
+    expect(stdout).toContain("toolguard run --evidence-root");
+    expect(stdout).not.toContain("@toolplane/mcp-adapter\", \"start");
+    expect(stdout).not.toMatch(/\/home\/|\/Users\/|[A-Z]:\\Users\\|Bearer\s+|sk-[A-Za-z0-9]{20,}/);
+  });
   it("forwards CLI events to the local Core API when configured", async () => {
     const root = await makeTempRoot();
     const handle = createCoreApiServer({ port: 3666, evidenceRoot: root, seedDirectRun: false });

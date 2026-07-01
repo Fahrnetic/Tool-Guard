@@ -51,7 +51,7 @@ export class EvidenceRecorder {
         if (!line.trim()) continue;
         try {
           const parsed = JSON.parse(line) as CoreEvent;
-          if (parsed.type === "integration.verified" && typeof parsed.eventId === "string") {
+          if (isCoverageHistoryEvent(parsed) && typeof parsed.eventId === "string") {
             byEventId.set(parsed.eventId, parsed);
           }
         } catch {
@@ -90,7 +90,7 @@ export class EvidenceRecorder {
     const jsonl = `${this.#events.map((entry) => JSON.stringify(entry)).join("\n")}\n`;
     await writeFile(this.eventsPath, jsonl, "utf8");
     this.#runIndexWrites = this.#runIndexWrites.then(() => this.#runIndex.ingestEvent(event));
-    if (event.type === "integration.verified") {
+    if (isCoverageHistoryEvent(event)) {
       await this.#appendCoverageHistoryEvent(event);
     }
   }
@@ -141,4 +141,8 @@ export class EvidenceRecorder {
       redacted: input.redacted
     };
   }
+}
+
+function isCoverageHistoryEvent(event: CoreEvent): boolean {
+  return event.type === "integration.verified" || typeof event.visibility?.routeType === "string";
 }

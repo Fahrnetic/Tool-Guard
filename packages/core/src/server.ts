@@ -2417,12 +2417,16 @@ async function buildIntegrationsPayload(
 function mergeCoverageEvents(events: readonly CoreEvent[], historicalEvents: readonly CoreEvent[]): readonly CoreEvent[] {
   const byEventId = new Map<string, CoreEvent>();
   for (const event of historicalEvents) {
-    if (event.type === "integration.verified") byEventId.set(event.eventId, event);
+    if (isCoverageEvent(event)) byEventId.set(event.eventId, event);
   }
   for (const event of events) {
-    if (event.type === "integration.verified") byEventId.set(event.eventId, event);
+    if (isCoverageEvent(event)) byEventId.set(event.eventId, event);
   }
   return [...byEventId.values()].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
+}
+
+function isCoverageEvent(event: CoreEvent): boolean {
+  return event.type === "integration.verified" || parseRouteType(event.visibility?.routeType) !== undefined;
 }
 
 function buildCoverageHistory(receipts: readonly { readonly event: CoreEvent; readonly receipt: JsonObject }[]): JsonObject[] {

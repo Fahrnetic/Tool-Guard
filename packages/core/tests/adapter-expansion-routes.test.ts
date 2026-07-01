@@ -11,7 +11,8 @@ import {
   normalizeProviderToolCall,
   wrapLocalToolFunction,
   type CoreApiServerHandle,
-  type CoreEvent
+  type CoreEvent,
+  type JsonObject
 } from "../src/index.js";
 
 function originFor(handle: CoreApiServerHandle): string {
@@ -142,9 +143,117 @@ describe("adapter expansion local visibility routes", () => {
       expect(payload.visibility).toMatchObject({ visibilityLevel: "imported", routeType: "http-webhook-import" });
       expect(payload.safeSummary).not.toContain("C".repeat(36));
       expect(JSON.stringify(handle.session.recorder.events)).not.toContain("D".repeat(48));
+
+      const integrationsResponse = await fetch(`${originFor(handle)}/api/integrations`);
+      const integrationsPayload = (await integrationsResponse.json()) as {
+        routeCoverage: Array<{
+          routeType: string;
+          claim: string;
+          configured: boolean;
+          available: boolean;
+          producingEvidence: boolean;
+          evidenceFreshness: string;
+          checks: Array<{ label: string; state: string; evidence: string }>;
+        }>;
+      };
+      const httpImportRow = integrationsPayload.routeCoverage.find((row) => row.routeType === "http-webhook-import");
+      expect(httpImportRow).toMatchObject({
+        claim: "imported",
+        configured: true,
+        available: true,
+        producingEvidence: true,
+        evidenceFreshness: "recent",
+        checks: [expect.objectContaining({ label: "Adapter visibility output", state: "producing-evidence" })]
+      });
     } finally {
       await handle.close();
     }
+  });
+
+  it("derives integrations route coverage from wrapper, HTTP import, and browser import visibility events", async () => {
+    const evidenceRoot = await mkdtemp(path.join(tmpdir(), "toolguard-route-coverage-events-"));
+    const session = new CoreSession({ evidenceRoot, runId: "run_route_coverage_events" });
+    const handle = createCoreApiServer({ port: 0, evidenceRoot, session, seedDirectRun: false });
+    await handle.ready;
+    try {
+      const wrapped = wrapLocalToolFunction({
+        session,
+        name: "local.visible",
+        execute: () => ({ ok: true })
+      });
+      await wrapped({});
+      await importHttpWebhookEvidence(session, {
+        source: "direct-helper",
+        body: { ok: true, apiKey: `sk-${"H".repeat(48)}` }
+      });
+      await importBrowserEvidence(session, {
+        pageUrl: "http://127.0.0.1:3661/demo?token=secretsecretsecretsecret",
+        console: [{ level: "info", message: "visible browser evidence", count: 1 }]
+      });
+
+      const response = await fetch(`${originFor(handle)}/api/integrations`);
+      const payload = (await response.json()) as {
+        routeCoverage: Array<{
+          routeType: string;
+          configured: boolean;
+          available: boolean;
+          producingEvidence: boolean;
+          evidenceFreshness: string;
+        }>;
+      };
+      for (const routeType of ["js-ts-wrapper", "http-webhook-import", "browser-evidence-import"]) {
+        expect(payload.routeCoverage.find((row) => row.routeType === routeType)).toMatchObject({
+          configured: true,
+          available: true,
+          producingEvidence: true,
+          evidenceFreshness: "recent"
+        });
+      }
+      expect(JSON.stringify(payload)).not.toContain("H".repeat(48));
+      expect(JSON.stringify(payload)).not.toContain("secretsecretsecretsecret");
+    } finally {
+      await handle.close();
+    }
+  });
+
+  it("keeps direct HTTP import helper output bounded, truncated, and free of raw secrets", async () => {
+    const evidenceRoot = await mkdtemp(path.join(tmpdir(), "toolguard-http-import-bounds-"));
+    const session = new CoreSession({ evidenceRoot, runId: "run_http_import_bounds" });
+    const rawSecret = `sk-${"S".repeat(60)}`;
+    const bearerSecret = `Bearer ${"T".repeat(48)}`;
+    const oversized = `${rawSecret}-${"x".repeat(40_000)}`;
+    const deepPayload: JsonObject = makeDeepPayload(0, rawSecret);
+
+    const imported = await importHttpWebhookEvidence(session, {
+      source: "direct-helper",
+      method: "POST",
+      path: "/oversized",
+      headers: {
+        authorization: bearerSecret,
+        "x-many-values": Array.from({ length: 100 }, (_, index) => `value-${index}`).join(",")
+      },
+      body: {
+        oversized,
+        deepPayload,
+        many: Array.from({ length: 300 }, (_, index) => ({ index, token: rawSecret }))
+      }
+    });
+
+    const safeEvidenceText = JSON.stringify(imported.safeEvidence);
+    expect(safeEvidenceText.length).toBeLessThan(20_000);
+    expect(safeEvidenceText).toContain("[TRUNCATED:");
+    expect(imported.safeEvidence.redaction).toEqual(
+      expect.objectContaining({ reasons: expect.arrayContaining(["sensitive-key"]) })
+    );
+    expect(safeEvidenceText).not.toContain(rawSecret);
+    expect(safeEvidenceText).not.toContain("S".repeat(60));
+    expect(safeEvidenceText).not.toContain("T".repeat(48));
+    expect(imported.safeSummary).not.toContain(rawSecret);
+
+    const persisted = await readFile(session.recorder.eventsPath, "utf8");
+    expect(persisted).toContain("[TRUNCATED:");
+    expect(persisted).not.toContain(rawSecret);
+    expect(persisted).not.toContain("x".repeat(1_000));
   });
 
   it("imports browser screenshot, console, and network summaries without secrets by default", async () => {
@@ -251,3 +360,8 @@ describe("adapter expansion local visibility routes", () => {
     }
   });
 });
+
+function makeDeepPayload(level: number, rawSecret: string): JsonObject {
+  if (level >= 20) return { level, secret: rawSecret };
+  return { level, secret: "safe", child: makeDeepPayload(level + 1, rawSecret) };
+}

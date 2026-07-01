@@ -4,10 +4,24 @@ export { EventBus, type CoreEvent, type CoreEventType, type CorrelationFields } 
 export {
   CANONICAL_VISIBILITY_SCHEMA_VERSION,
   buildVisibilityMetadata,
+  stableVisibilityJson,
   traceContextForCall,
   visibilityLabels,
   visibilityLevelForCall
 } from "./visibility.js";
+export {
+  exportVisibilityOtel,
+  importVisibilityEventsJsonl,
+  type OTelAttribute,
+  type OTelResourceSpan,
+  type OTelSpan,
+  type OTelSpanEvent,
+  type VisibilityImportInput,
+  type VisibilityImportResult,
+  type VisibilityImportValidationError,
+  type VisibilityOtelExportInput,
+  type VisibilityOtelExportResult
+} from "./visibility-interop.js";
 export { EvidenceRecorder, type EvidenceRecorderOptions } from "./evidence.js";
 export {
   RunIndexStore,

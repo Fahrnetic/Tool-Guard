@@ -6,10 +6,14 @@ import { describe, expect, it } from "vitest";
 import {
   CoreSession,
   INTEGRATION_DOCTOR_ROUTES,
+  buildIntegrationDoctorJson,
   createCoreApiServer,
   createId,
+  renderIntegrationDoctorHuman,
   runIntegrationDoctor,
   type CoreEvent,
+  type EvidenceLink,
+  type HostPlatformPassport,
   type IntegrationVerificationReceipt,
   type IntegrationRouteCoverageState,
   type StableId
@@ -28,6 +32,108 @@ async function readJsonl<T>(filePath: string): Promise<T[]> {
 }
 
 describe("integration doctor route coverage", () => {
+  it("builds a stable no-secret machine JSON schema with route passports and CI receipt paths", () => {
+    const receipt = makeDoctorReceipt({
+      runId: "run_doctor_json_seed" as StableId,
+      routeType: "cli-supervised",
+      capabilityStatus: "available",
+      coverageStates: ["configured", "available", "unsupported", "not-verified", "producing-evidence"]
+    });
+    const output = buildIntegrationDoctorJson(
+      {
+        runId: receipt.runId,
+        evidenceDir: "/tmp/toolguard-doctor/run_doctor_json_seed",
+        eventsPath: "/tmp/toolguard-doctor/run_doctor_json_seed/events.jsonl",
+        receipts: [receipt],
+        bundleManifest: "/tmp/toolguard-doctor/run_doctor_json_seed/bundle/manifest.json",
+        bundleValid: true,
+        validationErrors: []
+      },
+      "2026-07-01T00:00:00.000Z"
+    );
+
+    expect(output).toMatchObject({
+      schemaVersion: "toolguard.integration-doctor.v1",
+      kind: "toolguard.integrationDoctor",
+      noSecrets: {
+        status: "passed",
+        redactionsApplied: 0
+      },
+      artifactBundle: {
+        valid: true,
+        localOnly: true,
+        requiresExternalCredentials: false
+      },
+      ci: {
+        githubActionsCompatible: true,
+        requiresExternalCredentials: false
+      }
+    });
+    expect(output.routes[0]!).toMatchObject({
+      routeType: "cli-supervised",
+      passport: expect.objectContaining({
+        passportId: "passport_local_cli_supervised",
+        visibilityLevel: "supervised"
+      }),
+      checkedCapabilities: expect.arrayContaining([
+        expect.objectContaining({ capability: "pass probe", status: "available" })
+      ]),
+      routeCoverage: expect.arrayContaining([
+        expect.objectContaining({ state: "unsupported" }),
+        expect.objectContaining({ state: "not-verified" }),
+        expect.objectContaining({ state: "producing-evidence" })
+      ]),
+      evidenceLinks: expect.arrayContaining([
+        expect.objectContaining({ href: "artifacts/integration-verification-cli-supervised-receipt.json", routeType: "cli-supervised" })
+      ])
+    });
+    expect(output.ci.workflowSnippet.join("\n")).toContain("pnpm --silent doctor:integrations -- --json");
+    expect(output.ci.artifactPaths).toEqual(
+      expect.arrayContaining([
+        "/tmp/toolguard-doctor/run_doctor_json_seed/events.jsonl",
+        "/tmp/toolguard-doctor/run_doctor_json_seed/bundle/integration-verification-receipts.json",
+        "/tmp/toolguard-doctor/run_doctor_json_seed/bundle/manifest.json"
+      ])
+    );
+    expect(JSON.stringify(output)).not.toMatch(/sk-[A-Za-z0-9]|Bearer\s+|BEGIN PRIVATE KEY|token=[A-Za-z0-9]{20,}/);
+  });
+
+  it("keeps human doctor text distinct from machine JSON and represents failure cases safely", () => {
+    const failedReceipt = makeDoctorReceipt({
+      runId: "run_doctor_failure_seed" as StableId,
+      routeType: "mcp-routed",
+      capabilityStatus: "not-yet-verified",
+      coverageStates: ["configured", "unsupported", "not-verified"]
+    });
+    const result = {
+      runId: failedReceipt.runId,
+      evidenceDir: "/tmp/toolguard-doctor/run_doctor_failure_seed",
+      eventsPath: "/tmp/toolguard-doctor/run_doctor_failure_seed/events.jsonl",
+      receipts: [failedReceipt],
+      bundleManifest: "/tmp/toolguard-doctor/run_doctor_failure_seed/bundle/manifest.json",
+      bundleValid: false,
+      validationErrors: ["missing artifact hash for route receipt"]
+    };
+
+    const human = renderIntegrationDoctorHuman(result);
+    const machine = buildIntegrationDoctorJson(result, "2026-07-01T00:00:00.000Z");
+
+    expect(human).toContain("humanOutput: true");
+    expect(human).toContain("machineJson: rerun with --json");
+    expect(human.trim()).not.toMatch(/^\{/);
+    expect(machine.artifactBundle.valid).toBe(false);
+    expect(machine.artifactBundle.validationErrors).toEqual(["missing artifact hash for route receipt"]);
+    expect(machine.routes[0]!.checkedCapabilities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: "not-yet-verified",
+          evidence: expect.stringMatching(/did not pass/i)
+        })
+      ])
+    );
+    expect(machine.receipts[0]!.producingEvidence).toBe(true);
+  });
+
   it("emits host/platform/transport passports and honest unsupported native coverage", async () => {
     const evidenceRoot = await mkdtemp(path.join(tmpdir(), "toolguard-platform-passports-"));
     const result = await runIntegrationDoctor({
@@ -183,6 +289,81 @@ describe("integration doctor route coverage", () => {
     ).toMatch(/^[a-f0-9]{64}$/);
   }, 40_000);
 });
+
+function makeDoctorReceipt(input: {
+  readonly runId: StableId;
+  readonly routeType: IntegrationVerificationReceipt["routeType"];
+  readonly capabilityStatus: IntegrationVerificationReceipt["checkedCapabilities"][number]["status"];
+  readonly coverageStates: readonly IntegrationRouteCoverageState[];
+}): IntegrationVerificationReceipt {
+  const evidenceLink: EvidenceLink = {
+    artifactId: "artifact_route_receipt" as StableId,
+    href: `artifacts/integration-verification-${input.routeType}-receipt.json`,
+    label: `Verification receipt for ${input.routeType}`,
+    routeType: input.routeType,
+    evidenceScope: "route",
+    hostId: input.routeType === "mcp-routed" ? "cline" : "local-cli",
+    configHash: "route-1234abcd"
+  };
+  const passport: HostPlatformPassport = {
+    passportId: input.routeType === "mcp-routed" ? "passport_cline_mcp_routed" : "passport_local_cli_supervised",
+    hostId: input.routeType === "mcp-routed" ? "cline" : "local-cli",
+    hostName: input.routeType === "mcp-routed" ? "Cline" : "Local CLI wrapper",
+    osPlatform: process.platform,
+    osFamily: process.platform === "win32" ? "windows" : process.platform === "darwin" ? "macos" : "linux",
+    transport: input.routeType === "mcp-routed" ? "stdio" : "process-argv",
+    routeType: input.routeType,
+    configHash: "route-1234abcd",
+    visibilityLevel: input.routeType === "mcp-routed" ? "mediated" : "supervised",
+    limitations: ["Native host tools that bypass this route are not covered."],
+    evidenceFields: ["receiptId", "routeType", "checkedCapabilities", "routeCoverage", "evidenceLinks", "platformPassport"],
+    smokeTestStatus: input.capabilityStatus === "not-yet-verified" ? "failed" : "passed",
+    lastVerifiedAt: "2026-07-01T00:00:00.000Z"
+  };
+  return {
+    receiptId: "receipt_doctor_json" as StableId,
+    runId: input.runId,
+    timestamp: "2026-07-01T00:00:00.000Z",
+    routeType: input.routeType,
+    hostId: passport.hostId,
+    configHash: passport.configHash,
+    osPlatform: passport.osPlatform,
+    osFamily: passport.osFamily,
+    transport: passport.transport,
+    visibilityLevel: passport.visibilityLevel,
+    limitations: passport.limitations,
+    evidenceFields: passport.evidenceFields,
+    smokeTestStatus: passport.smokeTestStatus,
+    lastVerifiedAt: passport.lastVerifiedAt,
+    platformPassport: passport,
+    nativeHostActions: [
+      {
+        action: "Native host tool calls that bypass ToolGuard",
+        coverage: "not-covered",
+        limitation: "Native host actions that bypass this route are not covered."
+      }
+    ],
+    checkedCapabilities: [
+      {
+        capability: input.capabilityStatus === "not-yet-verified" ? "failure probe" : "pass probe",
+        status: input.capabilityStatus,
+        localOnly: true,
+        evidence:
+          input.capabilityStatus === "not-yet-verified"
+            ? "Local probe executed but did not pass: fixture failure"
+            : "Executed route probe successfully."
+      }
+    ],
+    routeCoverage: input.coverageStates.map((state) => ({
+      state,
+      label: `${input.routeType} ${state}`,
+      localOnly: true,
+      evidence: state === "unsupported" ? "Native host tools are not intercepted by this route." : `${state} evidence`
+    })),
+    limitation: "Local-only verification checks routed ToolGuard evidence only.",
+    evidenceLinks: [evidenceLink]
+  };
+}
 
 function makeStaleMcpReceipt(runId: StableId): IntegrationVerificationReceipt {
   return {

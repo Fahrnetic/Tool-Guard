@@ -89,8 +89,16 @@ export { RECORDED_POLICY_SCENARIOS, simulatePolicy, type PolicySimulationInput }
 export { verifyIntegrationRoute, type IntegrationVerificationInput } from "./integration-verification.js";
 export {
   INTEGRATION_DOCTOR_ROUTES,
+  buildIntegrationDoctorJson,
+  parseIntegrationDoctorCliArgs,
+  renderIntegrationDoctorHuman,
   runIntegrationDoctor,
-  type IntegrationDoctorResult
+  runIntegrationDoctorCli,
+  type IntegrationDoctorCliOptions,
+  type IntegrationDoctorJson,
+  type IntegrationDoctorReceiptJson,
+  type IntegrationDoctorResult,
+  type IntegrationDoctorRouteJson
 } from "./integration-doctor.js";
 export {
   generateHostConfigSnippets,
@@ -141,6 +149,7 @@ export type {
   BlastRadiusResult,
   HarnessDescriptor,
   HarnessKind,
+  HostPlatformPassport,
   JsonSchema,
   JsonSchemaType,
   JsonObject,

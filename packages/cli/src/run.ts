@@ -6,6 +6,7 @@ import {
   ClassifiedToolError,
   CoreSession,
   ToolRegistry,
+  runIntegrationDoctorCli,
   createId,
   exportEvidenceBundle,
   redactStringWithSummary,
@@ -105,6 +106,9 @@ export async function runToolplaneCli(
   const executableName = options.executableName ?? "toolplane";
   if (argv[0] === "setup-snippets") {
     return renderSetupSnippets(argv, options);
+  }
+  if (argv[0] === "doctor" && argv[1] === "integrations") {
+    return renderIntegrationDoctor(argv.slice(2), options);
   }
   const parsed = parseToolplaneRunArgs(argv);
   await mkdir(parsed.evidenceRoot, { recursive: true });
@@ -270,7 +274,8 @@ export function parseToolplaneRunArgs(argv: readonly string[]): ParsedRunOptions
   if (argv[0] !== "run") {
     throw new Error(
       "Usage: toolplane run [--timeout-ms N] [--cwd PATH] [--env KEY=VALUE] [--stdin TEXT] -- <command>\n" +
-        "   or: toolplane setup-snippets [--json]"
+        "   or: toolplane setup-snippets [--json]\n" +
+        "   or: toolplane doctor integrations [--json]"
     );
   }
 
@@ -374,6 +379,30 @@ export function parseToolplaneRunArgs(argv: readonly string[]): ParsedRunOptions
     ...(runName ? { runName } : {}),
     tags,
     labels
+  };
+}
+
+async function renderIntegrationDoctor(
+  argv: readonly string[],
+  options: ToolplaneCliOptions
+): Promise<ToolplaneRunResult> {
+  const output = {
+    ...(options.stdout ? { stdout: options.stdout } : {}),
+    ...(options.stderr ? { stderr: options.stderr } : {})
+  };
+  const result = await runIntegrationDoctorCli(argv, output);
+  return {
+    runId: result.runId as StableId,
+    eventsPath: result.eventsPath,
+    evidenceDir: result.evidenceDir,
+    exitCode: result.bundleValid ? 0 : 1,
+    trustSummary: {
+      manifestPath: result.bundleManifest,
+      manifestValid: result.bundleValid,
+      validationErrors: result.validationErrors,
+      replaySafety: "local integration doctor receipts and artifact bundles require no external credentials.",
+      integrityFiles: ["events.jsonl", "integration-verification-receipts.json", "manifest.json"]
+    }
   };
 }
 

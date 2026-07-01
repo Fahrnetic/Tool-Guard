@@ -2479,27 +2479,55 @@ function integrationClaimFromPassport(
 
 function buildIntegrationCoverageMatrix(events: readonly CoreEvent[]): JsonObject[] {
   const receipts = integrationReceiptsFromEvents(events);
+  const visibilityEvents = routeVisibilityEventsFromEvents(events);
   return [
     buildRouteCoverageRow({
       routeType: "mcp-routed",
       label: "MCP routed adapter path",
       claim: "mediated",
       limitation: "Covered only when calls route through the ToolGuard MCP proxy. Native host tools remain outside the claim.",
-      receipts
+      receipts,
+      visibilityEvents
     }),
     buildRouteCoverageRow({
       routeType: "cli-supervised",
       label: "CLI supervised process path",
       claim: "supervised",
       limitation: "Covered at the process boundary through `toolguard run --`; native agent tool calls still need MCP, SDK wrapper, or API routing.",
-      receipts
+      receipts,
+      visibilityEvents
     }),
     buildRouteCoverageRow({
       routeType: "sdk-wrapped-python",
       label: "Python SDK-wrapped sidecar path",
       claim: "observed",
       limitation: "Observed only for explicit wrapper and loopback sidecar usage. Direct framework tools are not intercepted.",
-      receipts
+      receipts,
+      visibilityEvents
+    }),
+    buildRouteCoverageRow({
+      routeType: "js-ts-wrapper",
+      label: "Local JS/TS wrapper path",
+      claim: "mediated",
+      limitation: "Mediated only for explicit local wrapper calls; native provider or host tool calls that bypass the wrapper are not covered.",
+      receipts,
+      visibilityEvents
+    }),
+    buildRouteCoverageRow({
+      routeType: "http-webhook-import",
+      label: "HTTP/webhook evidence import path",
+      claim: "imported",
+      limitation: "Imported evidence is organized and redacted after receipt; ToolGuard did not control the original downstream call.",
+      receipts,
+      visibilityEvents
+    }),
+    buildRouteCoverageRow({
+      routeType: "browser-evidence-import",
+      label: "Browser evidence import path",
+      claim: "observed",
+      limitation: "Observed browser summaries depend on explicit local import data and do not imply browser-native tool interception.",
+      receipts,
+      visibilityEvents
     }),
     {
       routeType: "native-host-tools",
@@ -2532,19 +2560,23 @@ function integrationReceiptsFromEvents(events: readonly CoreEvent[]): readonly {
 function buildRouteCoverageRow(input: {
   readonly routeType: IntegrationRouteType;
   readonly label: string;
-  readonly claim: "mediated" | "supervised" | "observed";
+  readonly claim: "mediated" | "supervised" | "observed" | "imported";
   readonly limitation: string;
   readonly receipts: readonly { readonly event: CoreEvent; readonly receipt: JsonObject }[];
+  readonly visibilityEvents: readonly CoreEvent[];
 }): JsonObject {
   const matchingReceipts = input.receipts.filter(({ receipt }) => receipt.routeType === input.routeType);
   const latestReceipt = matchingReceipts.at(-1);
+  const matchingVisibilityEvents = input.visibilityEvents.filter((event) => event.visibility?.routeType === input.routeType);
+  const latestVisibilityEvent = matchingVisibilityEvents.at(-1);
   const checks = latestReceipt ? checksFromReceipt(latestReceipt.receipt) : [];
   const capabilityChecks = latestReceipt ? capabilityChecksFromReceipt(latestReceipt.receipt) : [];
-  const configured = capabilityChecks.some((check) => check.status === "configured");
-  const available = capabilityChecks.some((check) => check.status === "available");
+  const configured = capabilityChecks.some((check) => check.status === "configured") || matchingVisibilityEvents.length > 0;
+  const available = capabilityChecks.some((check) => check.status === "available") || matchingVisibilityEvents.length > 0;
   const producingEvidence =
-    latestReceipt !== undefined && receiptProducesRouteEvidence(input.routeType, latestReceipt.receipt);
-  const lastEvidenceAt = latestReceipt?.event.occurredAt;
+    (latestReceipt !== undefined && receiptProducesRouteEvidence(input.routeType, latestReceipt.receipt)) ||
+    matchingVisibilityEvents.some((event) => event.visibility?.producingEvidence === true);
+  const lastEvidenceAt = latestReceipt?.event.occurredAt ?? latestVisibilityEvent?.occurredAt;
   const evidenceFreshness = lastEvidenceAt ? evidenceFreshnessFor(lastEvidenceAt) : "missing";
   return {
     routeType: input.routeType,
@@ -2567,6 +2599,14 @@ function buildRouteCoverageRow(input: {
     checks:
       checks.length > 0
         ? checks
+        : latestVisibilityEvent
+          ? [
+              {
+                label: "Adapter visibility output",
+                state: producingEvidence ? "producing-evidence" : "not-verified",
+                evidence: `${latestVisibilityEvent.summary} (${latestVisibilityEvent.visibility?.evidenceScope ?? "route"} evidence).`
+              }
+            ]
         : [
             {
               label: "Evidence receipt",
@@ -2575,6 +2615,10 @@ function buildRouteCoverageRow(input: {
             }
           ]
   };
+}
+
+function routeVisibilityEventsFromEvents(events: readonly CoreEvent[]): readonly CoreEvent[] {
+  return events.filter((event) => parseRouteType(event.visibility?.routeType) !== undefined);
 }
 
 function receiptProducesRouteEvidence(routeType: IntegrationRouteType, receipt: JsonObject): boolean {

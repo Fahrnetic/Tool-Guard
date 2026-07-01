@@ -30,13 +30,33 @@ describe("Harness Integrations coverage matrix", () => {
     expect(html).toContain("Limitations");
     expect(html).toContain("No exact harness proof yet");
     expect(html).toContain("Route coverage matrix");
+    expect(html).toContain("Route comparison");
+    expect(html).toContain("Compare visibility depth, evidence, freshness, and blind spots");
+    expect(html).toContain("Visibility depth");
+    expect(html).toContain("Evidence depth");
+    expect(html).toContain("Blind spots");
+    expect(html).toContain("Next action");
     expect(html).toContain("mediated");
     expect(html).toContain("supervised");
     expect(html).toContain("observed");
+    expect(html).toContain("imported");
     expect(html).toContain("not-covered");
+    expect(html).toContain("stale evidence");
+    expect(html).toContain("Unverified route");
     expect(html).toContain("no recent evidence");
     expect(html).toContain("No recent evidence has been recorded");
     expect(html).toContain("Native host tools remain outside the claim");
+  });
+
+  it("renders unsupported and unverified route actions without false success copy", () => {
+    const html = renderToStaticMarkup(<HarnessIntegrations payload={unsupportedOnlyPayload} status="ready" />);
+
+    expect(html).toContain("Unsupported route");
+    expect(html).toContain("Choose MCP, SDK wrapper, CLI supervision, API routing, or an import path before claiming coverage");
+    expect(html).toContain("not available");
+    expect(html).not.toContain("Running local probe");
+    expect(html).toContain("unverified");
+    expect(html).toContain("Re-run a local route probe to refresh the passport and evidence receipt");
   });
 
   it("does not project route-level MCP freshness onto harness passports", () => {
@@ -145,6 +165,18 @@ const payload: IntegrationsPayload = {
       checks: [{ label: "Route check", state: "available", evidence: "Receipt recorded." }]
     },
     {
+      routeType: "http-webhook-import",
+      label: "HTTP/webhook evidence import path",
+      claim: "imported",
+      configured: true,
+      available: false,
+      evidenceFreshness: "stale",
+      lastEvidenceAt: "2026-06-28T00:00:00.000Z",
+      warning: "Route evidence is older than the recent-evidence window. Re-run a local probe before claiming availability.",
+      limitation: "Imported evidence is organized and redacted after receipt; ToolGuard did not control the original downstream call.",
+      checks: [{ label: "Adapter visibility output", state: "not-verified", evidence: "Imported evidence was stale." }]
+    },
+    {
       routeType: "native-host-tools",
       label: "Unrouted native host tools",
       claim: "not-covered",
@@ -167,6 +199,17 @@ const payload: IntegrationsPayload = {
       hostFamily: "cline-roo-style",
       limitation: "ToolGuard protects calls routed through the MCP proxy only, not native host tools."
     }
+  ],
+  coverageHistory: [
+    {
+      receiptId: "receipt_http_import",
+      routeType: "http-webhook-import",
+      transport: "http-loopback-import",
+      visibilityLevel: "imported",
+      lastVerifiedAt: "2026-06-28T00:00:00.000Z",
+      evidenceFreshness: "stale",
+      warning: "Coverage evidence is stale. Re-run a local route probe before claiming availability."
+    }
   ]
 };
 
@@ -188,6 +231,20 @@ const payloadWithRecentProof: IntegrationsPayload = {
   ],
   integrations: [
     ...payload.integrations,
+    {
+      id: "native-host-tools",
+      name: "Unrouted native host tools",
+      route: "unsupported",
+      claimLevel: "unsupported",
+      status: "unsupported",
+      limitation: "ToolGuard does not claim native host interception for unrouted host tools."
+    }
+  ]
+};
+
+const unsupportedOnlyPayload: IntegrationsPayload = {
+  ...payload,
+  integrations: [
     {
       id: "native-host-tools",
       name: "Unrouted native host tools",

@@ -95,6 +95,8 @@ export function HarnessIntegrations({ payload, status, error }: HarnessIntegrati
         onSelectPlatform={setSelectedPlatform}
       />
 
+      <RouteComparisonPanel rows={coverageRows} history={payload.coverageHistory ?? []} />
+
       <CoverageMatrix rows={coverageRows} />
 
       <div className="grid gap-4 lg:grid-cols-[0.92fr_1.08fr]">
@@ -475,6 +477,69 @@ function CoverageMatrix({ rows }: { readonly rows: readonly IntegrationRouteCove
   );
 }
 
+function RouteComparisonPanel(input: {
+  readonly rows: readonly IntegrationRouteCoverageView[];
+  readonly history: NonNullable<IntegrationsPayload["coverageHistory"]>;
+}) {
+  const comparisons = input.rows.map((row) => routeComparisonFor(row, input.history));
+  const visibleRows = comparisons.length > 0 ? comparisons : defaultCoverageRows().map((row) => routeComparisonFor(row, []));
+  return (
+    <section className="rounded-3xl border border-primary/20 bg-bg-panel/90 p-5 shadow-xl shadow-black/20" aria-label="Route comparison by visibility depth">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <StatusChip label="Route comparison" tone="selected" />
+          <h3 className="mt-3 text-xl font-semibold text-text">Compare visibility depth, evidence, freshness, and blind spots</h3>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-text-muted">
+            Persisted passport history, route receipts, and adapter visibility imports are compared side by side. Unsupported,
+            stale, and unverified routes stay visible with the next safe action instead of success styling.
+          </p>
+        </div>
+        <StatusChip label={`${visibleRows.length} route types`} tone={visibleRows.length >= 3 ? "healthy" : "warning"} />
+      </div>
+
+      <div className="mt-5 grid gap-4 xl:grid-cols-3">
+        {visibleRows.map((comparison) => (
+          <article
+            key={comparison.routeType}
+            className="rounded-2xl border border-border bg-bg/60 p-4 focus-within:border-primary/60"
+            tabIndex={0}
+            data-route-comparison={comparison.routeType}
+          >
+            <div className="flex flex-wrap gap-2">
+              <StatusChip label={comparison.visibilityLevel} tone={toneForClaim(comparison.visibilityLevel)} />
+              <StatusChip label={comparison.freshnessLabel} tone={comparison.freshnessTone} />
+              <StatusChip label={comparison.availableLabel} tone={comparison.availableTone} />
+            </div>
+            <h4 className="mt-3 text-base font-semibold text-text">{comparison.label}</h4>
+            <dl className="mt-4 grid gap-3 text-sm">
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-text-dim">Visibility depth</dt>
+                <dd className="mt-1 text-text-muted">{comparison.visibilityDepth}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-text-dim">Evidence depth</dt>
+                <dd className="mt-1 text-text-muted">{comparison.evidenceDepth}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-text-dim">Freshness</dt>
+                <dd className="mt-1 text-text-muted">{comparison.freshnessDetail}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-text-dim">Blind spots</dt>
+                <dd className="mt-1 text-text-muted">{comparison.blindSpots}</dd>
+              </div>
+              <div className="rounded-xl border border-border/70 bg-bg-panel/60 p-3">
+                <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-text-dim">Next action</dt>
+                <dd className="mt-1 text-text">{comparison.nextAction}</dd>
+              </div>
+            </dl>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function mergeCoverageRows(
   baseRows: readonly IntegrationRouteCoverageView[],
   receipts: readonly VerificationReceipt[]
@@ -551,6 +616,82 @@ function defaultCoverageRows(): readonly IntegrationRouteCoverageView[] {
   ];
 }
 
+interface RouteComparisonView {
+  readonly routeType: string;
+  readonly label: string;
+  readonly visibilityLevel: string;
+  readonly visibilityDepth: string;
+  readonly evidenceDepth: string;
+  readonly freshnessLabel: string;
+  readonly freshnessTone: "healthy" | "warning" | "degraded";
+  readonly freshnessDetail: string;
+  readonly availableLabel: string;
+  readonly availableTone: "healthy" | "degraded" | "failed";
+  readonly blindSpots: string;
+  readonly nextAction: string;
+}
+
+function routeComparisonFor(
+  row: IntegrationRouteCoverageView,
+  history: NonNullable<IntegrationsPayload["coverageHistory"]>
+): RouteComparisonView {
+  const routeHistory = history.filter((entry) => entry.routeType === row.routeType);
+  const latestHistory = routeHistory.at(-1);
+  const evidenceCount = row.checks.filter((check) => check.state === "producing-evidence" || check.state === "available").length;
+  return {
+    routeType: row.routeType,
+    label: row.label,
+    visibilityLevel: row.claim,
+    visibilityDepth: visibilityDepthFor(row),
+    evidenceDepth: evidenceDepthFor(row, routeHistory.length, evidenceCount),
+    freshnessLabel: freshnessLabel(row.evidenceFreshness),
+    freshnessTone: toneForFreshness(row.evidenceFreshness),
+    freshnessDetail: latestHistory
+      ? `${freshnessLabel(latestHistory.evidenceFreshness)} from persisted passport history at ${new Date(latestHistory.lastVerifiedAt).toLocaleString()}.`
+      : row.lastEvidenceAt
+        ? `${freshnessLabel(row.evidenceFreshness)} recorded at ${new Date(row.lastEvidenceAt).toLocaleString()}.`
+        : "No persisted passport or route evidence is available yet.",
+    availableLabel: row.available && row.evidenceFreshness === "recent" ? "verified" : row.configured ? "unverified" : row.claim === "not-covered" ? "unsupported" : "not available",
+    availableTone: row.available && row.evidenceFreshness === "recent" ? "healthy" : row.claim === "not-covered" ? "failed" : "degraded",
+    blindSpots: blindSpotsFor(row),
+    nextAction: nextActionFor(row)
+  };
+}
+
+function visibilityDepthFor(row: IntegrationRouteCoverageView): string {
+  if (row.claim === "mediated") return "Pre-execution control with policy, redaction, failure cards, and correlated evidence.";
+  if (row.claim === "supervised") return "Process-boundary supervision with stdout/stderr evidence, but not host-native tool internals.";
+  if (row.claim === "observed") return "Post-call or sidecar observation from explicit wrappers and imports.";
+  if (row.claim === "imported") return "Imported external evidence organized by ToolGuard after the original call.";
+  if (row.claim === "not-covered") return "No ToolGuard execution or observation boundary is present.";
+  return "Unknown until a route receipt, passport, or visibility import is recorded.";
+}
+
+function evidenceDepthFor(row: IntegrationRouteCoverageView, historyCount: number, evidenceCount: number): string {
+  const parts = [
+    `${row.checks.length} capability check${row.checks.length === 1 ? "" : "s"}`,
+    `${evidenceCount} evidence-producing signal${evidenceCount === 1 ? "" : "s"}`
+  ];
+  if (historyCount > 0) parts.push(`${historyCount} persisted passport/history entr${historyCount === 1 ? "y" : "ies"}`);
+  return parts.join(", ");
+}
+
+function blindSpotsFor(row: IntegrationRouteCoverageView): string {
+  if (row.claim === "not-covered") return row.limitation;
+  if (row.evidenceFreshness === "missing") return `Unverified route. ${row.limitation}`;
+  if (row.evidenceFreshness === "stale") return `Stale evidence. ${row.limitation}`;
+  if (!row.available) return `Configured evidence is incomplete. ${row.limitation}`;
+  return row.limitation;
+}
+
+function nextActionFor(row: IntegrationRouteCoverageView): string {
+  if (row.claim === "not-covered") return "Choose MCP, SDK wrapper, CLI supervision, API routing, or an import path before claiming coverage.";
+  if (row.evidenceFreshness === "stale") return "Re-run a local route probe to refresh the passport and evidence receipt.";
+  if (row.evidenceFreshness === "missing") return "Run the route-specific smoke test or import visibility evidence for this route.";
+  if (!row.available) return "Resolve failed capability checks, then re-run the local verification probe.";
+  return "Keep this route in the mediated or supervised setup path and export the receipt with the evidence bundle.";
+}
+
 function WizardPanel({ integration, platform, receipts, verifying, onVerify, exporting, onExport }: {
   readonly integration: IntegrationView;
   readonly platform: PlatformCommandSnippet["platform"];
@@ -562,6 +703,13 @@ function WizardPanel({ integration, platform, receipts, verifying, onVerify, exp
 }) {
   const routeType = routeTypeForIntegration(integration);
   const matchingReceipts = routeType ? receipts.filter((receipt) => receiptMatchesIntegration(receipt, integration)) : [];
+  const probeButtonLabel = integration.status === "unsupported"
+    ? "Unsupported route"
+    : !routeType
+      ? "Probe not available"
+      : verifying === routeType
+        ? "Running local probe..."
+        : "Run verification probe";
   return (
     <div className="rounded-2xl border border-border bg-bg-panel/90 p-5" data-testid="selected-harness-wizard">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -592,7 +740,7 @@ function WizardPanel({ integration, platform, receipts, verifying, onVerify, exp
           onClick={() => routeType ? onVerify(routeType) : undefined}
           className="rounded-xl border border-primary/50 bg-primary/15 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/25 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {verifying === routeType ? "Running local probe..." : "Run verification probe"}
+          {probeButtonLabel}
         </button>
         <button
           type="button"

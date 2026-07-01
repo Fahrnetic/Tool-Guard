@@ -269,6 +269,7 @@ export interface IntegrationsPayload {
   readonly generatedAt: string;
   readonly integrations: readonly IntegrationView[];
   readonly routeCoverage?: readonly IntegrationRouteCoverageView[];
+  readonly coverageHistory?: readonly IntegrationCoverageHistoryView[];
 }
 
 export type VerificationRouteType = IntegrationRouteType;
@@ -478,8 +479,21 @@ export interface IntegrationView {
   readonly limitation: string;
 }
 
-export type IntegrationCoverageClaim = "mediated" | "supervised" | "observed" | "not-covered";
+export type IntegrationCoverageClaim = "mediated" | "supervised" | "observed" | "imported" | "not-covered" | "unknown";
 export type IntegrationEvidenceFreshness = "recent" | "stale" | "missing";
+
+export interface IntegrationCoverageHistoryView {
+  readonly receiptId: string;
+  readonly routeType: string;
+  readonly hostId?: string;
+  readonly osPlatform?: string;
+  readonly transport?: string;
+  readonly configHash?: string;
+  readonly visibilityLevel?: string;
+  readonly lastVerifiedAt: string;
+  readonly evidenceFreshness: IntegrationEvidenceFreshness;
+  readonly warning?: string;
+}
 
 export interface IntegrationRouteCoverageView {
   readonly routeType: VerificationRouteType | "native-host-tools";

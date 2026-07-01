@@ -99,6 +99,27 @@ The demo is designed to read clearly on screen: start with the before/after arc,
 
 ---
 
+## Universal visibility and compatibility
+
+ToolGuard treats "any platform and any harness" as route coverage, not universal native interception. Compatibility claims use these labels:
+
+| Label | Meaning |
+| --- | --- |
+| `mediated` | ToolGuard is the execution boundary, such as direct Core/API/demo calls, MCP-routed calls, or explicit JS/TS wrappers. |
+| `supervised` | ToolGuard supervises a process boundary, such as `toolguard run --`, but cannot see native in-process host tools. |
+| `observed` | Explicit wrappers or imports report useful facts with less control than mediated execution. |
+| `imported` | ToolGuard organizes bounded, redacted imported logs, receipts, or HTTP/webhook payloads after the fact. |
+| `not-covered` | No routed, wrapped, supervised, imported, or API boundary is present. |
+| `unknown` | ToolGuard has not received enough route evidence or a current smoke-test receipt yet. |
+
+- **Route-first onboarding:** the Harness Integrations workbench lets users choose a harness and platform, copy shared POSIX shell, PowerShell, CMD, WSL, container, or CI setup snippets, and see exact harness passport coverage.
+- **Receipts and doctor output:** `pnpm doctor:integrations` emits human output or stable JSON with route passports, checked capabilities, limitations, route-specific evidence links, no-secret status, and CI receipt artifact paths.
+- **Canonical visibility:** events, run indexes, receipts, and bundles use `toolguard.visibility.v1` metadata with visibility level, coverage claim, route passport ID, harness/platform fields, W3C trace context, redaction, and stable hashes.
+- **Interop and import paths:** Core can export local OpenTelemetry-compatible spans without credentials, import visibility JSONL, wrap explicit JS/TS functions, accept bounded HTTP/webhook imports, and import browser evidence summaries for screenshots, console, and network.
+- **Route comparison and first proof:** the UI compares mediated, supervised, observed, imported, unverified, and unsupported routes by evidence depth, freshness, and blind spots. The first-proof flow goes from setup snippet to safe smoke test, matching receipt/passport, diagnostic record, and evidence bundle export.
+
+---
+
 ## Architecture
 
 ```

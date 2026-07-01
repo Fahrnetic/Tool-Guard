@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createId, type StableId } from "./ids.js";
 import type { CoreEvent } from "./events.js";
@@ -39,6 +39,34 @@ export class EvidenceRecorder {
     return this.#runIndex.indexPath;
   }
 
+  get coverageHistoryPath(): string {
+    return path.join(path.dirname(this.#runDir), "coverage-history.jsonl");
+  }
+
+  async listCoverageHistoryEvents(): Promise<readonly CoreEvent[]> {
+    try {
+      const content = await readFile(this.coverageHistoryPath, "utf8");
+      const byEventId = new Map<string, CoreEvent>();
+      for (const line of content.split("\n")) {
+        if (!line.trim()) continue;
+        try {
+          const parsed = JSON.parse(line) as CoreEvent;
+          if (parsed.type === "integration.verified" && typeof parsed.eventId === "string") {
+            byEventId.set(parsed.eventId, parsed);
+          }
+        } catch {
+          // Ignore malformed history lines; validators exercise normal write paths.
+        }
+      }
+      return [...byEventId.values()].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+        return [];
+      }
+      throw error;
+    }
+  }
+
   async listRunIndexRecords(): Promise<readonly RunIndexRecord[]> {
     await this.flushRunIndex();
     return await this.#runIndex.listRecords();
@@ -62,6 +90,18 @@ export class EvidenceRecorder {
     const jsonl = `${this.#events.map((entry) => JSON.stringify(entry)).join("\n")}\n`;
     await writeFile(this.eventsPath, jsonl, "utf8");
     this.#runIndexWrites = this.#runIndexWrites.then(() => this.#runIndex.ingestEvent(event));
+    if (event.type === "integration.verified") {
+      await this.#appendCoverageHistoryEvent(event);
+    }
+  }
+
+  async #appendCoverageHistoryEvent(event: CoreEvent): Promise<void> {
+    await mkdir(path.dirname(this.coverageHistoryPath), { recursive: true });
+    const existing = await this.listCoverageHistoryEvents();
+    const byEventId = new Map(existing.map((entry) => [entry.eventId, entry]));
+    byEventId.set(event.eventId, event);
+    const jsonl = `${[...byEventId.values()].map((entry) => JSON.stringify(entry)).join("\n")}\n`;
+    await writeFile(this.coverageHistoryPath, jsonl, "utf8");
   }
 
   async appendLedgerEntry(entry: SideEffectLedgerEntry): Promise<void> {

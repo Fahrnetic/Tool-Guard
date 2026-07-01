@@ -301,7 +301,7 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
       }
 
       if (url.pathname === "/api/integrations") {
-        sendJson(response, 200, buildIntegrationsPayload(runId, session.recorder.events));
+        sendJson(response, 200, await buildIntegrationsPayload(runId, session.recorder.events, await session.recorder.listCoverageHistoryEvents()));
         return;
       }
 
@@ -2169,13 +2169,19 @@ function buildPolicyPayload(runId: StableId, events: readonly CoreEvent[], draft
   };
 }
 
-function buildIntegrationsPayload(runId: StableId, events: readonly CoreEvent[]): JsonObject {
-  const receipts = integrationReceiptsFromEvents(events);
-  const routeCoverage = buildIntegrationCoverageMatrix(events);
+async function buildIntegrationsPayload(
+  runId: StableId,
+  events: readonly CoreEvent[],
+  historicalEvents: readonly CoreEvent[] = []
+): Promise<JsonObject> {
+  const coverageEvents = mergeCoverageEvents(events, historicalEvents);
+  const receipts = integrationReceiptsFromEvents(coverageEvents);
+  const routeCoverage = buildIntegrationCoverageMatrix(coverageEvents);
   const routeRows = new Map(routeCoverage.map((row) => [String(row.routeType), row]));
   return {
     runId,
     generatedAt: new Date().toISOString(),
+    coverageHistory: buildCoverageHistory(receipts),
     routeCoverage,
     integrations: [
       {
@@ -2256,6 +2262,37 @@ function buildIntegrationsPayload(runId: StableId, events: readonly CoreEvent[])
   };
 }
 
+function mergeCoverageEvents(events: readonly CoreEvent[], historicalEvents: readonly CoreEvent[]): readonly CoreEvent[] {
+  const byEventId = new Map<string, CoreEvent>();
+  for (const event of historicalEvents) {
+    if (event.type === "integration.verified") byEventId.set(event.eventId, event);
+  }
+  for (const event of events) {
+    if (event.type === "integration.verified") byEventId.set(event.eventId, event);
+  }
+  return [...byEventId.values()].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
+}
+
+function buildCoverageHistory(receipts: readonly { readonly event: CoreEvent; readonly receipt: JsonObject }[]): JsonObject[] {
+  return receipts.map(({ event, receipt }) => {
+    const evidenceFreshness = evidenceFreshnessFor(event.occurredAt);
+    return {
+      receiptId: typeof receipt.receiptId === "string" ? receipt.receiptId : event.eventId,
+      routeType: typeof receipt.routeType === "string" ? receipt.routeType : "unknown",
+      ...(typeof receipt.hostId === "string" ? { hostId: receipt.hostId } : {}),
+      ...(typeof receipt.osPlatform === "string" ? { osPlatform: receipt.osPlatform } : {}),
+      ...(typeof receipt.transport === "string" ? { transport: receipt.transport } : {}),
+      ...(typeof receipt.configHash === "string" ? { configHash: receipt.configHash } : {}),
+      ...(typeof receipt.visibilityLevel === "string" ? { visibilityLevel: receipt.visibilityLevel } : {}),
+      lastVerifiedAt: typeof receipt.lastVerifiedAt === "string" ? receipt.lastVerifiedAt : event.occurredAt,
+      evidenceFreshness,
+      ...(evidenceFreshness === "recent"
+        ? {}
+        : { warning: "Coverage evidence is stale. Re-run a local route probe before claiming availability." })
+    };
+  });
+}
+
 function integrationClaimFromRoute(row: JsonObject | undefined): { readonly claimLevel: string; readonly status: string } {
   if (!row) return { claimLevel: "not-yet-verified", status: "not-yet-verified" };
   const configured = row.configured === true;
@@ -2282,7 +2319,7 @@ function integrationClaimFromPassport(
   return integrationClaimFromRoute({
     ...row,
     evidenceFreshness: evidenceFreshnessFor(exactReceipt.event.occurredAt),
-    producingEvidence: true
+    producingEvidence: receiptProducesRouteEvidence("mcp-routed", exactReceipt.receipt)
   });
 }
 
@@ -2352,9 +2389,7 @@ function buildRouteCoverageRow(input: {
   const configured = capabilityChecks.some((check) => check.status === "configured");
   const available = capabilityChecks.some((check) => check.status === "available");
   const producingEvidence =
-    latestReceipt !== undefined &&
-    (capabilityChecks.some((check) => checkProducesRouteEvidence(input.routeType, check)) ||
-      hasExplicitRouteEvidenceLink(input.routeType, latestReceipt.receipt));
+    latestReceipt !== undefined && receiptProducesRouteEvidence(input.routeType, latestReceipt.receipt);
   const lastEvidenceAt = latestReceipt?.event.occurredAt;
   const evidenceFreshness = lastEvidenceAt ? evidenceFreshnessFor(lastEvidenceAt) : "missing";
   return {
@@ -2386,6 +2421,13 @@ function buildRouteCoverageRow(input: {
             }
           ]
   };
+}
+
+function receiptProducesRouteEvidence(routeType: IntegrationRouteType, receipt: JsonObject): boolean {
+  return (
+    capabilityChecksFromReceipt(receipt).some((check) => checkProducesRouteEvidence(routeType, check)) ||
+    hasExplicitRouteEvidenceLink(routeType, receipt)
+  );
 }
 
 function capabilityChecksFromReceipt(

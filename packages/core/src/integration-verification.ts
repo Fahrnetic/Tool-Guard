@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { access, mkdtemp, readFile } from "node:fs/promises";
+import os from "node:os";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -15,7 +16,12 @@ import type {
   IntegrationRouteCoverageEntry,
   IntegrationRouteType,
   IntegrationVerificationReceipt,
-  JsonValue
+  JsonValue,
+  HostPlatformPassport,
+  NativeHostActionCoverage,
+  OsFamily,
+  SmokeTestStatus,
+  VisibilityLevel
 } from "./types.js";
 
 export interface IntegrationVerificationInput {
@@ -49,7 +55,7 @@ export async function verifyIntegrationRoute(
   const timestamp = new Date().toISOString();
   const checkedCapabilities = await buildCapabilityChecks(input);
   const routeCoverage = buildRouteCoverage(input.routeType, checkedCapabilities);
-  const passportMetadata = input.routeType === "mcp-routed" ? defaultMcpPassportMetadata() : {};
+  const passportMetadata = buildPlatformPassportMetadata(input.routeType, checkedCapabilities, timestamp);
   const receiptWithoutLinks = {
     receiptId,
     runId: input.session.runId,
@@ -58,6 +64,7 @@ export async function verifyIntegrationRoute(
     ...passportMetadata,
     checkedCapabilities,
     routeCoverage,
+    nativeHostActions: buildNativeHostActionCoverage(input.routeType),
     limitation: LIMITATIONS[input.routeType]
   } satisfies Omit<IntegrationVerificationReceipt, "evidenceLinks">;
 
@@ -73,7 +80,7 @@ export async function verifyIntegrationRoute(
       href: artifact.relativePath,
       label: `Verification receipt for ${input.routeType}`,
       routeType: input.routeType,
-      evidenceScope: input.routeType === "mcp-routed" ? "harness" : "route",
+      evidenceScope: "route",
       ...passportMetadata
     }
   ];
@@ -82,14 +89,160 @@ export async function verifyIntegrationRoute(
   return receipt;
 }
 
-function defaultMcpPassportMetadata(): Pick<IntegrationVerificationReceipt, "hostId" | "hostFamily" | "supportedHostIds" | "configHash"> {
+function buildPlatformPassportMetadata(
+  routeType: IntegrationRouteType,
+  checkedCapabilities: readonly IntegrationCapabilityCheck[],
+  timestamp: string
+): Pick<
+  IntegrationVerificationReceipt,
+  | "integrationId"
+  | "hostId"
+  | "hostFamily"
+  | "supportedHostIds"
+  | "configHash"
+  | "osPlatform"
+  | "osFamily"
+  | "transport"
+  | "visibilityLevel"
+  | "limitations"
+  | "evidenceFields"
+  | "smokeTestStatus"
+  | "lastVerifiedAt"
+  | "platformPassport"
+> {
+  const base = routePassportBase(routeType);
+  const smokeTestStatus = smokeStatusFromCapabilities(checkedCapabilities);
+  const configHashValue = base.configHash ?? routeConfigHash(routeType, base.hostId, base.transport);
+  const evidenceFields = [
+    "receiptId",
+    "routeType",
+    "checkedCapabilities",
+    "routeCoverage",
+    "evidenceLinks",
+    "platformPassport"
+  ];
+  const platformPassport: HostPlatformPassport = {
+    passportId: `passport_${base.hostId}_${routeType.replace(/[^a-z0-9]+/gi, "_")}`,
+    hostId: base.hostId,
+    hostName: base.hostName,
+    osPlatform: process.platform,
+    osFamily: currentOsFamily(),
+    transport: base.transport,
+    routeType,
+    configHash: configHashValue,
+    visibilityLevel: base.visibilityLevel,
+    limitations: base.limitations,
+    evidenceFields,
+    smokeTestStatus,
+    lastVerifiedAt: timestamp
+  };
+  return {
+    ...(base.integrationId ? { integrationId: base.integrationId } : {}),
+    hostId: base.hostId,
+    ...(base.hostFamily ? { hostFamily: base.hostFamily } : {}),
+    ...(base.supportedHostIds ? { supportedHostIds: base.supportedHostIds } : {}),
+    configHash: configHashValue,
+    osPlatform: platformPassport.osPlatform,
+    osFamily: platformPassport.osFamily,
+    transport: platformPassport.transport,
+    visibilityLevel: platformPassport.visibilityLevel,
+    limitations: platformPassport.limitations,
+    evidenceFields: platformPassport.evidenceFields,
+    smokeTestStatus: platformPassport.smokeTestStatus,
+    lastVerifiedAt: platformPassport.lastVerifiedAt,
+    platformPassport
+  };
+}
+
+function routePassportBase(routeType: IntegrationRouteType): {
+  readonly integrationId?: string;
+  readonly hostId: string;
+  readonly hostName: string;
+  readonly hostFamily?: string;
+  readonly supportedHostIds?: readonly string[];
+  readonly transport: string;
+  readonly configHash?: string;
+  readonly visibilityLevel: VisibilityLevel;
+  readonly limitations: readonly string[];
+} {
+  if (routeType === "mcp-routed") {
+    return defaultMcpPassportMetadata();
+  }
+  if (routeType === "sdk-wrapped-python") {
+    return {
+      integrationId: "python-framework-adapters",
+      hostId: "python-framework-adapters",
+      hostName: "Python framework adapters",
+      transport: "http-loopback-sidecar",
+      visibilityLevel: "observed",
+      limitations: [LIMITATIONS[routeType], "Direct Python framework tools are observed only when explicit ToolGuard wrappers are used."]
+    };
+  }
+  return {
+    integrationId: "cli-supervised",
+    hostId: "local-cli",
+    hostName: "Local CLI wrapper",
+    transport: "process-argv",
+    visibilityLevel: "supervised",
+    limitations: [LIMITATIONS[routeType], "Process supervision does not imply native in-agent tool-call interception."]
+  };
+}
+
+function defaultMcpPassportMetadata(): {
+  readonly integrationId: string;
+  readonly hostId: string;
+  readonly hostName: string;
+  readonly hostFamily: string;
+  readonly supportedHostIds: readonly string[];
+  readonly transport: string;
+  readonly configHash?: string;
+  readonly visibilityLevel: VisibilityLevel;
+  readonly limitations: readonly string[];
+} {
   const cline = generateHostConfigSnippets().find((host) => host.hostId === "cline");
   return {
+    integrationId: "cline",
     hostId: "cline",
+    hostName: "Cline",
     hostFamily: "cline-roo-style",
     supportedHostIds: ["cline"],
-    ...(cline ? { configHash: configHash(cline.configJson) } : {})
+    transport: "stdio",
+    ...(cline ? { configHash: configHash(cline.configJson) } : {}),
+    visibilityLevel: "mediated",
+    limitations: [LIMITATIONS["mcp-routed"], "Native host tools that bypass the MCP server are not covered."]
   };
+}
+
+function buildNativeHostActionCoverage(routeType: IntegrationRouteType): readonly NativeHostActionCoverage[] {
+  return [
+    {
+      action: "Native host tool calls that bypass ToolGuard",
+      coverage: "not-covered",
+      limitation: `${LIMITATIONS[routeType]} Native host actions that bypass this route are not covered.`
+    },
+    {
+      action: "Logs, traces, screenshots, or artifacts imported after native execution",
+      coverage: "observed-only",
+      limitation: "Imported evidence can be reviewed, but ToolGuard did not mediate or supervise the original host-native action."
+    }
+  ];
+}
+
+function smokeStatusFromCapabilities(capabilities: readonly IntegrationCapabilityCheck[]): SmokeTestStatus {
+  return capabilities.some((capability) => capability.status === "not-yet-verified") ? "failed" : "passed";
+}
+
+function currentOsFamily(): OsFamily {
+  if (process.env.CI) return "ci";
+  if (os.release().toLowerCase().includes("microsoft")) return "wsl";
+  if (process.platform === "linux") return "linux";
+  if (process.platform === "darwin") return "macos";
+  if (process.platform === "win32") return "windows";
+  return "unknown";
+}
+
+function routeConfigHash(routeType: IntegrationRouteType, hostId: string, transport: string): string {
+  return configHash(`${routeType}:${hostId}:${transport}:${process.platform}`);
 }
 
 function configHash(value: string): string {

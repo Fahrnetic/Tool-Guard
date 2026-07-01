@@ -453,6 +453,9 @@ export interface ContextWasteDelta {
 
 export type IntegrationRouteType = "mcp-routed" | "sdk-wrapped-python" | "cli-supervised";
 export type IntegrationProbeStatus = "configured" | "available" | "unsupported" | "not-yet-verified";
+export type VisibilityLevel = "mediated" | "supervised" | "observed" | "imported" | "not-covered" | "unknown";
+export type SmokeTestStatus = "passed" | "failed" | "not-run" | "not-applicable";
+export type OsFamily = "linux" | "macos" | "windows" | "wsl" | "container" | "ci" | "unknown";
 export type IntegrationRouteCoverageState =
   | "configured"
   | "available"
@@ -474,6 +477,28 @@ export interface IntegrationRouteCoverageEntry {
   readonly evidence: string;
 }
 
+export interface HostPlatformPassport {
+  readonly passportId: string;
+  readonly hostId: string;
+  readonly hostName?: string;
+  readonly osPlatform: NodeJS.Platform | string;
+  readonly osFamily: OsFamily;
+  readonly transport: string;
+  readonly routeType: IntegrationRouteType;
+  readonly configHash: string;
+  readonly visibilityLevel: VisibilityLevel;
+  readonly limitations: readonly string[];
+  readonly evidenceFields: readonly string[];
+  readonly smokeTestStatus: SmokeTestStatus;
+  readonly lastVerifiedAt: string;
+}
+
+export interface NativeHostActionCoverage {
+  readonly action: string;
+  readonly coverage: "not-covered" | "observed-only";
+  readonly limitation: string;
+}
+
 export interface IntegrationVerificationReceipt {
   readonly receiptId: StableId;
   readonly runId: StableId;
@@ -484,6 +509,16 @@ export interface IntegrationVerificationReceipt {
   readonly hostFamily?: string;
   readonly supportedHostIds?: readonly string[];
   readonly configHash?: string;
+  readonly osPlatform?: NodeJS.Platform | string;
+  readonly osFamily?: OsFamily;
+  readonly transport?: string;
+  readonly visibilityLevel?: VisibilityLevel;
+  readonly limitations?: readonly string[];
+  readonly evidenceFields?: readonly string[];
+  readonly smokeTestStatus?: SmokeTestStatus;
+  readonly lastVerifiedAt?: string;
+  readonly platformPassport?: HostPlatformPassport;
+  readonly nativeHostActions?: readonly NativeHostActionCoverage[];
   readonly checkedCapabilities: readonly IntegrationCapabilityCheck[];
   readonly routeCoverage: readonly IntegrationRouteCoverageEntry[];
   readonly limitation: string;

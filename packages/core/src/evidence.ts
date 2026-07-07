@@ -119,6 +119,7 @@ export class EvidenceRecorder {
     readonly fileName: string;
     readonly content: JsonValue | string;
     readonly redacted: boolean;
+    readonly redaction?: EvidenceArtifact["redaction"];
   }): Promise<EvidenceArtifact> {
     const artifactId = createId("artifact");
     const artifactDir = path.join(this.#runDir, "artifacts");
@@ -137,7 +138,8 @@ export class EvidenceRecorder {
       relativePath,
       sha256: createHash("sha256").update(serialized).digest("hex"),
       byteLength: Buffer.byteLength(serialized, "utf8"),
-      redacted: input.redacted
+      redacted: input.redacted,
+      ...(input.redaction ? { redaction: input.redaction } : {})
     };
   }
 }

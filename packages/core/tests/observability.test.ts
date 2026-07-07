@@ -1,6 +1,10 @@
+import { mkdir, readdir, writeFile } from "node:fs/promises";
 import type { NetworkInterfaceInfo } from "node:os";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { discoverDockerBridgeMetricsBindings } from "../src/docker-bridge.js";
+import { pruneDeterministicResultArtifacts } from "../src/demo.js";
 import {
   buildOpenObserveDashboardQueries,
   buildOtlpLogs,
@@ -115,6 +119,19 @@ describe("observability helpers", () => {
       { host: "172.17.0.1", interfaceName: "docker0" },
       { host: "172.24.0.1", interfaceName: "br-demo" }
     ]);
+  });
+
+  it("removes stale deterministic result artifacts before OpenObserve demo reruns", async () => {
+    const root = path.join(tmpdir(), `toolguard-observability-${Date.now()}`);
+    const runId = "run_demo_otel_openobserve_seed_v001";
+    const artifactDir = path.join(root, runId, "artifacts");
+    await mkdir(artifactDir, { recursive: true });
+    await writeFile(path.join(artifactDir, "old.result.json"), "unsafe stale content", "utf8");
+    await writeFile(path.join(artifactDir, "keep.failure.txt"), "failure metadata", "utf8");
+
+    await expect(pruneDeterministicResultArtifacts(root, runId)).resolves.toBe(1);
+
+    await expect(readdir(artifactDir)).resolves.toEqual(["keep.failure.txt"]);
   });
 });
 

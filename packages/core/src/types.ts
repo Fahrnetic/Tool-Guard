@@ -320,6 +320,14 @@ export interface EvidenceArtifact {
   readonly sha256: string;
   readonly byteLength: number;
   readonly redacted: boolean;
+  readonly redaction?: {
+    readonly originalSha256: string;
+    readonly originalByteLength: number;
+    readonly redactedSha256: string;
+    readonly redactedByteLength: number;
+    readonly redactionCount: number;
+    readonly reasons: string[];
+  };
 }
 
 export interface EvidenceLink {

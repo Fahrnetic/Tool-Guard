@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { EventBus, type CoreEvent, type CoreEventType } from "./events.js";
 import { EvidenceRecorder } from "./evidence.js";
 import { createId, type StableId } from "./ids.js";
@@ -14,7 +15,7 @@ import {
   type ObservedImpactStart
 } from "./observed-impact.js";
 import type { ToolRegistry } from "./registry.js";
-import { redactJsonValue } from "./redaction.js";
+import { redactJsonValue, redactJsonValueWithSummary } from "./redaction.js";
 import {
   buildFailureCard,
   classifyFailure,
@@ -432,21 +433,28 @@ export class CoreSession {
       }
       options.signal?.removeEventListener("abort", externalAbort);
 
+      const suspicious = detectSuspiciousOutput(rawOutput);
+      const artifactContent = prepareRawResultArtifactContent(rawOutput, suspicious?.failureType);
       const artifact = await this.#recorder.writeArtifact({
         runId: call.runId,
         traceId: call.traceId,
         toolCallId: call.toolCallId,
         kind: "raw-result",
         fileName: `${call.toolCallId}.result.json`,
-        content: rawOutput,
-        redacted: false
+        content: artifactContent.content,
+        redacted: artifactContent.redacted,
+        redaction: artifactContent.redaction
       });
       await this.#emitArtifactCreated(call, artifact);
 
-      const suspicious = detectSuspiciousOutput(rawOutput);
       if (suspicious) {
         await this.#emit("output.sanitized", call, `Suspicious output contained for ${call.toolName}`, {
-          data: { reason: suspicious.failureType, artifactId: artifact.artifactId }
+          data: {
+            reason: suspicious.failureType,
+            artifactId: artifact.artifactId,
+            redactionCount: artifactContent.redaction?.redactionCount ?? 0,
+            reasons: artifactContent.redaction?.reasons ?? []
+          }
         });
         const failure = await this.#recordFailure(
           call,
@@ -554,8 +562,7 @@ export class CoreSession {
       toolCallId: call.toolCallId,
       kind: "raw-result",
       fileName: `${call.toolCallId}.result.json`,
-      content: output,
-      redacted: false
+      ...prepareRawResultArtifactWrite(output)
     });
 
     await this.#emitArtifactCreated(call, artifact);
@@ -939,6 +946,58 @@ export class CoreSession {
     this.#bus.publish(event);
     return event;
   }
+}
+
+function prepareRawResultArtifactWrite(output: JsonValue): {
+  readonly content: JsonValue;
+  readonly redacted: boolean;
+  readonly redaction?: EvidenceArtifact["redaction"];
+} {
+  return prepareRawResultArtifactContent(output);
+}
+
+function prepareRawResultArtifactContent(
+  output: JsonValue,
+  forcedReason?: string
+): {
+  readonly content: JsonValue;
+  readonly redacted: boolean;
+  readonly redaction?: EvidenceArtifact["redaction"];
+} {
+  const redactedOutput = redactJsonValueWithSummary(output);
+  const reasons = new Set(redactedOutput.reasons);
+  if (forcedReason) reasons.add(forcedReason);
+  const shouldRedact = redactedOutput.count > 0 || Boolean(forcedReason);
+  if (!shouldRedact) {
+    return { content: output, redacted: false };
+  }
+
+  const originalSerialized = `${JSON.stringify(output, null, 2)}\n`;
+  const sanitizedSerialized = `${JSON.stringify(redactedOutput.value, null, 2)}\n`;
+  const redaction = {
+    originalSha256: sha256(originalSerialized),
+    originalByteLength: Buffer.byteLength(originalSerialized, "utf8"),
+    redactedSha256: sha256(sanitizedSerialized),
+    redactedByteLength: Buffer.byteLength(sanitizedSerialized, "utf8"),
+    redactionCount: Math.max(redactedOutput.count, forcedReason ? 1 : 0),
+    reasons: [...reasons].sort()
+  };
+
+  return {
+    content: {
+      toolguardArtifact: {
+        redacted: true,
+        redaction
+      },
+      value: redactedOutput.value
+    },
+    redacted: true,
+    redaction
+  };
+}
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 async function executeWithAbort(execute: () => Promise<JsonValue> | JsonValue, signal: AbortSignal): Promise<JsonValue> {

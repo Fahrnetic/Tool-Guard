@@ -13,6 +13,10 @@ export interface JsonRedactionResult {
 }
 
 const REDACTIONS: readonly { readonly reason: string; readonly pattern: RegExp }[] = [
+  {
+    reason: "prompt-injection-instruction",
+    pattern: /ignore\s+(?:all\s+)?previous\s+instructions[\s\S]{0,240}?(?:system\s+prompt|developer\s+message)/gi
+  },
   { reason: "bearer-token", pattern: /Bearer\s+[A-Za-z0-9._~+/-]{12,}/g },
   { reason: "openai-style-key", pattern: /\bsk-[A-Za-z0-9_-]{20,}\b/g },
   { reason: "api-key-assignment", pattern: /\b(api[_-]?key|token|secret|password)\s*[:=]\s*["']?[A-Za-z0-9._~+/-]{16,}["']?/gi },

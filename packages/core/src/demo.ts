@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, unlink } from "node:fs/promises";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -46,6 +46,7 @@ async function main(): Promise<void> {
 async function otelDemo(options: { readonly send: boolean; readonly serve: boolean }): Promise<void> {
   const root = workspaceEvidenceRoot();
   const runId = "run_demo_otel_openobserve_seed_v001" as const;
+  await pruneDeterministicResultArtifacts(root, runId);
   const session = new CoreSession({ evidenceRoot: root, runId, retry: { maxRetries: 1 } });
   const registry = new ToolRegistry();
   registerChaosFixtures(registry, { sandboxRoot: root });
@@ -317,6 +318,22 @@ function workspaceEvidenceRoot(): string {
   return path.basename(process.cwd()) === "core" && path.basename(path.dirname(process.cwd())) === "packages"
     ? path.resolve(process.cwd(), "../..", "runs")
     : path.join(process.cwd(), "runs");
+}
+
+export async function pruneDeterministicResultArtifacts(root: string, runId: string): Promise<number> {
+  const artifactDir = path.join(root, runId, "artifacts");
+  try {
+    const entries = await readdir(artifactDir, { withFileTypes: true });
+    const staleResults = entries.filter((entry) => entry.isFile() && entry.name.endsWith(".result.json"));
+    await Promise.all(staleResults.map((entry) => unlink(path.join(artifactDir, entry.name))));
+    return staleResults.length;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      await mkdir(artifactDir, { recursive: true });
+      return 0;
+    }
+    throw error;
+  }
 }
 
 async function waitForShutdown(close: () => Promise<void>): Promise<void> {

@@ -320,7 +320,7 @@
         "sortOrder": "Descending",
         "wrapLogMessage": true
       },
-      "targets": [{ "expr": "{service_name=\"toolguard-local-demo\", level=\"error\"} | json", "refId": "A" }],
+      "targets": [{ "expr": "{service_name=\"toolguard-local-demo\"} | json | detected_level=\"ERROR\"", "refId": "A" }],
       "title": "Failure Drilldown",
       "type": "logs"
     },
@@ -338,7 +338,7 @@
         "sortOrder": "Descending",
         "wrapLogMessage": true
       },
-      "targets": [{ "expr": "{service_name=\"toolguard-local-demo\", event_type=\"output.sanitized\"} | json", "refId": "A" }],
+      "targets": [{ "expr": "{service_name=\"toolguard-local-demo\"} | json | event_type=\"output.sanitized\"", "refId": "A" }],
       "title": "Sanitization Evidence",
       "type": "logs"
     },

@@ -5,15 +5,20 @@ export { createStructuredLogEntry, writeStructuredLog, type LogLevel, type Struc
 export { collectToolGuardMetrics, renderPrometheusMetrics, renderPrometheusRegistryMetrics, type ToolGuardMetrics } from "./metrics.js";
 export {
   buildOpenObserveDashboardQueries,
+  buildLokiNdjsonLogs,
   buildOtlpLogs,
   buildOtlpMetrics,
   buildToolGuardOtelDemoPayloads,
   exportToolGuardOtelDemo,
+  sendToolGuardOtelPayloads,
   type OpenObserveDashboardQuery,
   type OtlpGaugeMetric,
   type OtlpLogRecord,
   type OtlpLogsPayload,
   type OtlpMetricsPayload,
+  type OtlpPostResult,
+  type OtlpTracesPayload,
+  type ToolGuardOtelSendResult,
   type ToolGuardOtelDemoExportResult,
   type ToolGuardOtelDemoPayloads
 } from "./otel-demo.js";

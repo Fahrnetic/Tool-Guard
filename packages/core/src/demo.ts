@@ -1,12 +1,16 @@
 import { mkdtemp } from "node:fs/promises";
+import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { createChaosFixtures, registerChaosFixtures } from "./chaos-fixtures.js";
+import { discoverDockerBridgeMetricsBindings } from "./docker-bridge.js";
 import { createId } from "./ids.js";
-import { exportToolGuardOtelDemo } from "./otel-demo.js";
+import { collectToolGuardMetrics, renderPrometheusMetrics } from "./metrics.js";
+import { exportToolGuardOtelDemo, sendToolGuardOtelPayloads } from "./otel-demo.js";
 import { ToolRegistry } from "./registry.js";
 import { redactString } from "./redaction.js";
+import { createCoreApiServer } from "./server.js";
 import { CoreSession } from "./session.js";
 import type { ToolCall } from "./types.js";
 
@@ -29,13 +33,17 @@ async function main(): Promise<void> {
     return;
   }
   if (command === "otel") {
-    await otelDemo();
+    await otelDemo({ send: false, serve: false });
+    return;
+  }
+  if (command === "openobserve") {
+    await otelDemo({ send: true, serve: true });
     return;
   }
   throw new Error(`Unknown demo command: ${command}`);
 }
 
-async function otelDemo(): Promise<void> {
+async function otelDemo(options: { readonly send: boolean; readonly serve: boolean }): Promise<void> {
   const root = workspaceEvidenceRoot();
   const runId = "run_demo_otel_openobserve_seed_v001" as const;
   const session = new CoreSession({ evidenceRoot: root, runId, retry: { maxRetries: 1 } });
@@ -70,23 +78,152 @@ async function otelDemo(): Promise<void> {
     outputDir: session.recorder.runDir,
     serviceName: "toolguard-local-demo"
   });
+  const sendResult = options.send ? await sendOtelWithGuidance(exported) : undefined;
   const metricsUrl = "http://127.0.0.1:3660/metrics";
   const openObserveUrl = "http://127.0.0.1:5080";
-  const grafanaUrl = "http://127.0.0.1:33000";
+  const grafanaUrl = "http://127.0.0.1:33000/d/toolguard-observability/toolguard-observability";
+  const prometheusUrl = "http://127.0.0.1:39090";
+  const lokiUrl = "http://127.0.0.1:33100";
 
-  console.log("ToolGuard OTEL and OpenObserve demo");
-  console.log("deterministicSeed: toolguard-otel-demo-v0.1");
-  console.log(`runId: ${runId}`);
-  console.log(`evidenceDir: ${session.recorder.runDir}`);
-  console.log(`otelTracesJson: ${exported.tracePath}`);
-  console.log(`otelMetricsJson: ${exported.metricsPath}`);
-  console.log(`otelLogsJson: ${exported.logsPath}`);
-  console.log(`dashboardQueriesJson: ${exported.dashboardQueriesPath}`);
-  console.log(`spanCount: ${exported.traces.spanCount}`);
-  console.log(`openObserveUrl: ${openObserveUrl}`);
-  console.log(`grafanaUrl: ${grafanaUrl}`);
-  console.log(`prometheusScrapeTarget: ${metricsUrl}`);
-  console.log("Start stack: docker compose -f observability/openobserve/docker-compose.yml up");
+  console.log("ToolGuard OpenTelemetry demo");
+  console.log("");
+  console.log("Run");
+  console.log("  deterministicSeed: toolguard-otel-demo-v0.1");
+  console.log(`  runId: ${runId}`);
+  console.log(`  evidenceDir: ${session.recorder.runDir}`);
+  console.log(`  spanCount: ${exported.traces.spanCount}`);
+  console.log("");
+  console.log("Telemetry artifacts");
+  console.log(`  traces: ${exported.tracePath}`);
+  console.log(`  metrics: ${exported.metricsPath}`);
+  console.log(`  logs: ${exported.logsPath}`);
+  console.log(`  ndjsonLogs: ${exported.ndjsonLogsPath}`);
+  console.log(`  dashboardQueries: ${exported.dashboardQueriesPath}`);
+  console.log("");
+  if (sendResult) printOtelSendResult(sendResult);
+  console.log("Open");
+  console.log(`  OpenObserve: ${openObserveUrl}`);
+  console.log(`  Grafana: ${grafanaUrl}`);
+  console.log(`  Prometheus: ${prometheusUrl}`);
+  console.log(`  Loki: ${lokiUrl}`);
+  console.log(`  Core metrics: ${metricsUrl}`);
+  console.log("");
+  console.log("Try these views");
+  console.log("  1. Grafana dashboard: ToolGuard Observability");
+  console.log(`  2. OpenObserve logs: run_id=${runId}`);
+  console.log("  3. Prometheus query: toolguard_failures_total");
+  console.log('  4. Loki query: {service_name="toolguard-local-demo"} | json');
+  if (options.serve) {
+    const listeners = await startOpenObserveDemoMetricsListeners({ root, session, registry });
+    for (const listener of listeners) {
+      console.log(`coreMetricsServer: listening on ${listener.url} (${listener.scope})`);
+    }
+    console.log("Press Ctrl+C to stop the demo metrics server.");
+    await waitForShutdown(async () => {
+      await Promise.all(listeners.map((listener) => listener.close()));
+    });
+  }
+}
+
+interface DemoMetricsListener {
+  readonly url: string;
+  readonly scope: string;
+  close(): Promise<void>;
+}
+
+async function startOpenObserveDemoMetricsListeners(input: {
+  readonly root: string;
+  readonly session: CoreSession;
+  readonly registry: ToolRegistry;
+}): Promise<readonly DemoMetricsListener[]> {
+  const loopbackHandle = createCoreApiServer({
+    host: "127.0.0.1",
+    port: 3660,
+    evidenceRoot: input.root,
+    session: input.session,
+    registry: input.registry,
+    seedDirectRun: false
+  });
+  await loopbackHandle.ready;
+  const listeners: DemoMetricsListener[] = [
+    {
+      url: "http://127.0.0.1:3660",
+      scope: "loopback API and metrics",
+      close: loopbackHandle.close
+    }
+  ];
+
+  const bridgeBindings = discoverDockerBridgeMetricsBindings();
+  if (bridgeBindings.length === 0) {
+    console.warn("coreMetricsServer: no Docker bridge gateway interface found; Prometheus host-gateway scrape may remain down on Linux.");
+    return listeners;
+  }
+
+  for (const binding of bridgeBindings) {
+    const bridgeListener = await startMetricsOnlyListener({
+      host: binding.host,
+      port: 3660,
+      session: input.session,
+      scope: `Docker bridge gateway metrics only via ${binding.interfaceName}`
+    });
+    listeners.push(bridgeListener);
+  }
+
+  return listeners;
+}
+
+async function startMetricsOnlyListener(input: {
+  readonly host: string;
+  readonly port: number;
+  readonly session: CoreSession;
+  readonly scope: string;
+}): Promise<DemoMetricsListener> {
+  const server = http.createServer((request, response) => {
+    const url = new URL(request.url ?? "/", `http://${input.host}:${input.port}`);
+    if (request.method === "GET" && url.pathname === "/metrics") {
+      response.writeHead(200, { "content-type": "text/plain; version=0.0.4" });
+      response.end(`${renderPrometheusMetrics(collectToolGuardMetrics(input.session.recorder.events))}\n`);
+      return;
+    }
+    response.writeHead(404, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: "not_found" }));
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(input.port, input.host, () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+
+  return {
+    url: `http://${input.host}:${input.port}`,
+    scope: input.scope,
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      })
+  };
+}
+
+function printOtelSendResult(sendResult: Awaited<ReturnType<typeof sendToolGuardOtelPayloads>>): void {
+  const statuses = [sendResult.traces, sendResult.metrics, sendResult.logs].map((result) => `${result.signal}:${result.status}`).join(", ");
+  console.log("Collector export");
+  console.log(`  endpoint: ${sendResult.endpoint}`);
+  console.log(`  postStatus: ${statuses}`);
+  console.log("");
+}
+
+async function sendOtelWithGuidance(
+  payloads: Awaited<ReturnType<typeof exportToolGuardOtelDemo>>
+): Promise<Awaited<ReturnType<typeof sendToolGuardOtelPayloads>>> {
+  try {
+    return await sendToolGuardOtelPayloads({ payloads });
+  } catch (error) {
+    throw new Error(
+      `Could not reach OTEL Collector at http://127.0.0.1:14318. Run pnpm observability:up, wait for OpenObserve and Collector to become ready, then retry. ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
 }
 
 async function rawFailureDemo(): Promise<void> {
@@ -181,6 +318,22 @@ function workspaceEvidenceRoot(): string {
   return path.basename(process.cwd()) === "core" && path.basename(path.dirname(process.cwd())) === "packages"
     ? path.resolve(process.cwd(), "../..", "runs")
     : path.join(process.cwd(), "runs");
+}
+
+async function waitForShutdown(close: () => Promise<void>): Promise<void> {
+  await new Promise<void>((resolve) => {
+    const stop = (): void => {
+      process.off("SIGINT", stop);
+      process.off("SIGTERM", stop);
+      close()
+        .catch((error: unknown) => {
+          console.error(error instanceof Error ? error.message : String(error));
+        })
+        .finally(resolve);
+    };
+    process.on("SIGINT", stop);
+    process.on("SIGTERM", stop);
+  });
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {

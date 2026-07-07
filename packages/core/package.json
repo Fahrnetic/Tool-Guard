@@ -22,6 +22,7 @@
   "scripts": {
     "build": "tsc --build tsconfig.json",
     "demo:raw-failure": "pnpm build && node dist/demo.js raw-failure",
+    "demo:openobserve": "pnpm build && node dist/demo.js openobserve",
     "demo:otel": "pnpm build && node dist/demo.js otel",
     "demo:toolplane": "pnpm build && node dist/demo.js toolplane",
     "doctor:integrations": "pnpm build && node dist/integration-doctor.js",

@@ -52,6 +52,16 @@ requireIncludes(
   "generateStrongCredential()",
   "OpenObserve stack runtime credential generation"
 );
+requireIncludes(
+  readFileSync(new URL("scripts/openobserve-stack.mjs", root), "utf8"),
+  "isOpenObserveCompatibleCredential",
+  "OpenObserve password complexity guard"
+);
+requireIncludes(
+  readFileSync(new URL("scripts/openobserve-stack.mjs", root), "utf8"),
+  "formatEnvValue(authHeader)",
+  "shell-compatible OpenObserve auth header env output"
+);
 
 requireIncludes(contents.collector, "receivers:", "collector receivers");
 requireIncludes(contents.collector, "otlp:", "collector OTLP receiver");

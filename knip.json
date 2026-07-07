@@ -16,7 +16,7 @@
     }
   },
   "ignoreDependencies": ["@toolplane/cli", "@toolplane/ui", "depcheck", "eslint-plugin-import", "husky"],
-  "ignoreBinaries": ["gitleaks", "python3"],
+  "ignoreBinaries": ["gitleaks", "ip", "python3"],
   "ignoreExportsUsedInFile": true,
   "ignore": ["**/dist/**", "**/runs/**", "**/coverage/**"]
 }

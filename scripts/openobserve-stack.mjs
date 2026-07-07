@@ -16,7 +16,7 @@ const existingGrafanaPassword = existingEnv.GRAFANA_ADMIN_PASSWORD;
 const email = process.env.OPENOBSERVE_ROOT_USER_EMAIL ?? existingEnv.OPENOBSERVE_ROOT_USER_EMAIL ?? "root@example.com";
 const password =
   process.env.OPENOBSERVE_ROOT_USER_PASSWORD ??
-  (isStrongGeneratedCredential(existingOpenObservePassword) ? existingOpenObservePassword : generateStrongCredential());
+  (isOpenObserveCompatibleCredential(existingOpenObservePassword) ? existingOpenObservePassword : generateStrongCredential());
 const grafanaPassword =
   process.env.GRAFANA_ADMIN_PASSWORD ??
   (isStrongGeneratedCredential(existingGrafanaPassword) ? existingGrafanaPassword : generateStrongCredential());
@@ -26,10 +26,10 @@ mkdirSync(new URL(".tmp/", root), { recursive: true });
 writeFileSync(
   envPath,
   [
-    `OPENOBSERVE_ROOT_USER_EMAIL=${shellEscape(email)}`,
-    `OPENOBSERVE_ROOT_USER_PASSWORD=${shellEscape(password)}`,
-    `OPENOBSERVE_AUTH_HEADER=${shellEscape(authHeader)}`,
-    `GRAFANA_ADMIN_PASSWORD=${shellEscape(grafanaPassword)}`
+    `OPENOBSERVE_ROOT_USER_EMAIL=${formatEnvValue(email)}`,
+    `OPENOBSERVE_ROOT_USER_PASSWORD=${formatEnvValue(password)}`,
+    `OPENOBSERVE_AUTH_HEADER=${formatEnvValue(authHeader)}`,
+    `GRAFANA_ADMIN_PASSWORD=${formatEnvValue(grafanaPassword)}`
   ].join("\n") + "\n",
   "utf8"
 );
@@ -53,16 +53,22 @@ if (result.error) {
 }
 process.exit(result.status ?? 1);
 
-function shellEscape(value) {
-  return value.replaceAll("\\", "\\\\").replaceAll("\n", "");
+function formatEnvValue(value) {
+  const normalized = value.replaceAll("\n", "");
+  if (/^[A-Za-z0-9_@./:-]+$/.test(normalized)) return normalized;
+  return `'${normalized.replaceAll("'", "'\\''")}'`;
 }
 
 function generateStrongCredential() {
-  return randomBytes(24).toString("base64url");
+  return `Tg1!${randomBytes(24).toString("base64url")}`;
 }
 
 function isStrongGeneratedCredential(value) {
-  return typeof value === "string" && /^[A-Za-z0-9_-]{32,}$/.test(value);
+  return typeof value === "string" && value.length >= 32 && value.length <= 128 && /^[A-Za-z0-9!_-]+$/.test(value);
+}
+
+function isOpenObserveCompatibleCredential(value) {
+  return isStrongGeneratedCredential(value) && /[a-z]/.test(value) && /[A-Z]/.test(value) && /\d/.test(value) && /[^A-Za-z0-9]/.test(value);
 }
 
 function readEnvFile(path) {
@@ -74,9 +80,20 @@ function readEnvFile(path) {
       .map((line) => {
         const separator = line.indexOf("=");
         if (separator === -1) return [line, ""];
-        return [line.slice(0, separator), line.slice(separator + 1)];
+        return [line.slice(0, separator), parseEnvValue(line.slice(separator + 1))];
       })
   );
+}
+
+function parseEnvValue(value) {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1).replaceAll("'\\''", "'");
+  }
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return trimmed.slice(1, -1).replaceAll('\\"', '"').replaceAll("\\\\", "\\");
+  }
+  return value;
 }
 
 function ensureBindMountFilesReadable() {

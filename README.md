@@ -122,7 +122,7 @@ ToolGuard treats "any platform and any harness" as route coverage, not universal
 
 ## Observability demo
 
-ToolGuard includes a local OpenTelemetry demo stack: OpenObserve for an all-in-one view, plus OpenTelemetry Collector, Prometheus, Grafana, and Loki for production-style exposure. Run `docker compose -f observability/openobserve/docker-compose.yml up`, then `pnpm demo:otel` to generate redacted OTLP-shaped traces, metrics, logs, and dashboard query examples under `runs/`.
+ToolGuard includes a local OpenTelemetry demo stack: OpenObserve for all-in-one exploration, OpenTelemetry Collector as the telemetry pipeline, Prometheus for metrics and rules, Loki for redacted logs, and Grafana for the polished dashboard. Run `pnpm observability:up`, then `pnpm demo:openobserve` to send redacted OTLP traces, metrics, and logs through the Collector while serving demo-backed Core metrics for Prometheus. Use `pnpm observability:down` to stop the stack. For the operator checklist, backend validation probes, and fallback steps, use `scripts/observability-demo.sh`; for offline artifact generation only, run `pnpm demo:otel`.
 
 ---
 

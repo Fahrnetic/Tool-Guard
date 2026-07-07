@@ -14,8 +14,13 @@ receivers:
             - targets: ["host.docker.internal:3660"]
 
 processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
   batch:
     timeout: 5s
+    send_batch_size: 1024
   resource:
     attributes:
       - key: deployment.environment
@@ -33,22 +38,31 @@ exporters:
       stream-name: toolguard
   prometheus:
     endpoint: 0.0.0.0:8889
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
   debug:
     verbosity: basic
 
 service:
+  telemetry:
+    metrics:
+      level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [resource, batch]
+      processors: [memory_limiter, resource, batch]
       exporters: [otlphttp/openobserve, debug]
     metrics:
       receivers: [otlp, prometheus]
-      processors: [resource, batch]
+      processors: [memory_limiter, resource, batch]
       exporters: [otlphttp/openobserve, prometheus, debug]
     logs:
       receivers: [otlp]
-      processors: [resource, batch]
-      exporters: [otlphttp/openobserve, loki, debug]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlphttp/openobserve, otlphttp/loki, debug]

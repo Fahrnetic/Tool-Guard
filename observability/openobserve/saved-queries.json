@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "workspace": "default",
+  "queries": [
+    {
+      "name": "ToolGuard failed calls by tool",
+      "stream": "toolguard_logs",
+      "type": "sql",
+      "query": "SELECT data_toolName, count(*) AS failures FROM toolguard_logs WHERE event_type = 'tool.call.failed' GROUP BY data_toolName ORDER BY failures DESC",
+      "purpose": "Identify bounded demo tools that failed under ToolGuard mediation."
+    },
+    {
+      "name": "ToolGuard failure type trend",
+      "stream": "toolguard_logs",
+      "type": "sql",
+      "query": "SELECT event_type, count(*) AS events FROM toolguard_logs WHERE level = 'error' GROUP BY event_type ORDER BY events DESC",
+      "purpose": "Summarize error-level ToolGuard events without exposing raw payloads."
+    },
+    {
+      "name": "ToolGuard sanitized outputs",
+      "stream": "toolguard_logs",
+      "type": "sql",
+      "query": "SELECT run_id, trace_id, tool_call_id, message FROM toolguard_logs WHERE event_type = 'output.sanitized' ORDER BY _timestamp DESC",
+      "purpose": "Show redaction and prompt-injection sanitization evidence."
+    },
+    {
+      "name": "ToolGuard run drilldown",
+      "stream": "toolguard_logs",
+      "type": "sql",
+      "query": "SELECT _timestamp, level, event_type, trace_id, tool_call_id, message FROM toolguard_logs WHERE run_id = '<runId>' ORDER BY _timestamp ASC",
+      "purpose": "Inspect all redacted logs for one deterministic demo run."
+    },
+    {
+      "name": "ToolGuard trace waterfall",
+      "stream": "toolguard_traces",
+      "type": "sql",
+      "query": "SELECT trace_id, span_id, parent_span_id, name, start_time, end_time FROM toolguard_traces WHERE trace_id = '<traceId>' ORDER BY start_time ASC",
+      "purpose": "Follow one tool call through ToolGuard policy, execution, retry, and evidence events."
+    },
+    {
+      "name": "ToolGuard circuit opens",
+      "stream": "toolguard_logs",
+      "type": "sql",
+      "query": "SELECT run_id, trace_id, tool_call_id, message FROM toolguard_logs WHERE event_type = 'circuit.opened' ORDER BY _timestamp DESC",
+      "purpose": "Show circuit-breaker protection when failures repeat."
+    },
+    {
+      "name": "ToolGuard retry events",
+      "stream": "toolguard_logs",
+      "type": "sql",
+      "query": "SELECT run_id, trace_id, tool_call_id, message FROM toolguard_logs WHERE event_type LIKE 'retry.%' ORDER BY _timestamp DESC",
+      "purpose": "Inspect bounded retry behavior."
+    }
+  ]
+}

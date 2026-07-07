@@ -1,0 +1,40 @@
+groups:
+  - name: toolguard.local.rules
+    interval: 5s
+    rules:
+      - record: toolguard:events_rate5m
+        expr: rate(toolguard_events_total[5m])
+      - record: toolguard:failure_rate5m
+        expr: rate(toolguard_failures_total[5m])
+      - record: toolguard:sanitized_outputs_rate5m
+        expr: rate(toolguard_sanitized_outputs_total[5m])
+      - record: toolguard:open_circuits_rate5m
+        expr: rate(toolguard_open_circuits_total[5m])
+      - record: toolguard:policy_blocks_rate5m
+        expr: rate(toolguard_policy_blocks_total[5m])
+      - record: toolguard:tool_call_avg_duration_ms5m
+        expr: rate(toolguard_tool_call_duration_ms_total[5m]) / clamp_min(rate(toolguard_tool_call_duration_observations_total[5m]), 1)
+      - alert: ToolGuardCoreUnavailable
+        expr: up{job="toolguard-core"} == 0
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: ToolGuard Core metrics endpoint is unavailable
+          description: Start pnpm demo:openobserve so Prometheus can scrape http://127.0.0.1:3660/metrics.
+      - alert: ToolGuardFailureSpike
+        expr: toolguard:failure_rate5m > 0
+        for: 30s
+        labels:
+          severity: info
+        annotations:
+          summary: ToolGuard observed failed tool calls
+          description: Inspect Grafana logs or OpenObserve traces for the active run.
+      - alert: ToolGuardCircuitOpen
+        expr: toolguard:open_circuits_rate5m > 0
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: ToolGuard circuit breaker opened
+          description: Check circuit-open events and retry behavior in the demo telemetry.

@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     environment:
       ZO_ROOT_USER_EMAIL: ${OPENOBSERVE_ROOT_USER_EMAIL:-root@example.com}
-      ZO_ROOT_USER_PASSWORD: ${OPENOBSERVE_ROOT_USER_PASSWORD:-toolguard-local-demo}
+      ZO_ROOT_USER_PASSWORD: ${OPENOBSERVE_ROOT_USER_PASSWORD:?Set OPENOBSERVE_ROOT_USER_PASSWORD via .tmp/openobserve.env}
       ZO_DATA_DIR: /data
     ports:
       - "127.0.0.1:5080:5080"
@@ -27,8 +27,9 @@ services:
       - "127.0.0.1:14317:4317"
       - "127.0.0.1:14318:4318"
       - "127.0.0.1:18888:8888"
+      - "127.0.0.1:18889:8889"
     volumes:
-      - ./otel-collector-config.yml:/etc/otelcol/config.yml:ro
+      - ./otel-collector-config.yml:/etc/otelcol/config.yml:ro,z
     environment:
       OPENOBSERVE_AUTH_HEADER: ${OPENOBSERVE_AUTH_HEADER:-}
 
@@ -44,7 +45,8 @@ services:
     ports:
       - "127.0.0.1:39090:9090"
     volumes:
-      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro,z
+      - ../prometheus/rules:/etc/prometheus/rules:ro,z
       - prometheus-data:/prometheus
 
   loki:
@@ -55,7 +57,7 @@ services:
     ports:
       - "127.0.0.1:33100:3100"
     volumes:
-      - ../loki/loki-config.yml:/etc/loki/config.yml:ro
+      - ../loki/loki-config.yml:/etc/loki/config.yml:ro,z
       - loki-data:/loki
 
   promtail:
@@ -66,8 +68,8 @@ services:
     depends_on:
       - loki
     volumes:
-      - ../promtail/promtail-config.yml:/etc/promtail/config.yml:ro
-      - ../../runs:/workspace/runs:ro
+      - ../promtail/promtail-config.yml:/etc/promtail/config.yml:ro,z
+      - ../../runs:/workspace/runs:ro,z
 
   grafana:
     image: grafana/grafana:12.3.0
@@ -78,13 +80,13 @@ services:
       - loki
     environment:
       GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD via .tmp/openobserve.env}
       GF_USERS_DEFAULT_THEME: dark
     ports:
       - "127.0.0.1:33000:3000"
     volumes:
-      - ../grafana/provisioning:/etc/grafana/provisioning:ro
-      - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro,z
+      - ../grafana/dashboards:/var/lib/grafana/dashboards:ro,z
       - grafana-data:/var/lib/grafana
 
 volumes:

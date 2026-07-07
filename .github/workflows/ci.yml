@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pnpm install --frozen-lockfile
+      - run: python -m pip install --upgrade black coverage deptry mypy ruff
+      - run: pnpm docs:check
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - name: Test with duration summary
+        run: |
+          start=$(date +%s)
+          pnpm test:coverage
+          end=$(date +%s)
+          echo "Test duration: $((end - start))s" >> "$GITHUB_STEP_SUMMARY"
+      - run: pnpm quality
+      - name: Build with duration summary
+        run: |
+          start=$(date +%s)
+          pnpm build
+          end=$(date +%s)
+          echo "Build duration: $((end - start))s" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-reports
+          path: |
+            packages/**/coverage/**
+            packages/python-adapters/.coverage

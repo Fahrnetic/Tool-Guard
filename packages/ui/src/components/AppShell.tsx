@@ -44,9 +44,9 @@ export function AppShell({ active, items, coreState, runId, onSelect, children }
         {coreState === "degraded" ? (
           <div className="mx-auto max-w-7xl px-4 pb-3 sm:px-6 lg:px-8" role="status" aria-live="polite">
             <div className="rounded-2xl border border-warning/45 bg-warning/10 px-4 py-3 text-sm leading-6 text-warning">
-              Core recovery: check <code className="rounded bg-bg/50 px-1.5 py-0.5">http://127.0.0.1:3660/health</code>,
-              restart with <code className="rounded bg-bg/50 px-1.5 py-0.5">TOOLGUARD_CORE_PORT=3660 pnpm dev:core</code>,
-              then refresh. Current panels continue to show available cached, empty, or fixture-backed guidance.
+              Core recovery: check <code className="rounded bg-bg/50 px-1.5 py-0.5">http://127.0.0.1:3660/health</code>, restart with{" "}
+              <code className="rounded bg-bg/50 px-1.5 py-0.5">TOOLGUARD_CORE_PORT=3660 pnpm dev:core</code>, then refresh. Current panels
+              continue to show available cached, empty, or fixture-backed guidance.
             </div>
           </div>
         ) : null}
@@ -62,9 +62,7 @@ export function AppShell({ active, items, coreState, runId, onSelect, children }
                   aria-pressed={selected}
                   onClick={() => onSelect(item.id)}
                   className={`rounded-xl border px-3 py-2 text-sm font-medium transition hover:border-primary/50 hover:bg-primary/10 hover:text-text active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${
-                    selected
-                      ? "border-primary/45 bg-primary/15 text-primary"
-                      : "border-border bg-bg-panel/70 text-text-muted"
+                    selected ? "border-primary/45 bg-primary/15 text-primary" : "border-border bg-bg-panel/70 text-text-muted"
                   }`}
                 >
                   {item.label}

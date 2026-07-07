@@ -123,11 +123,7 @@ describe("policy simulator and integration verification core", () => {
       await verifyIntegrationRoute({ session, routeType: "cli-supervised" })
     ];
 
-    expect(receipts.map((receipt) => receipt.routeType)).toEqual([
-      "mcp-routed",
-      "sdk-wrapped-python",
-      "cli-supervised"
-    ]);
+    expect(receipts.map((receipt) => receipt.routeType)).toEqual(["mcp-routed", "sdk-wrapped-python", "cli-supervised"]);
     expect(receipts.every((receipt) => receipt.timestamp && receipt.checkedCapabilities.length >= 3)).toBe(true);
     expect(receipts.flatMap((receipt) => receipt.checkedCapabilities.map((capability) => capability.status))).not.toContain(
       "not-yet-verified"
@@ -252,9 +248,7 @@ describe("policy simulator and integration verification core", () => {
     const mcpRow = payload.routeCoverage.find((row) => row.routeType === "mcp-routed");
     expect(mcpRow).toMatchObject({ configured: false, available: false, producingEvidence: false });
     expect(payload.integrations.filter((integration) => integration.id === "cline" || integration.id === "roo-code")).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ claimLevel: "not-yet-verified", status: "not-yet-verified" })
-      ])
+      expect.arrayContaining([expect.objectContaining({ claimLevel: "not-yet-verified", status: "not-yet-verified" })])
     );
   });
 
@@ -335,9 +329,7 @@ describe("policy simulator and integration verification core", () => {
     const mcpRow = payload.routeCoverage.find((row) => row.routeType === "mcp-routed");
     expect(mcpRow).toMatchObject({ configured: true, available: true, producingEvidence: false });
     expect(payload.integrations.filter((integration) => integration.id === "cline" || integration.id === "roo-code")).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ claimLevel: "not-yet-verified", status: "not-yet-verified" })
-      ])
+      expect.arrayContaining([expect.objectContaining({ claimLevel: "not-yet-verified", status: "not-yet-verified" })])
     );
   });
 

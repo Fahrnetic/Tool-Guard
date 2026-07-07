@@ -40,7 +40,14 @@ export function RunIndexWorkbench({ payload, status, error }: RunIndexWorkbenchP
     return <StatePanel status="error" title="Run Index unavailable" message={error ?? "Core did not return the run index."} />;
   }
   if (!payload) {
-    return <StatePanel status="degraded" title="Run Index degraded" message="Core responded, but the run index payload was missing." action="Confirm `/api/run-index` is available on 127.0.0.1:3660." />;
+    return (
+      <StatePanel
+        status="degraded"
+        title="Run Index degraded"
+        message="Core responded, but the run index payload was missing."
+        action="Confirm `/api/run-index` is available on 127.0.0.1:3660."
+      />
+    );
   }
 
   return (
@@ -51,8 +58,8 @@ export function RunIndexWorkbench({ payload, status, error }: RunIndexWorkbenchP
             <StatusChip label="Core run index backed" tone="selected" />
             <h2 className="mt-3 text-2xl font-semibold text-text">Latest real failures and correlated attempts</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
-              This view reads Core&apos;s durable run index, highlights latest failed runs, and compares raw, mediated,
-              and repeated attempts when labels, commands, or tool targets provide a correlation key.
+              This view reads Core&apos;s durable run index, highlights latest failed runs, and compares raw, mediated, and repeated
+              attempts when labels, commands, or tool targets provide a correlation key.
             </p>
           </div>
           <div className="grid gap-2 rounded-2xl border border-border bg-bg/60 p-4 text-sm text-text-muted sm:grid-cols-3">
@@ -98,7 +105,11 @@ export function RunIndexWorkbench({ payload, status, error }: RunIndexWorkbenchP
               onChange={(event) => setFilters((current) => ({ ...current, timeWindow: event.target.value as RunIndexFilterWindow }))}
               className="min-h-11 rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text outline-none transition focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30"
             >
-              {filterWindows.map((window) => <option key={window.value} value={window.value}>{window.label}</option>)}
+              {filterWindows.map((window) => (
+                <option key={window.value} value={window.value}>
+                  {window.label}
+                </option>
+              ))}
             </select>
           </label>
           <button
@@ -120,7 +131,9 @@ export function RunIndexWorkbench({ payload, status, error }: RunIndexWorkbenchP
         />
       ) : (
         <div className="grid gap-4">
-          {filteredFailures.map((record) => <RunFailureCard key={record.runIndexRecordId} record={record} />)}
+          {filteredFailures.map((record) => (
+            <RunFailureCard key={record.runIndexRecordId} record={record} />
+          ))}
         </div>
       )}
 
@@ -129,12 +142,16 @@ export function RunIndexWorkbench({ payload, status, error }: RunIndexWorkbenchP
           <StatusChip label="Comparison: raw vs mediated vs repeated attempts" tone={comparisons.length > 0 ? "healthy" : "neutral"} />
           <h3 className="mt-3 text-xl font-semibold text-text">Correlated attempt comparison</h3>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            Groups use safe run labels first, then command or tool fingerprints. Raw direct runs, ToolGuard-mediated
-            routes, and repeated attempts are separated so retry loops and mediation changes are visible.
+            Groups use safe run labels first, then command or tool fingerprints. Raw direct runs, ToolGuard-mediated routes, and repeated
+            attempts are separated so retry loops and mediation changes are visible.
           </p>
         </div>
         {comparisons.length === 0 ? (
-          <StatePanel status="empty" title="No correlated attempts yet" message="Comparison appears once the index has at least two failures sharing a session, task, command, or tool fingerprint." />
+          <StatePanel
+            status="empty"
+            title="No correlated attempts yet"
+            message="Comparison appears once the index has at least two failures sharing a session, task, command, or tool fingerprint."
+          />
         ) : (
           comparisons.slice(0, 4).map((group) => <ComparisonGroupCard key={group.key} group={group} />)
         )}
@@ -143,7 +160,11 @@ export function RunIndexWorkbench({ payload, status, error }: RunIndexWorkbenchP
   );
 }
 
-export function filterRunIndexRecords(records: readonly RunIndexRecord[], filters: RunIndexFilters, now = new Date()): readonly RunIndexRecord[] {
+export function filterRunIndexRecords(
+  records: readonly RunIndexRecord[],
+  filters: RunIndexFilters,
+  now = new Date()
+): readonly RunIndexRecord[] {
   const threshold = thresholdFor(filters.timeWindow, now);
   const query = filters.toolOrStatus.trim().toLowerCase();
   return records.filter((record) => {
@@ -179,14 +200,16 @@ export function buildRunComparisons(records: readonly RunIndexRecord[]): readonl
       const raw = sorted.filter((record) => record.routeType === "direct");
       const mediated = sorted.filter((record) => record.routeType !== "direct");
       const repeated = repeatedFingerprintRecords(sorted);
-      return [{
-        key,
-        label: comparisonLabel(firstRecord),
-        raw,
-        mediated,
-        repeated,
-        records: sorted
-      }];
+      return [
+        {
+          key,
+          label: comparisonLabel(firstRecord),
+          raw,
+          mediated,
+          repeated,
+          records: sorted
+        }
+      ];
     })
     .filter((group) => group.records.length > 1 && ((group.raw.length > 0 && group.mediated.length > 0) || group.repeated.length > 0))
     .sort((a, b) => {
@@ -207,7 +230,9 @@ function RunFailureCard({ record }: { readonly record: RunIndexRecord }) {
             <StatusChip label={record.status} tone="failed" />
           </div>
           <h3 className="mt-3 text-xl font-semibold text-text">{record.runName}</h3>
-          <p className="mt-2 text-sm leading-6 text-text-muted">{record.firstFailure?.summary ?? "Failure was recorded without a first-failure summary."}</p>
+          <p className="mt-2 text-sm leading-6 text-text-muted">
+            {record.firstFailure?.summary ?? "Failure was recorded without a first-failure summary."}
+          </p>
         </div>
         <time className="font-mono text-xs text-text-dim">{record.startedAt}</time>
       </div>
@@ -242,7 +267,15 @@ function ComparisonGroupCard({ group }: { readonly group: RunComparisonGroup }) 
   );
 }
 
-function ComparisonLane({ title, records, empty }: { readonly title: string; readonly records: readonly RunIndexRecord[]; readonly empty: string }) {
+function ComparisonLane({
+  title,
+  records,
+  empty
+}: {
+  readonly title: string;
+  readonly records: readonly RunIndexRecord[];
+  readonly empty: string;
+}) {
   return (
     <section className="rounded-xl border border-border bg-bg/55 p-4">
       <h5 className="text-sm font-semibold text-text">{title}</h5>
@@ -266,7 +299,14 @@ function ComparisonLane({ title, records, empty }: { readonly title: string; rea
   );
 }
 
-function FilterSelect({ id, label, value, options, allLabel, onChange }: {
+function FilterSelect({
+  id,
+  label,
+  value,
+  options,
+  allLabel,
+  onChange
+}: {
   readonly id: string;
   readonly label: string;
   readonly value: string;
@@ -284,7 +324,11 @@ function FilterSelect({ id, label, value, options, allLabel, onChange }: {
         className="min-h-11 rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text outline-none transition focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30"
       >
         <option value="all">{allLabel}</option>
-        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
       </select>
     </label>
   );

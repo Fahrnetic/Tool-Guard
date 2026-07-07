@@ -1,6 +1,13 @@
 import { StatePanel } from "../components/StatePanel.js";
 import { StatusChip } from "../components/StatusChip.js";
-import { correlationKeys, selectionMatchesValues, type RawArtifactView, type ResourceStatus, type TopologySelection, type TracePayload } from "../lib/model.js";
+import {
+  correlationKeys,
+  selectionMatchesValues,
+  type RawArtifactView,
+  type ResourceStatus,
+  type TopologySelection,
+  type TracePayload
+} from "../lib/model.js";
 
 interface TraceExplorerProps {
   readonly payload?: TracePayload;
@@ -8,7 +15,11 @@ interface TraceExplorerProps {
   readonly error?: string;
   readonly selectedId?: string;
   readonly topologySelection?: TopologySelection;
-  readonly onSelectCorrelation?: (selection: { readonly id: string; readonly kind: string; readonly traceId?: string }) => void | Promise<void>;
+  readonly onSelectCorrelation?: (selection: {
+    readonly id: string;
+    readonly kind: string;
+    readonly traceId?: string;
+  }) => void | Promise<void>;
 }
 
 export function TraceExplorer({ payload, status, error, selectedId, topologySelection, onSelectCorrelation }: TraceExplorerProps) {
@@ -19,7 +30,13 @@ export function TraceExplorer({ payload, status, error, selectedId, topologySele
     return <StatePanel status="error" title="Trace Explorer unavailable" message={error ?? "Core did not return trace data."} />;
   }
   if (!payload || payload.status === "empty") {
-    return <StatePanel status="empty" title="No trace data" message="No run, trace, tool call, attempt, policy, or artifact IDs have been emitted yet." />;
+    return (
+      <StatePanel
+        status="empty"
+        title="No trace data"
+        message="No run, trace, tool call, attempt, policy, or artifact IDs have been emitted yet."
+      />
+    );
   }
 
   return (
@@ -27,11 +44,14 @@ export function TraceExplorer({ payload, status, error, selectedId, topologySele
       <div className="rounded-3xl border border-border bg-bg-elevated/80 p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <StatusChip label={payload.status === "degraded" ? "Partial trace data inspectable" : "Trace context preserved"} tone={payload.status === "degraded" ? "degraded" : "selected"} />
+            <StatusChip
+              label={payload.status === "degraded" ? "Partial trace data inspectable" : "Trace context preserved"}
+              tone={payload.status === "degraded" ? "degraded" : "selected"}
+            />
             <h2 className="mt-3 text-2xl font-semibold text-text">Trace Explorer</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
-              Selectable correlation fields preserve the parent-child path from harness to adapter, downstream server,
-              tool call, attempt, policy decision, and artifact.
+              Selectable correlation fields preserve the parent-child path from harness to adapter, downstream server, tool call, attempt,
+              policy decision, and artifact.
             </p>
           </div>
           <div className="rounded-2xl border border-border bg-bg-panel p-4">
@@ -42,7 +62,13 @@ export function TraceExplorer({ payload, status, error, selectedId, topologySele
       </div>
 
       {payload.warnings.map((warning) => (
-        <StatePanel key={warning} status="degraded" title="Partial trace" message={warning} action="Partial data remains available for inspection." />
+        <StatePanel
+          key={warning}
+          status="degraded"
+          title="Partial trace"
+          message={warning}
+          action="Partial data remains available for inspection."
+        />
       ))}
 
       <div className="grid gap-5 lg:grid-cols-[0.85fr_1.15fr]">
@@ -59,13 +85,17 @@ export function TraceExplorer({ payload, status, error, selectedId, topologySele
                   aria-pressed={selected}
                   onClick={() => void onSelectCorrelation?.({ id: control.id, kind: control.kind, traceId: payload.traceId })}
                   className={`rounded-xl border p-3 text-left transition active:scale-[0.99] focus-visible:border-primary disabled:opacity-50 ${
-                    selected ? "border-primary bg-primary/15 shadow-lg shadow-primary/10" : "border-border bg-bg/55 hover:border-primary/45 hover:bg-primary/5"
+                    selected
+                      ? "border-primary bg-primary/15 shadow-lg shadow-primary/10"
+                      : "border-border bg-bg/55 hover:border-primary/45 hover:bg-primary/5"
                   }`}
                 >
                   <span className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-text-dim">{control.label}</span>
                   <span className="mt-1 block break-all font-mono text-xs text-primary">{control.id}</span>
                   <span className="mt-2 block text-xs text-text-muted">
-                    {selected ? "Selected, trace data refetched for this context." : "Select to keep this context pinned and refetch related trace data."}
+                    {selected
+                      ? "Selected, trace data refetched for this context."
+                      : "Select to keep this context pinned and refetch related trace data."}
                   </span>
                 </button>
               );
@@ -115,7 +145,14 @@ export function TraceExplorer({ payload, status, error, selectedId, topologySele
             </thead>
             <tbody>
               {payload.events.map((event) => {
-                const highlighted = selectionMatchesValues(topologySelection, [event.eventId, event.traceId, event.toolCallId, event.attemptId, event.policyDecisionId, event.artifactId]);
+                const highlighted = selectionMatchesValues(topologySelection, [
+                  event.eventId,
+                  event.traceId,
+                  event.toolCallId,
+                  event.attemptId,
+                  event.policyDecisionId,
+                  event.artifactId
+                ]);
                 return (
                   <tr
                     key={event.eventId}
@@ -124,11 +161,15 @@ export function TraceExplorer({ payload, status, error, selectedId, topologySele
                       highlighted ? "border-primary bg-primary/10" : "border-transparent"
                     }`}
                   >
-                    <td className="border-b border-border/70 px-3 py-2"><StatusChip label={event.type} tone="neutral" /></td>
+                    <td className="border-b border-border/70 px-3 py-2">
+                      <StatusChip label={event.type} tone="neutral" />
+                    </td>
                     <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-text-muted">{event.occurredAt}</td>
                     <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-primary">{event.toolCallId ?? "none"}</td>
                     <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-primary">{event.attemptId ?? "none"}</td>
-                    <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-primary">{event.policyDecisionId ?? "none"}</td>
+                    <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-primary">
+                      {event.policyDecisionId ?? "none"}
+                    </td>
                   </tr>
                 );
               })}
@@ -141,20 +182,34 @@ export function TraceExplorer({ payload, status, error, selectedId, topologySele
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h3 className="text-lg font-semibold text-text">Raw artifact inspection</h3>
-            <p className="mt-1 text-sm text-text-muted">Stdout and stderr stay in separate panes with redacted content, line breaks, and truncation metadata.</p>
+            <p className="mt-1 text-sm text-text-muted">
+              Stdout and stderr stay in separate panes with redacted content, line breaks, and truncation metadata.
+            </p>
           </div>
           <StatusChip label={`${payload.rawArtifacts.length} artifacts`} tone={payload.rawArtifacts.length > 0 ? "selected" : "neutral"} />
         </div>
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          <RawArtifactPane title="Raw stdout" artifacts={payload.rawStdout} empty="No raw stdout artifact exists for this trace." topologySelection={topologySelection} />
-          <RawArtifactPane title="Raw stderr" artifacts={payload.rawStderr} empty="No raw stderr artifact exists for this trace." topologySelection={topologySelection} />
+          <RawArtifactPane
+            title="Raw stdout"
+            artifacts={payload.rawStdout}
+            empty="No raw stdout artifact exists for this trace."
+            topologySelection={topologySelection}
+          />
+          <RawArtifactPane
+            title="Raw stderr"
+            artifacts={payload.rawStderr}
+            empty="No raw stderr artifact exists for this trace."
+            topologySelection={topologySelection}
+          />
         </div>
       </section>
     </section>
   );
 }
 
-function buildCorrelationControls(payload: TracePayload): readonly { readonly kind: string; readonly label: string; readonly id: string }[] {
+function buildCorrelationControls(
+  payload: TracePayload
+): readonly { readonly kind: string; readonly label: string; readonly id: string }[] {
   const controls = correlationKeys.flatMap((key) => {
     const id = payload.correlation[key];
     return id ? [{ kind: key.replace("Id", ""), label: key, id }] : [];
@@ -168,7 +223,17 @@ function buildCorrelationControls(payload: TracePayload): readonly { readonly ki
   return [...controls, ...nodeControls];
 }
 
-function RawArtifactPane({ title, artifacts, empty, topologySelection }: { readonly title: string; readonly artifacts: readonly RawArtifactView[]; readonly empty: string; readonly topologySelection: TopologySelection | undefined }) {
+function RawArtifactPane({
+  title,
+  artifacts,
+  empty,
+  topologySelection
+}: {
+  readonly title: string;
+  readonly artifacts: readonly RawArtifactView[];
+  readonly empty: string;
+  readonly topologySelection: TopologySelection | undefined;
+}) {
   return (
     <section className="min-h-56 rounded-xl border border-border bg-bg p-4">
       <h4 className="text-sm font-semibold text-text">{title}</h4>
@@ -177,7 +242,12 @@ function RawArtifactPane({ title, artifacts, empty, topologySelection }: { reado
       ) : (
         <div className="mt-3 space-y-4">
           {artifacts.map((artifact) => {
-            const highlighted = selectionMatchesValues(topologySelection, [artifact.artifactId, artifact.traceId, artifact.toolCallId, artifact.relativePath]);
+            const highlighted = selectionMatchesValues(topologySelection, [
+              artifact.artifactId,
+              artifact.traceId,
+              artifact.toolCallId,
+              artifact.relativePath
+            ]);
             return (
               <article
                 key={artifact.artifactId}
@@ -187,8 +257,14 @@ function RawArtifactPane({ title, artifacts, empty, topologySelection }: { reado
                 }`}
               >
                 <div className="flex flex-wrap gap-2">
-                  <StatusChip label={artifact.truncated ? "truncated at output limit" : "not truncated"} tone={artifact.truncated ? "degraded" : "selected"} />
-                  <StatusChip label={artifact.redacted ? "redacted content" : "raw content"} tone={artifact.redacted ? "degraded" : "neutral"} />
+                  <StatusChip
+                    label={artifact.truncated ? "truncated at output limit" : "not truncated"}
+                    tone={artifact.truncated ? "degraded" : "selected"}
+                  />
+                  <StatusChip
+                    label={artifact.redacted ? "redacted content" : "raw content"}
+                    tone={artifact.redacted ? "degraded" : "neutral"}
+                  />
                 </div>
                 <dl className="mt-3 grid gap-2 text-xs text-text-muted sm:grid-cols-2">
                   <div>
@@ -197,7 +273,10 @@ function RawArtifactPane({ title, artifacts, empty, topologySelection }: { reado
                   </div>
                   <div>
                     <dt className="text-text-dim">bytes</dt>
-                    <dd className="font-mono">{artifact.byteLength}{artifact.outputLimitBytes ? `, limit ${artifact.outputLimitBytes}` : ""}</dd>
+                    <dd className="font-mono">
+                      {artifact.byteLength}
+                      {artifact.outputLimitBytes ? `, limit ${artifact.outputLimitBytes}` : ""}
+                    </dd>
                   </div>
                 </dl>
                 <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/70 bg-bg/80 p-3 text-xs leading-5 text-text-muted">

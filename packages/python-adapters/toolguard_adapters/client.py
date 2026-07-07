@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import json
 import hashlib
-import socket
+import json
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -69,9 +68,7 @@ class ToolGuardConfig:
     def redacted_observable_config(self) -> dict[str, Any]:
         parsed = urllib.parse.urlparse(self.sidecar_endpoint)
         return {
-            "sidecarEndpoint": urllib.parse.urlunparse(
-                (parsed.scheme, parsed.netloc, parsed.path, "", "", "")
-            ),
+            "sidecarEndpoint": urllib.parse.urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", "")),
             "timeoutSeconds": self.timeout_seconds,
             "harnessId": self.harness_id,
             "adapterId": self.adapter_id,
@@ -103,7 +100,10 @@ class ToolGuardSidecarClient:
         try:
             self.config.validate_local()
         except ValueError as exc:
-            return {"status": "failure", "failureCard": build_failure_card(tool_name, "sidecar_protocol_error", str(exc))}
+            return {
+                "status": "failure",
+                "failureCard": build_failure_card(tool_name, "sidecar_protocol_error", str(exc)),
+            }
 
         selected_correlation = correlation or Correlation(
             harness_id=self.config.harness_id,
@@ -140,18 +140,23 @@ class ToolGuardSidecarClient:
                 raw = response.read()
         except urllib.error.HTTPError as exc:
             raw = exc.read()
-        except (urllib.error.URLError, TimeoutError, socket.timeout, OSError) as exc:
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
             return {"status": "failure", "failureCard": build_failure_card(tool_name, "sidecar_unavailable", str(exc))}
 
         try:
             body = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            return {"status": "failure", "failureCard": build_failure_card(tool_name, "sidecar_protocol_error", str(exc))}
+            return {
+                "status": "failure",
+                "failureCard": build_failure_card(tool_name, "sidecar_protocol_error", str(exc)),
+            }
 
         if not isinstance(body, dict):
             return {
                 "status": "failure",
-                "failureCard": build_failure_card(tool_name, "sidecar_protocol_error", "sidecar response was not an object"),
+                "failureCard": build_failure_card(
+                    tool_name, "sidecar_protocol_error", "sidecar response was not an object"
+                ),
             }
         if body.get("protocolVersion") != SIDECAR_PROTOCOL_VERSION:
             return {
@@ -168,7 +173,7 @@ class ToolGuardSidecarClient:
         }
 
     def default_route_metadata(self, correlation: Correlation) -> dict[str, Any]:
-        trace_id = hashlib.sha256(f"{correlation.trace_id}:{self.config.adapter_id}".encode("utf-8")).hexdigest()[:32]
+        trace_id = hashlib.sha256(f"{correlation.trace_id}:{self.config.adapter_id}".encode()).hexdigest()[:32]
         tool_span = hashlib.sha256(correlation.tool_call_id.encode("utf-8")).hexdigest()[:16]
         return {
             "routeType": "sdk-wrapped-python",

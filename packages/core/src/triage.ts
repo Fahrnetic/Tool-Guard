@@ -32,7 +32,9 @@ export function buildTriagePayload(input: {
   }
   const groups = [...groupsByFingerprint.entries()]
     .map(([fingerprint, events]) => buildTriageGroup({ fingerprint, events, ledger: input.ledger, runId: input.runId, baseUrl }))
-    .sort((left, right) => severityRank(right.severity) - severityRank(left.severity) || right.lastOccurrence.localeCompare(left.lastOccurrence));
+    .sort(
+      (left, right) => severityRank(right.severity) - severityRank(left.severity) || right.lastOccurrence.localeCompare(left.lastOccurrence)
+    );
 
   return {
     runId: input.runId,
@@ -89,12 +91,14 @@ function buildTriageGroup(input: {
 }): TriageFailureGroup {
   const last = [...input.events].sort((left, right) => left.occurredAt.localeCompare(right.occurredAt)).at(-1);
   const card = last?.data as FailureCard;
-  const relatedLedger = input.ledger.filter((entry) => input.events.some((event) => event.toolCallId === entry.toolCallId || event.traceId === entry.traceId));
+  const relatedLedger = input.ledger.filter((entry) =>
+    input.events.some((event) => event.toolCallId === entry.toolCallId || event.traceId === entry.traceId)
+  );
   const evidenceLinks = safeEvidenceLinks(card.evidenceLinks, input.runId, input.baseUrl);
-  const topologyLinks = [
-    link("topology", "Topology node links", `${input.baseUrl}/api/topology/${encodeURIComponent(input.runId)}`)
-  ];
-  const timelineLinks = input.events.map((event) => link(event.eventId, `Timeline event ${event.eventId}`, `${input.baseUrl}/api/runs/latest#${encodeURIComponent(event.eventId)}`));
+  const topologyLinks = [link("topology", "Topology node links", `${input.baseUrl}/api/topology/${encodeURIComponent(input.runId)}`)];
+  const timelineLinks = input.events.map((event) =>
+    link(event.eventId, `Timeline event ${event.eventId}`, `${input.baseUrl}/api/runs/latest#${encodeURIComponent(event.eventId)}`)
+  );
   const rawArtifactLabels = evidenceLinks.map((evidence) => `${evidence.label}: ${evidence.artifactId}`);
   const severityResult = assignSeverity(card, input.events, relatedLedger);
   const nextSafeActions = buildNextSafeActions(card, severityResult.severity, relatedLedger);
@@ -125,7 +129,12 @@ function buildTriageGroup(input: {
       evidence: evidenceLinks
     }
   ];
-  const state: TriageState = input.events.length > 1 ? "grouped" : severityResult.severity === "critical" || severityResult.severity === "high" ? "ready-to-file" : "new";
+  const state: TriageState =
+    input.events.length > 1
+      ? "grouped"
+      : severityResult.severity === "critical" || severityResult.severity === "high"
+        ? "ready-to-file"
+        : "new";
   return {
     fingerprint: input.fingerprint,
     count: input.events.length,
@@ -166,12 +175,7 @@ function buildTriageGroup(input: {
 }
 
 function failureFingerprint(card: FailureCard): string {
-  return [
-    card.toolName,
-    card.failureType,
-    card.failureCause,
-    card.failureBoundary
-  ].join(":");
+  return [card.toolName, card.failureType, card.failureCause, card.failureBoundary].join(":");
 }
 
 function assignSeverity(
@@ -189,11 +193,23 @@ function assignSeverity(
     score += 4;
     factors.push("secret redaction risk");
   }
-  if (card.retryLoopFinding?.classification === "loop-detected" || events.length > 1 || card.contextImpact.duplicateRetryContext.repeatedFingerprintCount > 1) {
+  if (
+    card.retryLoopFinding?.classification === "loop-detected" ||
+    events.length > 1 ||
+    card.contextImpact.duplicateRetryContext.repeatedFingerprintCount > 1
+  ) {
     score += 3;
     factors.push("repeated failure fingerprint or retry loop");
   }
-  if (ledger.some((entry) => entry.effectState === "unknown" || entry.reversibility === "irreversible-risk" || entry.blastRadius.label === "workspace-risk" || entry.blastRadius.label === "system-risk")) {
+  if (
+    ledger.some(
+      (entry) =>
+        entry.effectState === "unknown" ||
+        entry.reversibility === "irreversible-risk" ||
+        entry.blastRadius.label === "workspace-risk" ||
+        entry.blastRadius.label === "system-risk"
+    )
+  ) {
     score += 3;
     factors.push("suspected side effect or unknown impact");
   }
@@ -208,14 +224,12 @@ function assignSeverity(
   return { severity: "low", factors };
 }
 
-function buildNextSafeActions(
-  card: FailureCard,
-  severity: TriageSeverity,
-  ledger: readonly SideEffectLedgerEntry[]
-): readonly string[] {
+function buildNextSafeActions(card: FailureCard, severity: TriageSeverity, ledger: readonly SideEffectLedgerEntry[]): readonly string[] {
   const actions = [...card.safeRecoveryOptions];
-  if (card.doNotRetrySameCall) actions.unshift("Do not retry the identical call until inputs, cwd, policy, or downstream health are changed.");
-  if (severity === "critical" || severity === "high") actions.push("Export this issue packet and attach contained local evidence links before handoff.");
+  if (card.doNotRetrySameCall)
+    actions.unshift("Do not retry the identical call until inputs, cwd, policy, or downstream health are changed.");
+  if (severity === "critical" || severity === "high")
+    actions.push("Export this issue packet and attach contained local evidence links before handoff.");
   if (ledger.some((entry) => entry.observedImpact?.rollbackGuidance.length)) {
     actions.push("Review observed-impact rollback guidance before replaying.");
   }
@@ -225,9 +239,16 @@ function buildNextSafeActions(
 
 function impactAnswer(card: FailureCard, ledger: readonly SideEffectLedgerEntry[]): string {
   if (ledger.length === 0) {
-    return card.sideEffectSummary ?? "No side-effect ledger rows are linked to this failure; impact is currently unknown or contained by policy.";
+    return (
+      card.sideEffectSummary ?? "No side-effect ledger rows are linked to this failure; impact is currently unknown or contained by policy."
+    );
   }
-  return ledger.map((entry) => `${entry.effectState} ${entry.targetType}, blast radius ${entry.blastRadius.label} (${entry.blastRadius.score}). ${entry.causalClaim}`).join(" ");
+  return ledger
+    .map(
+      (entry) =>
+        `${entry.effectState} ${entry.targetType}, blast radius ${entry.blastRadius.label} (${entry.blastRadius.score}). ${entry.causalClaim}`
+    )
+    .join(" ");
 }
 
 function wasteAnswer(card: FailureCard, count: number): string {
@@ -237,7 +258,13 @@ function wasteAnswer(card: FailureCard, count: number): string {
 }
 
 function safeEvidenceLinks(links: readonly EvidenceLink[], runId: StableId, baseUrl: string): readonly EvidenceLink[] {
-  return links.map((linkItem) => link(linkItem.artifactId, linkItem.label, `${baseUrl}/api/reports/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(linkItem.artifactId)}`));
+  return links.map((linkItem) =>
+    link(
+      linkItem.artifactId,
+      linkItem.label,
+      `${baseUrl}/api/reports/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(linkItem.artifactId)}`
+    )
+  );
 }
 
 function buildIssuePacketMarkdown(payload: TriagePayload): string {
@@ -297,11 +324,15 @@ function buildGroupIssueMarkdown(runId: StableId, fingerprint: string, group: Tr
     "",
     "### Evidence links",
     "",
-    ...[...group.topologyLinks, ...group.timelineLinks, ...group.evidenceLinks].map((evidence) => `- [${evidence.label}](${evidence.href})`),
+    ...[...group.topologyLinks, ...group.timelineLinks, ...group.evidenceLinks].map(
+      (evidence) => `- [${evidence.label}](${evidence.href})`
+    ),
     "",
     "### Raw artifact labels",
     "",
-    ...(group.rawArtifactLabels.length ? group.rawArtifactLabels.map((label) => `- ${label}`) : ["- No raw artifact labels linked to this group."]),
+    ...(group.rawArtifactLabels.length
+      ? group.rawArtifactLabels.map((label) => `- ${label}`)
+      : ["- No raw artifact labels linked to this group."]),
     "",
     "### Severity factors",
     "",

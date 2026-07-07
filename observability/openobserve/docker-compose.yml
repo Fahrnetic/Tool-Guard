@@ -1,0 +1,94 @@
+services:
+  openobserve:
+    image: public.ecr.aws/zinclabs/openobserve:latest
+    container_name: toolguard-openobserve
+    restart: unless-stopped
+    environment:
+      ZO_ROOT_USER_EMAIL: ${OPENOBSERVE_ROOT_USER_EMAIL:-root@example.com}
+      ZO_ROOT_USER_PASSWORD: ${OPENOBSERVE_ROOT_USER_PASSWORD:-toolguard-local-demo}
+      ZO_DATA_DIR: /data
+    ports:
+      - "127.0.0.1:5080:5080"
+    volumes:
+      - openobserve-data:/data
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.154.0
+    container_name: toolguard-otel-collector
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol/config.yml"]
+    depends_on:
+      - openobserve
+      - prometheus
+      - loki
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:14317:4317"
+      - "127.0.0.1:14318:4318"
+      - "127.0.0.1:18888:8888"
+    volumes:
+      - ./otel-collector-config.yml:/etc/otelcol/config.yml:ro
+    environment:
+      OPENOBSERVE_AUTH_HEADER: ${OPENOBSERVE_AUTH_HEADER:-}
+
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    container_name: toolguard-prometheus
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--web.listen-address=0.0.0.0:9090"
+    ports:
+      - "127.0.0.1:39090:9090"
+    volumes:
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+
+  loki:
+    image: grafana/loki:3.6.3
+    container_name: toolguard-loki
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/config.yml"]
+    ports:
+      - "127.0.0.1:33100:3100"
+    volumes:
+      - ../loki/loki-config.yml:/etc/loki/config.yml:ro
+      - loki-data:/loki
+
+  promtail:
+    image: grafana/promtail:3.6.3
+    container_name: toolguard-promtail
+    restart: unless-stopped
+    command: ["-config.file=/etc/promtail/config.yml"]
+    depends_on:
+      - loki
+    volumes:
+      - ../promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - ../../runs:/workspace/runs:ro
+
+  grafana:
+    image: grafana/grafana:12.3.0
+    container_name: toolguard-grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+      - loki
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_DEFAULT_THEME: dark
+    ports:
+      - "127.0.0.1:33000:3000"
+    volumes:
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+
+volumes:
+  openobserve-data:
+  prometheus-data:
+  loki-data:
+  grafana-data:

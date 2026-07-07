@@ -1,0 +1,13 @@
+deploymentObservability:
+  dashboards:
+    - name: ToolGuard local Core health
+      url: http://127.0.0.1:3660/health
+    - name: ToolGuard local metrics
+      url: http://127.0.0.1:3660/metrics
+  annotations:
+    source: GitHub Actions release workflow
+    workflow: .github/workflows/release.yml
+  impactChecks:
+    - pnpm verify
+    - pnpm size
+    - curl http://127.0.0.1:3660/health

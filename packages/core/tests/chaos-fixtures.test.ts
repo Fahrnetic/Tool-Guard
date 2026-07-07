@@ -71,11 +71,7 @@ function expectFailureCard(result: ToolResult | FailureCard, failureType: Failur
   return failure;
 }
 
-async function expectEvidenceLinksResolve(
-  session: CoreSession,
-  events: readonly CoreEvent[],
-  failure: FailureCard
-): Promise<void> {
+async function expectEvidenceLinksResolve(session: CoreSession, events: readonly CoreEvent[], failure: FailureCard): Promise<void> {
   const artifactIds = new Set(
     events
       .filter((event) => event.type === "evidence.artifact.created")

@@ -5,9 +5,7 @@ import type { TopologyPayload } from "../src/lib/model.js";
 
 describe("Failure Topology Map demo states", () => {
   it("renders a meaningful selectable empty fixture state", () => {
-    const html = renderToStaticMarkup(
-      <FailureTopologyMap topology={emptyTopology} selectedRunId="demo-empty" status="ready" />
-    );
+    const html = renderToStaticMarkup(<FailureTopologyMap topology={emptyTopology} selectedRunId="demo-empty" status="ready" />);
 
     expect(html).toContain("Topology demo states");
     expect(html).toContain("Empty fixture run");
@@ -15,19 +13,17 @@ describe("Failure Topology Map demo states", () => {
     expect(html).toContain("deterministic empty topology fixture is loaded");
     expect(html).toContain("What would appear here");
     expect(html).toContain("route mocks");
-    expect(html).toContain("aria-checked=\"true\"");
+    expect(html).toContain('aria-checked="true"');
   });
 
   it("renders a capture-friendly loading skeleton selector state", () => {
-    const html = renderToStaticMarkup(
-      <FailureTopologyMap selectedRunId="demo-loading" status="loading" />
-    );
+    const html = renderToStaticMarkup(<FailureTopologyMap selectedRunId="demo-loading" status="loading" />);
 
     expect(html).toContain("Loading Failure Topology");
     expect(html).toContain("/api/topology/demo-loading");
     expect(html).toContain("Loading skeleton demo");
     expect(html).toContain("animate-pulse");
-    expect(html).toContain("aria-checked=\"true\"");
+    expect(html).toContain('aria-checked="true"');
   });
 });
 

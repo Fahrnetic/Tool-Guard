@@ -279,7 +279,9 @@ function mcpIntegration(id: string, name: string): IntegrationView {
   };
 }
 
-function receiptFor(scope: Partial<Pick<VerificationReceipt, "hostId" | "hostFamily" | "supportedHostIds" | "configHash">>): VerificationReceipt {
+function receiptFor(
+  scope: Partial<Pick<VerificationReceipt, "hostId" | "hostFamily" | "supportedHostIds" | "configHash">>
+): VerificationReceipt {
   return {
     receiptId: "receipt_test",
     runId: "run_test",

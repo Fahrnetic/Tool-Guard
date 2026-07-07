@@ -33,9 +33,7 @@ describe("Harness Integrations workbench interactions", () => {
   });
 
   it("switches harness and platform selectors while keeping receipts scoped to the exact passport", async () => {
-    vi.mocked(verifyIntegration)
-      .mockResolvedValueOnce(clineReceipt)
-      .mockResolvedValueOnce(rooReceipt);
+    vi.mocked(verifyIntegration).mockResolvedValueOnce(clineReceipt).mockResolvedValueOnce(rooReceipt);
     vi.mocked(exportBundle).mockResolvedValue({
       runId: "run_integrations",
       bundleDir: "/tmp/toolguard/run_integrations/bundle",
@@ -54,17 +52,19 @@ describe("Harness Integrations workbench interactions", () => {
     expect(selectedSnippetText()).toContain('"autoApprove": []');
 
     await clickProbe();
-    expect(vi.mocked(verifyIntegration)).toHaveBeenLastCalledWith(expect.objectContaining({
-      routeType: "mcp-routed",
-      integrationId: "cline",
-      hostId: "cline",
-      hostName: "Cline",
-      hostFamily: "cline-roo-style",
-      supportedHostIds: ["cline"],
-      platform: "posix",
-      transport: "stdio",
-      configHash: expect.stringMatching(/^fnv1a-/)
-    }));
+    expect(vi.mocked(verifyIntegration)).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        routeType: "mcp-routed",
+        integrationId: "cline",
+        hostId: "cline",
+        hostName: "Cline",
+        hostFamily: "cline-roo-style",
+        supportedHostIds: ["cline"],
+        platform: "posix",
+        transport: "stdio",
+        configHash: expect.stringMatching(/^fnv1a-/)
+      })
+    );
     expect(selectedWizardText()).toContain("Cline-specific virtual routed tool evidence probe");
     expect(selectedWizardText()).toContain("Coverage passport");
     expect(selectedWizardText()).toContain("Friendly diagnostic record");
@@ -87,17 +87,19 @@ describe("Harness Integrations workbench interactions", () => {
     expect(selectedSnippetText()).toContain('"alwaysAllow": []');
 
     await clickProbe();
-    expect(vi.mocked(verifyIntegration)).toHaveBeenLastCalledWith(expect.objectContaining({
-      routeType: "mcp-routed",
-      integrationId: "roo-code",
-      hostId: "roo-code",
-      hostName: "Roo Code",
-      hostFamily: "cline-roo-style",
-      supportedHostIds: ["roo-code"],
-      platform: "powershell",
-      transport: "stdio",
-      configHash: expect.stringMatching(/^fnv1a-/)
-    }));
+    expect(vi.mocked(verifyIntegration)).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        routeType: "mcp-routed",
+        integrationId: "roo-code",
+        hostId: "roo-code",
+        hostName: "Roo Code",
+        hostFamily: "cline-roo-style",
+        supportedHostIds: ["roo-code"],
+        platform: "powershell",
+        transport: "stdio",
+        configHash: expect.stringMatching(/^fnv1a-/)
+      })
+    );
     expect(selectedWizardText()).toContain("Roo-specific virtual routed tool evidence probe");
     expect(selectedWizardText()).toContain("Roo Code on powershell");
     expect(selectedWizardText()).not.toContain("Cline-specific virtual routed tool evidence probe");
@@ -114,12 +116,14 @@ describe("Harness Integrations workbench interactions", () => {
     await clickExportBundle();
     expect(vi.mocked(exportBundle)).toHaveBeenCalledTimes(1);
     expect(dom?.window.document.body.textContent).toContain("Safe evidence bundle ready: manifest valid");
-    expect(dom?.window.document.body.textContent).toContain("Redacted visibility labels, route receipts, passports, and diagnostics are included.");
+    expect(dom?.window.document.body.textContent).toContain(
+      "Redacted visibility labels, route receipts, passports, and diagnostics are included."
+    );
     expect(dom?.window.document.body.textContent).not.toContain("ready for report export");
   });
 
   function renderWorkbench(): void {
-    dom = new JSDOM("<!doctype html><html><body><div id=\"root\"></div></body></html>", {
+    dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
       url: "http://127.0.0.1:3661"
     });
     globalThis.window = dom.window as unknown as Window & typeof globalThis;
@@ -186,10 +190,7 @@ const payload: IntegrationsPayload = {
       checks: [{ label: "adapter availability", state: "available", evidence: "Route-level MCP receipt recorded." }]
     }
   ],
-  integrations: [
-    mcpIntegration("cline", "Cline", ["cline"]),
-    mcpIntegration("roo-code", "Roo Code", ["roo-code"])
-  ]
+  integrations: [mcpIntegration("cline", "Cline", ["cline"]), mcpIntegration("roo-code", "Roo Code", ["roo-code"])]
 };
 
 const clineReceipt: VerificationReceipt = {

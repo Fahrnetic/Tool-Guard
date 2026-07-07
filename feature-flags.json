@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "flags": [
+    {
+      "key": "toolguard.ui.route-comparison",
+      "owner": "area: ui",
+      "createdAt": "2026-07-07",
+      "expiresAt": "2026-10-07",
+      "description": "Gate route comparison UI experiments."
+    },
+    {
+      "key": "toolguard.core.visibility-imports",
+      "owner": "area: core",
+      "createdAt": "2026-07-07",
+      "expiresAt": "2026-10-07",
+      "description": "Gate imported visibility evidence paths."
+    }
+  ]
+}

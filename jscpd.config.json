@@ -1,0 +1,15 @@
+{
+  "threshold": 1,
+  "minLines": 35,
+  "minTokens": 120,
+  "reporters": ["console"],
+  "ignore": [
+    "**/dist/**",
+    "**/node_modules/**",
+    "**/runs/**",
+    "**/coverage/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "packages/python-adapters/tests/**"
+  ]
+}

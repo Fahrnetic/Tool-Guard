@@ -99,22 +99,16 @@ export class SdkDownstreamMcpServer implements DownstreamMcpServer {
 
   async callTool(context: DownstreamMcpCallContext): Promise<JsonValue> {
     const client = this.#requireClient();
-    const result = (await client.callTool(
-      { name: context.toolName, arguments: context.args },
-      undefined,
-      { signal: context.signal }
-    )) as CallToolResult;
+    const result = (await client.callTool({ name: context.toolName, arguments: context.args }, undefined, {
+      signal: context.signal
+    })) as CallToolResult;
     if (result.isError) {
-      throw new ClassifiedToolError(
-        "unknown",
-        "Downstream MCP tool returned an error result envelope.",
-        [
-          `downstreamServerId: ${this.serverId}`,
-          `toolName: ${context.toolName}`,
-          `mcpIsError: ${String(result.isError)}`,
-          `safeResultSummary: ${summarizeMcpErrorResult(result)}`
-        ]
-      );
+      throw new ClassifiedToolError("unknown", "Downstream MCP tool returned an error result envelope.", [
+        `downstreamServerId: ${this.serverId}`,
+        `toolName: ${context.toolName}`,
+        `mcpIsError: ${String(result.isError)}`,
+        `safeResultSummary: ${summarizeMcpErrorResult(result)}`
+      ]);
     }
     return normalizeJsonObject(result.structuredContent ?? result);
   }
@@ -489,7 +483,10 @@ function normalizeMcpInputSchema(schema: JsonSchema): Tool["inputSchema"] {
   };
 }
 
-function jsonSchemaToZodInputSchema(schema: { readonly properties?: unknown; readonly required?: readonly string[] }): Record<string, ZodType> {
+function jsonSchemaToZodInputSchema(schema: {
+  readonly properties?: unknown;
+  readonly required?: readonly string[];
+}): Record<string, ZodType> {
   const properties = isRecord(schema.properties) ? schema.properties : {};
   const required = new Set(Array.isArray(schema.required) ? schema.required : []);
   const shape: Record<string, ZodType> = {};

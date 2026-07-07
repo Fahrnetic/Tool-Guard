@@ -617,12 +617,16 @@ export interface RunHealthCommandCenterSummary {
 
 export function summarizeToolOps(run: LatestRunPayload | undefined, health: HealthPayload | undefined): ToolOpsSummary {
   const events = run?.events ?? [];
-  const reportLinks = [...new Set(events
-    .filter((event) => event.type === "report.exported")
-    .flatMap((event) => {
-      const data = event.data;
-      return data && "reportHtml" in data && typeof data.reportHtml === "string" ? [data.reportHtml] : [];
-    }))];
+  const reportLinks = [
+    ...new Set(
+      events
+        .filter((event) => event.type === "report.exported")
+        .flatMap((event) => {
+          const data = event.data;
+          return data && "reportHtml" in data && typeof data.reportHtml === "string" ? [data.reportHtml] : [];
+        })
+    )
+  ];
   const correlationIds = [
     run?.runId,
     events.find((event) => event.traceId)?.traceId,
@@ -688,7 +692,8 @@ export function summarizeCommandCenter(input: {
       detail: input.topology
         ? `${input.topology.summary.nodes} nodes, ${input.topology.summary.edges} edges, ${input.topology.generatedFrom.eventCount} source events.`
         : "Run topology appears after Core returns `/api/topology/latest`.",
-      tone: failedNodes > 0 ? "failed" : blockedNodes > 0 ? "blocked" : retryLoopNodes > 0 ? "retry" : input.topology ? "healthy" : "neutral"
+      tone:
+        failedNodes > 0 ? "failed" : blockedNodes > 0 ? "blocked" : retryLoopNodes > 0 ? "retry" : input.topology ? "healthy" : "neutral"
     },
     sideEffectRisk: {
       label: input.topology
@@ -705,9 +710,10 @@ export function summarizeCommandCenter(input: {
     },
     retries: {
       label: retryLoopNodes > 0 ? "Retry loop contained" : retryEvents > 0 ? `${retryEvents} bounded retries` : "No retry loop",
-      detail: retryEvents > 0
-        ? `${retryEvents} retry event${retryEvents === 1 ? "" : "s"} recorded with Core policy evidence.`
-        : "No scheduled retry events are present in the current run.",
+      detail:
+        retryEvents > 0
+          ? `${retryEvents} retry event${retryEvents === 1 ? "" : "s"} recorded with Core policy evidence.`
+          : "No scheduled retry events are present in the current run.",
       tone: retryLoopNodes > 0 ? "retry" : retryEvents > 0 ? "warning" : "healthy"
     },
     policyDecisions: {
@@ -715,7 +721,12 @@ export function summarizeCommandCenter(input: {
       detail: input.policies
         ? `Preview ${input.policies.preview.decision} with ${input.policies.rules.length} visible rule summaries.`
         : "Policy decisions will appear after Core returns policy data.",
-      tone: input.policies?.preview.decision === "block" || input.policies?.preview.decision === "fail-fast" ? "blocked" : input.policies ? "healthy" : "neutral"
+      tone:
+        input.policies?.preview.decision === "block" || input.policies?.preview.decision === "fail-fast"
+          ? "blocked"
+          : input.policies
+            ? "healthy"
+            : "neutral"
     },
     evidenceReadiness: {
       label: evidenceReady ? "Evidence ready" : "Evidence pending",
@@ -729,7 +740,11 @@ export function summarizeCommandCenter(input: {
   };
 }
 
-function statusSummary(status: ResourceStatus, failedHealthRows: number, degradedHealthRows: number): RunHealthCommandCenterSummary["currentStatus"] {
+function statusSummary(
+  status: ResourceStatus,
+  failedHealthRows: number,
+  degradedHealthRows: number
+): RunHealthCommandCenterSummary["currentStatus"] {
   if (status === "loading") {
     return {
       label: "Loading Core data",

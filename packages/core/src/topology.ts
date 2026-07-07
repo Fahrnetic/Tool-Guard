@@ -2,14 +2,7 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { redactStringWithSummary } from "./redaction.js";
 import type { CoreEvent } from "./events.js";
-import type {
-  EvidenceArtifact,
-  FailureCard,
-  JsonObject,
-  JsonValue,
-  PolicyDecision,
-  SideEffectLedgerEntry
-} from "./types.js";
+import type { EvidenceArtifact, FailureCard, JsonObject, JsonValue, PolicyDecision, SideEffectLedgerEntry } from "./types.js";
 
 export type TopologyNodeType =
   | "harness"
@@ -23,13 +16,7 @@ export type TopologyNodeType =
   | "artifact"
   | "report";
 
-export type TopologyEdgeType =
-  | "routed-through"
-  | "blocked-by"
-  | "retried-as"
-  | "sanitized-to"
-  | "produced-artifact"
-  | "caused-by";
+export type TopologyEdgeType = "routed-through" | "blocked-by" | "retried-as" | "sanitized-to" | "produced-artifact" | "caused-by";
 
 export type TopologyNodeStatus = "healthy" | "degraded" | "failed" | "blocked" | "retry-loop" | "evidence-ready";
 
@@ -162,7 +149,14 @@ export function buildRunTopology(input: {
         correlation: correlationFromEvent(event)
       });
       if (event.attemptId) {
-        addEdge(edges, "caused-by", attemptNodeId(event.attemptId), policyNodeId(event.data.policyDecisionId), "evaluated by policy", event);
+        addEdge(
+          edges,
+          "caused-by",
+          attemptNodeId(event.attemptId),
+          policyNodeId(event.data.policyDecisionId),
+          "evaluated by policy",
+          event
+        );
       }
       if ((event.data.decision === "block" || event.data.decision === "fail-fast") && event.attemptId) {
         addEdge(edges, "blocked-by", attemptNodeId(event.attemptId), policyNodeId(event.data.policyDecisionId), "blocked by policy", event);
@@ -179,7 +173,11 @@ export function buildRunTopology(input: {
         artifactIds: [event.data.artifactId],
         correlation: correlationFromEvent(event)
       });
-      const source = event.attemptId ? attemptNodeId(event.attemptId) : event.toolCallId ? toolNodeId(event.downstreamServerId, event.toolCallId) : undefined;
+      const source = event.attemptId
+        ? attemptNodeId(event.attemptId)
+        : event.toolCallId
+          ? toolNodeId(event.downstreamServerId, event.toolCallId)
+          : undefined;
       if (source) {
         addEdge(edges, "produced-artifact", source, artifactNodeId(event.data.artifactId), "produced artifact", event, {
           artifactIds: [event.data.artifactId]
@@ -247,15 +245,31 @@ export function buildRunTopology(input: {
       artifactIds: entry.artifactIds,
       correlation: correlationFromLedger(entry)
     });
-    addEdge(edges, "caused-by", sideEffectNodeId(entry.ledgerId), attemptNodeId(entry.attemptId), "side effect caused by attempt", undefined, {
-      ledgerIds: [entry.ledgerId],
-      artifactIds: entry.artifactIds
-    });
-    for (const artifactId of entry.artifactIds) {
-      addEdge(edges, "produced-artifact", sideEffectNodeId(entry.ledgerId), artifactNodeId(artifactId), "side effect evidenced by artifact", undefined, {
+    addEdge(
+      edges,
+      "caused-by",
+      sideEffectNodeId(entry.ledgerId),
+      attemptNodeId(entry.attemptId),
+      "side effect caused by attempt",
+      undefined,
+      {
         ledgerIds: [entry.ledgerId],
-        artifactIds: [artifactId]
-      });
+        artifactIds: entry.artifactIds
+      }
+    );
+    for (const artifactId of entry.artifactIds) {
+      addEdge(
+        edges,
+        "produced-artifact",
+        sideEffectNodeId(entry.ledgerId),
+        artifactNodeId(artifactId),
+        "side effect evidenced by artifact",
+        undefined,
+        {
+          ledgerIds: [entry.ledgerId],
+          artifactIds: [artifactId]
+        }
+      );
     }
   }
 
@@ -371,7 +385,7 @@ function addCorrelationPath(
       correlation: correlationFromEvent(event)
     });
   }
-  if (event.toolCallId || event.data && isToolResultLike(event.data)) {
+  if (event.toolCallId || (event.data && isToolResultLike(event.data))) {
     const toolName = toolNameFromEvent(event, toolNamesByCall);
     const id = toolNodeId(event.downstreamServerId, toolName);
     addNode(nodes, {
@@ -399,13 +413,34 @@ function addCorrelationPath(
     addEdge(edges, "routed-through", harnessNodeId(event.harnessId), adapterNodeId(event.adapterId), "routed through adapter", event);
   }
   if (event.adapterId && event.downstreamServerId) {
-    addEdge(edges, "routed-through", adapterNodeId(event.adapterId), serverNodeId(event.downstreamServerId), "routed to downstream server", event);
+    addEdge(
+      edges,
+      "routed-through",
+      adapterNodeId(event.adapterId),
+      serverNodeId(event.downstreamServerId),
+      "routed to downstream server",
+      event
+    );
   }
   if (event.downstreamServerId && event.toolCallId) {
-    addEdge(edges, "routed-through", serverNodeId(event.downstreamServerId), toolNodeId(event.downstreamServerId, toolNameFromEvent(event, toolNamesByCall)), "routed to downstream tool", event);
+    addEdge(
+      edges,
+      "routed-through",
+      serverNodeId(event.downstreamServerId),
+      toolNodeId(event.downstreamServerId, toolNameFromEvent(event, toolNamesByCall)),
+      "routed to downstream tool",
+      event
+    );
   }
   if (event.toolCallId && event.attemptId) {
-    addEdge(edges, "routed-through", toolNodeId(event.downstreamServerId, toolNameFromEvent(event, toolNamesByCall)), attemptNodeId(event.attemptId), "executed as attempt", event);
+    addEdge(
+      edges,
+      "routed-through",
+      toolNodeId(event.downstreamServerId, toolNameFromEvent(event, toolNamesByCall)),
+      attemptNodeId(event.attemptId),
+      "executed as attempt",
+      event
+    );
   }
 }
 
@@ -425,19 +460,17 @@ function addNode(
   }
 ): void {
   const current = nodes.get(input.id);
-  const node =
-    current ??
-    {
-      id: input.id,
-      type: input.type,
-      label: input.label,
-      status: input.status,
-      summary: input.summary,
-      correlation: {},
-      eventIds: new Set<string>(),
-      ledgerIds: new Set<string>(),
-      artifactIds: new Set<string>()
-    };
+  const node = current ?? {
+    id: input.id,
+    type: input.type,
+    label: input.label,
+    status: input.status,
+    summary: input.summary,
+    correlation: {},
+    eventIds: new Set<string>(),
+    ledgerIds: new Set<string>(),
+    artifactIds: new Set<string>()
+  };
   node.status = strongerStatus(node.status, input.status);
   node.summary = strongerStatus(node.status, input.status) === input.status ? input.summary : node.summary;
   Object.assign(node.correlation, input.correlation ?? {});
@@ -459,18 +492,16 @@ function addEdge(
 ): void {
   if (source === target) return;
   const id = `${type}:${source}->${target}`;
-  const edge =
-    edges.get(id) ??
-    {
-      id,
-      type,
-      source,
-      target,
-      label,
-      eventIds: new Set<string>(),
-      ledgerIds: new Set<string>(),
-      artifactIds: new Set<string>()
-    };
+  const edge = edges.get(id) ?? {
+    id,
+    type,
+    source,
+    target,
+    label,
+    eventIds: new Set<string>(),
+    ledgerIds: new Set<string>(),
+    artifactIds: new Set<string>()
+  };
   if (event) edge.eventIds.add(event.eventId);
   for (const ledgerId of input.ledgerIds ?? []) edge.ledgerIds.add(ledgerId);
   for (const artifactId of input.artifactIds ?? []) edge.artifactIds.add(artifactId);
@@ -511,11 +542,7 @@ function sourceEventsFor(events: readonly CoreEvent[], runId: string): CoreEvent
     .sort((a, b) => a.sequence - b.sequence || a.eventId.localeCompare(b.eventId));
 }
 
-function sourceLedgerFor(
-  ledger: readonly SideEffectLedgerEntry[],
-  events: readonly CoreEvent[],
-  runId: string
-): SideEffectLedgerEntry[] {
+function sourceLedgerFor(ledger: readonly SideEffectLedgerEntry[], events: readonly CoreEvent[], runId: string): SideEffectLedgerEntry[] {
   const byId = new Map<string, SideEffectLedgerEntry>();
   for (const entry of ledger) {
     if (entry.runId === runId) byId.set(entry.ledgerId, entry);
@@ -563,8 +590,13 @@ function factorSummary(factors: readonly { readonly name: string; readonly expla
 
 function statusFromEvent(event: CoreEvent): TopologyNodeStatus {
   if (event.type === "retry_loop.detected") return "retry-loop";
-  if (event.type === "tool.call.failed" || event.type === "server.preflight.completed" && hasFailedStatus(event.data)) return "failed";
-  if (event.type === "policy.decision" && isPolicyDecision(event.data) && (event.data.decision === "block" || event.data.decision === "fail-fast")) return "blocked";
+  if (event.type === "tool.call.failed" || (event.type === "server.preflight.completed" && hasFailedStatus(event.data))) return "failed";
+  if (
+    event.type === "policy.decision" &&
+    isPolicyDecision(event.data) &&
+    (event.data.decision === "block" || event.data.decision === "fail-fast")
+  )
+    return "blocked";
   if (event.type === "circuit.opened") return "blocked";
   if (event.type === "output.sanitized") return "degraded";
   if (event.type === "evidence.artifact.created" || event.type === "report.exported") return "evidence-ready";
@@ -592,7 +624,16 @@ function strongerStatus(a: TopologyNodeStatus, b: TopologyNodeStatus): TopologyN
 
 function correlationFromEvent(event: CoreEvent): JsonObject {
   const output: Record<string, JsonValue> = { runId: event.runId, traceId: event.traceId };
-  for (const key of ["parentId", "harnessId", "adapterId", "downstreamServerId", "toolCallId", "attemptId", "policyDecisionId", "artifactId"] as const) {
+  for (const key of [
+    "parentId",
+    "harnessId",
+    "adapterId",
+    "downstreamServerId",
+    "toolCallId",
+    "attemptId",
+    "policyDecisionId",
+    "artifactId"
+  ] as const) {
     if (event[key]) output[key] = event[key] as string;
   }
   return output;
@@ -706,7 +747,11 @@ function stableStringify(value: unknown): string {
 function sortJson(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortJson);
   if (isRecord(value)) {
-    return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, nested]) => [key, sortJson(nested)]));
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, nested]) => [key, sortJson(nested)])
+    );
   }
   return value;
 }

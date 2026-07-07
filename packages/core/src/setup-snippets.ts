@@ -5,15 +5,7 @@ export type SetupSnippetRoute = "mcp-routed" | "cli-supervised" | "sdk-wrapped-p
 export type SetupSnippetLanguage = "shell" | "powershell" | "cmd" | "json" | "yaml" | "python" | "dockerfile";
 
 export type SupportedMcpHostId =
-  | "cline"
-  | "roo-code"
-  | "claude-desktop"
-  | "claude-code"
-  | "cursor"
-  | "windsurf"
-  | "codex-cli"
-  | "opencode"
-  | "hermes";
+  "cline" | "roo-code" | "claude-desktop" | "claude-code" | "cursor" | "windsurf" | "codex-cli" | "opencode" | "hermes";
 
 export interface SetupSnippetOptions {
   readonly repoPlaceholder?: string;
@@ -36,12 +28,7 @@ export interface PlatformCommandSnippet {
 export interface HostConfigSnippet {
   readonly hostId: SupportedMcpHostId;
   readonly hostName: string;
-  readonly hostFamily:
-    | "claude-style"
-    | "cursor-windsurf-style"
-    | "cline-roo-style"
-    | "codex-opencode-style"
-    | "hermes-style";
+  readonly hostFamily: "claude-style" | "cursor-windsurf-style" | "cline-roo-style" | "codex-opencode-style" | "hermes-style";
   readonly claimLevel: "MCP-routed only";
   readonly transport: "stdio";
   readonly boundary: string;
@@ -166,70 +153,154 @@ export function generatePlatformCommandSnippets(options: SetupSnippetOptions = {
   const image = options.containerImage ?? "ghcr.io/toolplane/toolguard:local";
   const mcpServerPath = `${repo}/packages/mcp-adapter/dist/server.js`;
   return [
-    snippet("mcp-posix", "mcp-routed", "posix", "MCP stdio server, POSIX shell", "shell", [
-      `TOOLGUARD_CORE_URL=${shellQuote(coreUrl)} \\`,
-      `TOOLGUARD_PROFILE=${shellQuote(profile)} \\`,
-      `node ${shellQuote(mcpServerPath)}`
-    ].join("\n"), ROUTE_LIMITATIONS["mcp-routed"]),
-    snippet("mcp-powershell", "mcp-routed", "powershell", "MCP stdio server, PowerShell", "powershell", [
-      `$env:TOOLGUARD_CORE_URL = ${powerShellQuote(coreUrl)}`,
-      `$env:TOOLGUARD_PROFILE = ${powerShellQuote(profile)}`,
-      `node ${powerShellQuote(mcpServerPath)}`
-    ].join("\n"), ROUTE_LIMITATIONS["mcp-routed"]),
-    snippet("mcp-cmd", "mcp-routed", "cmd", "MCP stdio server, CMD", "cmd", [
-      `set "TOOLGUARD_CORE_URL=${coreUrl}"`,
-      `set "TOOLGUARD_PROFILE=${profile}"`,
-      `node "${mcpServerPath}"`
-    ].join("\r\n"), ROUTE_LIMITATIONS["mcp-routed"]),
-    snippet("mcp-wsl", "mcp-routed", "wsl", "MCP stdio server, WSL", "shell", [
-      `wsl --cd ${shellQuote(repo)} -- bash -lc ${shellQuote(
-        `TOOLGUARD_CORE_URL=${coreUrl} TOOLGUARD_PROFILE=${profile} node packages/mcp-adapter/dist/server.js`
-      )}`
-    ].join("\n"), ROUTE_LIMITATIONS["mcp-routed"]),
-    snippet("mcp-container", "mcp-routed", "container", "MCP stdio server, container", "shell", [
-      `docker run --rm -i \\`,
-      `  --network host \\`,
-      `  -e TOOLGUARD_CORE_URL=${shellQuote(coreUrl)} \\`,
-      `  -e TOOLGUARD_PROFILE=/workspace/toolguard-profile.json \\`,
-      `  -v ${shellQuote(`${repo}:/workspace:ro`)} \\`,
-      `  ${shellQuote(image)} node /workspace/packages/mcp-adapter/dist/server.js`
-    ].join("\n"), ROUTE_LIMITATIONS["mcp-routed"]),
-    snippet("ci-github-actions", "cli-supervised", "ci", "CLI supervised smoke test, GitHub Actions", "yaml", [
-      "steps:",
-      "  - uses: actions/checkout@v4",
-      "  - uses: pnpm/action-setup@v4",
-      "    with:",
-      "      version: 10.25.0",
-      "  - uses: actions/setup-node@v4",
-      "    with:",
-      "      node-version: 22",
-      "      cache: pnpm",
-      "  - run: pnpm install --frozen-lockfile",
-      "  - run: pnpm --filter @toolplane/cli build",
-      `  - run: node packages/cli/dist/bin/toolplane.js run --evidence-root ${evidenceRoot} -- npm --version`
-    ].join("\n"), ROUTE_LIMITATIONS["cli-supervised"]),
-    snippet("cli-posix", "cli-supervised", "posix", "CLI supervised command, POSIX shell", "shell", [
-      `toolguard run --evidence-root ${shellQuote(evidenceRoot)} -- <safe-command>`,
-      "# Process-level supervision only. Route host tools through MCP or SDK wrappers for tool-call visibility."
-    ].join("\n"), ROUTE_LIMITATIONS["cli-supervised"]),
-    snippet("cli-powershell", "cli-supervised", "powershell", "CLI supervised command, PowerShell", "powershell", [
-      `toolguard run --evidence-root ${powerShellQuote(evidenceRoot)} -- <safe-command>`,
-      "# Process-level supervision only. Route host tools through MCP or SDK wrappers for tool-call visibility."
-    ].join("\n"), ROUTE_LIMITATIONS["cli-supervised"]),
-    snippet("cli-cmd", "cli-supervised", "cmd", "CLI supervised command, CMD", "cmd", [
-      `toolguard run --evidence-root "${evidenceRoot}" -- <safe-command>`,
-      "REM Process-level supervision only. Route host tools through MCP or SDK wrappers for tool-call visibility."
-    ].join("\r\n"), ROUTE_LIMITATIONS["cli-supervised"]),
-    snippet("python-wrapper", "sdk-wrapped-python", "posix", "Python SDK wrapper", "python", [
-      "from toolguard_adapters import ToolGuardSidecarClient",
-      "",
-      `client = ToolGuardSidecarClient(${JSON.stringify(coreUrl)})`,
-      "# Wrap framework tools explicitly. Direct framework tools are not intercepted."
-    ].join("\n"), ROUTE_LIMITATIONS["sdk-wrapped-python"]),
-    snippet("shell-core-health", "shell-api", "posix", "Core/API loopback health check", "shell", [
-      `curl -fsS ${shellQuote(`${coreUrl}/health`)}`,
-      "# This checks the local Core/API surface only. It is not proof of host-native interception."
-    ].join("\n"), ROUTE_LIMITATIONS["shell-api"])
+    snippet(
+      "mcp-posix",
+      "mcp-routed",
+      "posix",
+      "MCP stdio server, POSIX shell",
+      "shell",
+      [
+        `TOOLGUARD_CORE_URL=${shellQuote(coreUrl)} \\`,
+        `TOOLGUARD_PROFILE=${shellQuote(profile)} \\`,
+        `node ${shellQuote(mcpServerPath)}`
+      ].join("\n"),
+      ROUTE_LIMITATIONS["mcp-routed"]
+    ),
+    snippet(
+      "mcp-powershell",
+      "mcp-routed",
+      "powershell",
+      "MCP stdio server, PowerShell",
+      "powershell",
+      [
+        `$env:TOOLGUARD_CORE_URL = ${powerShellQuote(coreUrl)}`,
+        `$env:TOOLGUARD_PROFILE = ${powerShellQuote(profile)}`,
+        `node ${powerShellQuote(mcpServerPath)}`
+      ].join("\n"),
+      ROUTE_LIMITATIONS["mcp-routed"]
+    ),
+    snippet(
+      "mcp-cmd",
+      "mcp-routed",
+      "cmd",
+      "MCP stdio server, CMD",
+      "cmd",
+      [`set "TOOLGUARD_CORE_URL=${coreUrl}"`, `set "TOOLGUARD_PROFILE=${profile}"`, `node "${mcpServerPath}"`].join("\r\n"),
+      ROUTE_LIMITATIONS["mcp-routed"]
+    ),
+    snippet(
+      "mcp-wsl",
+      "mcp-routed",
+      "wsl",
+      "MCP stdio server, WSL",
+      "shell",
+      [
+        `wsl --cd ${shellQuote(repo)} -- bash -lc ${shellQuote(
+          `TOOLGUARD_CORE_URL=${coreUrl} TOOLGUARD_PROFILE=${profile} node packages/mcp-adapter/dist/server.js`
+        )}`
+      ].join("\n"),
+      ROUTE_LIMITATIONS["mcp-routed"]
+    ),
+    snippet(
+      "mcp-container",
+      "mcp-routed",
+      "container",
+      "MCP stdio server, container",
+      "shell",
+      [
+        `docker run --rm -i \\`,
+        `  --network host \\`,
+        `  -e TOOLGUARD_CORE_URL=${shellQuote(coreUrl)} \\`,
+        `  -e TOOLGUARD_PROFILE=/workspace/toolguard-profile.json \\`,
+        `  -v ${shellQuote(`${repo}:/workspace:ro`)} \\`,
+        `  ${shellQuote(image)} node /workspace/packages/mcp-adapter/dist/server.js`
+      ].join("\n"),
+      ROUTE_LIMITATIONS["mcp-routed"]
+    ),
+    snippet(
+      "ci-github-actions",
+      "cli-supervised",
+      "ci",
+      "CLI supervised smoke test, GitHub Actions",
+      "yaml",
+      [
+        "steps:",
+        "  - uses: actions/checkout@v4",
+        "  - uses: pnpm/action-setup@v4",
+        "    with:",
+        "      version: 10.25.0",
+        "  - uses: actions/setup-node@v4",
+        "    with:",
+        "      node-version: 22",
+        "      cache: pnpm",
+        "  - run: pnpm install --frozen-lockfile",
+        "  - run: pnpm --filter @toolplane/cli build",
+        `  - run: node packages/cli/dist/bin/toolplane.js run --evidence-root ${evidenceRoot} -- npm --version`
+      ].join("\n"),
+      ROUTE_LIMITATIONS["cli-supervised"]
+    ),
+    snippet(
+      "cli-posix",
+      "cli-supervised",
+      "posix",
+      "CLI supervised command, POSIX shell",
+      "shell",
+      [
+        `toolguard run --evidence-root ${shellQuote(evidenceRoot)} -- <safe-command>`,
+        "# Process-level supervision only. Route host tools through MCP or SDK wrappers for tool-call visibility."
+      ].join("\n"),
+      ROUTE_LIMITATIONS["cli-supervised"]
+    ),
+    snippet(
+      "cli-powershell",
+      "cli-supervised",
+      "powershell",
+      "CLI supervised command, PowerShell",
+      "powershell",
+      [
+        `toolguard run --evidence-root ${powerShellQuote(evidenceRoot)} -- <safe-command>`,
+        "# Process-level supervision only. Route host tools through MCP or SDK wrappers for tool-call visibility."
+      ].join("\n"),
+      ROUTE_LIMITATIONS["cli-supervised"]
+    ),
+    snippet(
+      "cli-cmd",
+      "cli-supervised",
+      "cmd",
+      "CLI supervised command, CMD",
+      "cmd",
+      [
+        `toolguard run --evidence-root "${evidenceRoot}" -- <safe-command>`,
+        "REM Process-level supervision only. Route host tools through MCP or SDK wrappers for tool-call visibility."
+      ].join("\r\n"),
+      ROUTE_LIMITATIONS["cli-supervised"]
+    ),
+    snippet(
+      "python-wrapper",
+      "sdk-wrapped-python",
+      "posix",
+      "Python SDK wrapper",
+      "python",
+      [
+        "from toolguard_adapters import ToolGuardSidecarClient",
+        "",
+        `client = ToolGuardSidecarClient(${JSON.stringify(coreUrl)})`,
+        "# Wrap framework tools explicitly. Direct framework tools are not intercepted."
+      ].join("\n"),
+      ROUTE_LIMITATIONS["sdk-wrapped-python"]
+    ),
+    snippet(
+      "shell-core-health",
+      "shell-api",
+      "posix",
+      "Core/API loopback health check",
+      "shell",
+      [
+        `curl -fsS ${shellQuote(`${coreUrl}/health`)}`,
+        "# This checks the local Core/API surface only. It is not proof of host-native interception."
+      ].join("\n"),
+      ROUTE_LIMITATIONS["shell-api"]
+    )
   ];
 }
 

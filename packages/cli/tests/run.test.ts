@@ -144,7 +144,18 @@ describe("toolplane run process wrapper", () => {
       "utf8"
     );
 
-    const result = await runToolplaneCli(["run", "--evidence-root", root, "--cwd", root, "--timeout-ms", "250", "--", process.execPath, script]);
+    const result = await runToolplaneCli([
+      "run",
+      "--evidence-root",
+      root,
+      "--cwd",
+      root,
+      "--timeout-ms",
+      "250",
+      "--",
+      process.execPath,
+      script
+    ]);
     const ledger = (await readFile(path.join(result.evidenceDir, "ledger.jsonl"), "utf8"))
       .trim()
       .split("\n")
@@ -189,11 +200,7 @@ describe("toolplane run process wrapper", () => {
   it("captures stdout, stderr, non-zero exit status, elapsed time, and evidence", async () => {
     const root = await makeTempRoot();
     const script = path.join(root, "fail.mjs");
-    await writeFile(
-      script,
-      "console.log('visible stdout'); console.error('visible stderr'); process.exit(7)\n",
-      "utf8"
-    );
+    await writeFile(script, "console.log('visible stdout'); console.error('visible stderr'); process.exit(7)\n", "utf8");
 
     const result = await runToolplaneCli(["run", "--evidence-root", root, "--", process.execPath, script]);
 
@@ -208,7 +215,10 @@ describe("toolplane run process wrapper", () => {
     expect(result.process?.stderr).toContain("visible stderr");
     expect(result.failureCard?.failureType).toBe("non_zero_exit");
 
-    const events = (await readFile(result.eventsPath, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+    const events = (await readFile(result.eventsPath, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
     expect(events.map((event) => event.type)).toContain("tool.call.failed");
     expect(events.filter((event) => event.type === "evidence.artifact.created").length).toBeGreaterThanOrEqual(2);
   });
@@ -235,9 +245,7 @@ describe("toolplane run process wrapper", () => {
     expect(stdout).toContain("Bundle manifest:");
     expect(stdout).toContain("context-metrics.json, diagnostics.json, issue-packet.md, topology.json, ledger.jsonl, replay-recipes.json");
     expect(stderr).toContain("Failure Card: non_zero_exit");
-    await expect(readFile(path.join(result.evidenceDir, "bundle", "manifest.json"), "utf8")).resolves.toContain(
-      "context-metrics.json"
-    );
+    await expect(readFile(path.join(result.evidenceDir, "bundle", "manifest.json"), "utf8")).resolves.toContain("context-metrics.json");
   });
 
   it("indexes CLI success and failure runs with safe labels and command metadata", async () => {
@@ -342,10 +350,9 @@ describe("toolplane run process wrapper", () => {
     const script = await writeGrandchildFixture(root, "grandchild-cancel.mjs");
     const controller = new AbortController();
 
-    const pending = runToolplaneCli(
-      ["run", "--timeout-ms", "5000", "--", process.execPath, script, pidFile],
-      { signal: controller.signal }
-    );
+    const pending = runToolplaneCli(["run", "--timeout-ms", "5000", "--", process.execPath, script, pidFile], {
+      signal: controller.signal
+    });
     const grandchildPid = await readPidFile(pidFile);
     controller.abort();
     const result = await pending;
@@ -479,16 +486,7 @@ describe("toolplane run process wrapper", () => {
       "-c",
       `mv ${victim} ${path.join(root, "moved.txt")}`
     ]);
-    const simulatedCopy = await runToolplaneCli([
-      "run",
-      "--fixture-only",
-      "--cwd",
-      root,
-      "--",
-      "sh",
-      "-c",
-      `cp -f ${source} ${victim}`
-    ]);
+    const simulatedCopy = await runToolplaneCli(["run", "--fixture-only", "--cwd", root, "--", "sh", "-c", `cp -f ${source} ${victim}`]);
 
     expect(simulatedMove.exitCode).toBe(0);
     expect(simulatedMove.result?.safeSummary).toContain("fixture-only");
@@ -510,7 +508,6 @@ describe("toolplane run process wrapper", () => {
     expect(toolguard.process?.stdout).toContain(toolplane.process?.stdout.trim());
   });
 
-
   it("prints shared setup snippets for CLI copy surfaces without local paths or stale MCP scripts", async () => {
     let stdout = "";
     const result = await runToolplaneCli(["setup-snippets", "--json"], {
@@ -521,12 +518,12 @@ describe("toolplane run process wrapper", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.setupSnippets?.generatedBy).toBe("toolguard-shared-setup-snippets");
-    expect(stdout).toContain("\"platform\": \"powershell\"");
-    expect(stdout).toContain("\"platform\": \"cmd\"");
-    expect(stdout).toContain("\"hostFamily\": \"codex-opencode-style\"");
+    expect(stdout).toContain('"platform": "powershell"');
+    expect(stdout).toContain('"platform": "cmd"');
+    expect(stdout).toContain('"hostFamily": "codex-opencode-style"');
     expect(stdout).toContain("packages/mcp-adapter/dist/server.js");
     expect(stdout).toContain("toolguard run --evidence-root");
-    expect(stdout).not.toContain("@toolplane/mcp-adapter\", \"start");
+    expect(stdout).not.toContain('@toolplane/mcp-adapter", "start');
     expect(stdout).not.toMatch(/\/home\/|\/Users\/|[A-Z]:\\Users\\|Bearer\s+|sk-[A-Za-z0-9]{20,}/);
   });
 
@@ -627,14 +624,7 @@ describe("toolplane run process wrapper", () => {
       const script = path.join(root, "stream.mjs");
       await writeFile(script, "const key = ['to', 'ken'].join('') + '='; console.log(key + 'a'.repeat(36))\n", "utf8");
 
-      const result = await runToolplaneCli([
-        "run",
-        "--core-url",
-        "http://127.0.0.1:3666",
-        "--",
-        process.execPath,
-        script
-      ]);
+      const result = await runToolplaneCli(["run", "--core-url", "http://127.0.0.1:3666", "--", process.execPath, script]);
 
       expect(result.exitCode).toBe(0);
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -667,7 +657,10 @@ describe("toolplane run process wrapper", () => {
     expect(result.exitCode).toBe(0);
     expect(result.process?.stdout).toContain("[REDACTED:");
     expect(result.process?.stderr).toContain("[REDACTED:");
-    const events = (await readFile(result.eventsPath, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+    const events = (await readFile(result.eventsPath, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
     const sanitizedEvents = events.filter((event) => event.type === "output.sanitized");
     expect(sanitizedEvents.length).toBeGreaterThanOrEqual(1);
     expect(sanitizedEvents[0].data.reason).toBe("secret_redaction");

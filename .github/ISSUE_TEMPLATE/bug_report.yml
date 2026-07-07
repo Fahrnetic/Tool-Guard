@@ -1,0 +1,39 @@
+name: Bug report
+description: Report a reproducible ToolGuard problem.
+title: "[Bug]: "
+labels: ["type: bug", "priority: needs-triage"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What failed and what should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Include commands, route, package, and fixture details.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Link a run ID, evidence bundle, logs, or screenshots.
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - area: core
+        - area: cli
+        - area: mcp-adapter
+        - area: python-adapters
+        - area: ui
+        - area: infra
+    validations:
+      required: true

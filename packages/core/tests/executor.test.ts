@@ -2,14 +2,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-  CoreSession,
-  ToolRegistry,
-  createId,
-  type CoreEvent,
-  type FailureCard,
-  type ToolCall
-} from "../src/index.js";
+import { CoreSession, ToolRegistry, createId, type CoreEvent, type FailureCard, type ToolCall } from "../src/index.js";
 
 function makeCall(overrides: Partial<ToolCall> = {}): ToolCall {
   return {
@@ -256,10 +249,7 @@ describe("safe executor preflight and evidence", () => {
     });
 
     const started = Date.now();
-    const result = await session.executeToolCall(
-      registry,
-      makeCall({ runId, toolName: "fixture.hang", arguments: {}, deadlineMs: 10 })
-    );
+    const result = await session.executeToolCall(registry, makeCall({ runId, toolName: "fixture.hang", arguments: {}, deadlineMs: 10 }));
 
     expect(Date.now() - started).toBeLessThan(500);
     expect("failureType" in result ? result.failureType : undefined).toBe("timeout");
@@ -316,9 +306,7 @@ describe("safe executor preflight and evidence", () => {
       adapterId: createId("adapter")
     });
 
-    expect(findings).toEqual([
-      expect.objectContaining({ downstreamServerId, status: "healthy", summary: "Fixture is ready" })
-    ]);
+    expect(findings).toEqual([expect.objectContaining({ downstreamServerId, status: "healthy", summary: "Fixture is ready" })]);
     const events = await readEvents(session);
     expect(events.map((event) => event.type)).toEqual(["server.preflight.started", "server.preflight.completed"]);
   });

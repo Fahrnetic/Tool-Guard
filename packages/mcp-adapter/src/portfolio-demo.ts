@@ -6,13 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 import { runToolplaneCli } from "@toolplane/cli";
-import {
-  ClassifiedToolError,
-  createId,
-  registerChaosFixtures,
-  type CoreEvent,
-  type ToolCall
-} from "@toolplane/core";
+import { ClassifiedToolError, createId, registerChaosFixtures, type CoreEvent, type ToolCall } from "@toolplane/core";
 import { createMcpAdapterDemoApiServer, type McpAdapterDemoApiServerHandle } from "./demo.js";
 
 const CORE_URL = "http://127.0.0.1:3660";
@@ -72,7 +66,7 @@ export async function runPortfolioDemo(options: PortfolioDemoOptions = {}): Prom
   const holdMs = options.holdMs ?? 1_500;
   let handle: McpAdapterDemoApiServerHandle | undefined;
   let ui: ChildProcess | undefined;
-  let result: Omit<PortfolioDemoResult, "cleanupVerified" | "transcript"> & { readonly transcriptLines: readonly string[] } | undefined;
+  let result: (Omit<PortfolioDemoResult, "cleanupVerified" | "transcript"> & { readonly transcriptLines: readonly string[] }) | undefined;
   const transcript: string[] = [
     "ToolGuard portfolio demo",
     `deterministicSeed: ${FLAGSHIP_DEMO_SEED}`,
@@ -112,16 +106,8 @@ export async function runPortfolioDemo(options: PortfolioDemoOptions = {}): Prom
       { routeType: "mcp-routed" },
       "integration verification"
     );
-    await postJson(
-      `${CORE_URL}/api/integrations/verify`,
-      { routeType: "sdk-wrapped-python" },
-      "Python integration verification"
-    );
-    await postJson(
-      `${CORE_URL}/api/integrations/verify`,
-      { routeType: "cli-supervised" },
-      "CLI integration verification"
-    );
+    await postJson(`${CORE_URL}/api/integrations/verify`, { routeType: "sdk-wrapped-python" }, "Python integration verification");
+    await postJson(`${CORE_URL}/api/integrations/verify`, { routeType: "cli-supervised" }, "CLI integration verification");
     const replay = await assertJson<{ readonly replayableRuns: readonly unknown[] }>(`${CORE_URL}/api/replay`, "replay metadata");
     const replayResult = await postJson<{ readonly status: string }>(
       `${CORE_URL}/api/replay`,
@@ -143,11 +129,7 @@ export async function runPortfolioDemo(options: PortfolioDemoOptions = {}): Prom
       readonly manifestUrl: string;
       readonly manifestValid: boolean;
       readonly validationErrors: readonly string[];
-    }>(
-      `${CORE_URL}/api/bundle/export`,
-      { replaySafety: { fixtureOnly: true, safeLoopback: true } },
-      "evidence bundle export"
-    );
+    }>(`${CORE_URL}/api/bundle/export`, { replaySafety: { fixtureOnly: true, safeLoopback: true } }, "evidence bundle export");
     if (!bundle.manifestValid) {
       throw new Error(`Evidence bundle manifest did not validate: ${bundle.validationErrors.join("; ")}`);
     }
@@ -158,13 +140,21 @@ export async function runPortfolioDemo(options: PortfolioDemoOptions = {}): Prom
       transcript.push(`ui: ${UI_URL}`);
     }
 
-    const latest = await assertJson<{ readonly eventCount: number; readonly events: readonly CoreEvent[] }>(`${CORE_URL}/api/runs/latest`, "latest run");
+    const latest = await assertJson<{ readonly eventCount: number; readonly events: readonly CoreEvent[] }>(
+      `${CORE_URL}/api/runs/latest`,
+      "latest run"
+    );
     const health = await assertJson<{
       readonly rows: readonly { readonly name: string; readonly status: string }[];
     }>(`${CORE_URL}/api/health`, "preflight matrix");
     const failures = await assertJson<{ readonly failures: readonly unknown[] }>(`${CORE_URL}/api/failures`, "failures");
     const integrations = await assertJson<{
-      readonly integrations: readonly { readonly name: string; readonly route: string; readonly claimLevel: string; readonly limitation: string }[];
+      readonly integrations: readonly {
+        readonly name: string;
+        readonly route: string;
+        readonly claimLevel: string;
+        readonly limitation: string;
+      }[];
     }>(`${CORE_URL}/api/integrations`, "integration claim audit");
     const reports = await assertJson<{
       readonly reports: readonly { readonly reportUrl: string; readonly manifestUrl: string; readonly redactionSummaryUrl: string }[];
@@ -229,8 +219,7 @@ export async function runPortfolioDemo(options: PortfolioDemoOptions = {}): Prom
       ...chaosFixtureRows.map((row) => `  - ${row}`),
       "integration claim-level audit:",
       ...integrations.integrations.map(
-        (integration) =>
-          `  - ${integration.name}: ${integration.route}, ${integration.claimLevel}; ${integration.limitation}`
+        (integration) => `  - ${integration.name}: ${integration.route}, ${integration.claimLevel}; ${integration.limitation}`
       ),
       "report/replay links:",
       ...reports.reports.map((entry) => `  - ${entry.reportUrl} | ${entry.manifestUrl} | ${entry.redactionSummaryUrl}`)
@@ -301,19 +290,15 @@ function assertApprovedPorts(ports: readonly number[]): void {
 
 function startUiDevServer(): ChildProcess {
   const repoRoot = process.env.INIT_CWD ?? new URL("../../..", import.meta.url).pathname;
-  const child = spawn(
-    "pnpm",
-    ["--filter", "@toolplane/ui", "dev", "--", "--host", "127.0.0.1", "--port", "3661"],
-    {
-      cwd: repoRoot,
-      env: {
-        ...process.env,
-        TOOLGUARD_UI_PORT: "3661",
-        VITE_TOOLGUARD_CORE_URL: CORE_URL
-      },
-      stdio: ["ignore", "pipe", "pipe"]
-    }
-  );
+  const child = spawn("pnpm", ["--filter", "@toolplane/ui", "dev", "--", "--host", "127.0.0.1", "--port", "3661"], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      TOOLGUARD_UI_PORT: "3661",
+      VITE_TOOLGUARD_CORE_URL: CORE_URL
+    },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
   child.stdout?.resume();
   child.stderr?.resume();
   return child;
@@ -394,10 +379,7 @@ export async function exercisePortfolioAcceptanceSurfaces(handle: McpAdapterDemo
   ].join("\n");
 }
 
-async function exerciseCoreChaosFixtures(
-  api: McpAdapterDemoApiServerHandle["api"],
-  fixtures: readonly string[]
-): Promise<string[]> {
+async function exerciseCoreChaosFixtures(api: McpAdapterDemoApiServerHandle["api"], fixtures: readonly string[]): Promise<string[]> {
   const lines: string[] = [];
   for (const fixture of fixtures) {
     const tool = api.registry.get(fixture);
@@ -425,7 +407,11 @@ async function exerciseCoreChaosFixtures(
   if (!events.some((event) => event.type === "circuit.opened")) {
     throw new Error("Repeated deterministic failures did not emit circuit.opened.");
   }
-  if (!events.some((event) => event.type === "tool.call.failed" && event.data && "failureType" in event.data && event.data.failureType === "circuit_open")) {
+  if (
+    !events.some(
+      (event) => event.type === "tool.call.failed" && event.data && "failureType" in event.data && event.data.failureType === "circuit_open"
+    )
+  ) {
     throw new Error("Repeated deterministic failures did not prove circuit fast-fail behavior.");
   }
   return lines;
@@ -519,7 +505,10 @@ async function exercisePythonAdapters(): Promise<string[]> {
   if (stderr.trim()) {
     throw new Error(`Python adapter smoke wrote stderr: ${stderr}`);
   }
-  return stdout.trim().split(/\r?\n/).map((line) => `  - ${line}`);
+  return stdout
+    .trim()
+    .split(/\r?\n/)
+    .map((line) => `  - ${line}`);
 }
 
 function makePortfolioCall(
@@ -613,10 +602,12 @@ async function stopChild(child: ChildProcess): Promise<void> {
   }
 }
 
-async function verifyOwnedCleanup(input: {
-  readonly ports: readonly number[];
-  readonly pids: readonly number[];
-}): Promise<{ readonly verified: boolean; readonly closedPorts: readonly number[]; readonly exitedPids: readonly number[]; readonly failures: readonly string[] }> {
+async function verifyOwnedCleanup(input: { readonly ports: readonly number[]; readonly pids: readonly number[] }): Promise<{
+  readonly verified: boolean;
+  readonly closedPorts: readonly number[];
+  readonly exitedPids: readonly number[];
+  readonly failures: readonly string[];
+}> {
   await delay(150);
   const failures: string[] = [];
   const closedPorts: number[] = [];

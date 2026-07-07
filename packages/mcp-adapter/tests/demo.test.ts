@@ -6,10 +6,7 @@ describe("MCP adapter demo coverage", () => {
     const demo = await runMcpAdapterDemo();
 
     expect(demo.preflight).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ status: "healthy" }),
-        expect.objectContaining({ status: "failed" })
-      ])
+      expect.arrayContaining([expect.objectContaining({ status: "healthy" }), expect.objectContaining({ status: "failed" })])
     );
     expect(demo.healthyResult.isError).toBe(false);
     expect(demo.healthyResult.structuredContent).toEqual({ echoed: "hello through ToolGuard", serverId: "server_good" });

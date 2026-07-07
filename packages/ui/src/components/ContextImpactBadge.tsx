@@ -21,14 +21,15 @@ export function ContextImpactBadge({ impact, compact = false }: ContextImpactBad
           <div className="flex flex-wrap gap-2">
             <StatusChip label="Estimated context impact" tone="selected" />
             <StatusChip label={`${impact.tokenEstimate.method}`} tone="neutral" />
-            <StatusChip label={`${confidenceLabel(impact.tokenEstimate.confidence)} confidence`} tone={confidenceTone(impact.tokenEstimate.confidence)} />
+            <StatusChip
+              label={`${confidenceLabel(impact.tokenEstimate.confidence)} confidence`}
+              tone={confidenceTone(impact.tokenEstimate.confidence)}
+            />
           </div>
           <p className="mt-3 text-3xl font-semibold tracking-[-0.03em] text-text">
             {formatNumber(impact.tokenEstimate.estimatedTokens)} tokens
           </p>
-          <p className="mt-2 text-xs leading-5 text-text-muted">
-            Provenance: {impact.tokenEstimate.provenance}
-          </p>
+          <p className="mt-2 text-xs leading-5 text-text-muted">Provenance: {impact.tokenEstimate.provenance}</p>
         </div>
         <div className="rounded-xl border border-border bg-bg/55 p-3 text-xs text-text-muted">
           <p className="font-semibold text-text">Safe aggregate metrics only</p>
@@ -46,8 +47,7 @@ export function ContextImpactBadge({ impact, compact = false }: ContextImpactBad
         </dl>
       ) : (
         <p className="mt-3 text-xs text-text-muted">
-          Safe displayed: {formatNumber(safeTokens)} tokens, model-facing: {formatNumber(modelFacingTokens)} tokens, prevented flood:
-          {" "}
+          Safe displayed: {formatNumber(safeTokens)} tokens, model-facing: {formatNumber(modelFacingTokens)} tokens, prevented flood:{" "}
           {formatNumber(savedTokens)} tokens saved.
         </p>
       )}

@@ -39,9 +39,7 @@ describe("root-cause diagnostics", () => {
     const session = await createSession();
     const call = makeCall({ runId: session.runId, toolName: "missing-bin", arguments: { command: "definitely-missing-toolguard-bin" } });
 
-    const failure = await session.failToolCall(call, "spawn_failure", [
-      "spawn definitely-missing-toolguard-bin ENOENT"
-    ]);
+    const failure = await session.failToolCall(call, "spawn_failure", ["spawn definitely-missing-toolguard-bin ENOENT"]);
 
     expect(failure.failureCause).toBe("missing-binary");
     expect(failure.failureBoundary).toBe("environment");
@@ -66,9 +64,7 @@ describe("root-cause diagnostics", () => {
     ]);
 
     expect(failure.failureCause).toBe("wrong-cwd");
-    expect(failure.evidenceAnchors.map((anchor) => anchor.evidenceType)).toEqual(
-      expect.arrayContaining(["cwd-fact", "package-context"])
-    );
+    expect(failure.evidenceAnchors.map((anchor) => anchor.evidenceType)).toEqual(expect.arrayContaining(["cwd-fact", "package-context"]));
     expect(failure.contributingFactors.join(" ")).toMatch(/working directory/i);
   });
 
@@ -153,7 +149,9 @@ describe("root-cause diagnostics", () => {
         })
     });
 
-    const failure = expectFailure(await session.executeToolCall(registry, makeCall({ runId: session.runId, toolName: "fixture.slow", arguments: {}, deadlineMs: 5 })));
+    const failure = expectFailure(
+      await session.executeToolCall(registry, makeCall({ runId: session.runId, toolName: "fixture.slow", arguments: {}, deadlineMs: 5 }))
+    );
 
     expect(failure.failureCause).toBe("caller-deadline-timeout");
     expect(failure.failureMechanism).toContain("deadline");
@@ -180,10 +178,11 @@ describe("root-cause diagnostics", () => {
     const session = await createSession();
     const call = makeCall({ runId: session.runId, toolName: "fixture.classified" });
 
-    const failure = await session.failToolCall(call, new ClassifiedToolError("malformed_json", "Bad frame", [
-      "frame: content-length mismatch",
-      "parse offset: 9"
-    ]).failureType, ["frame: content-length mismatch", "parse offset: 9"]);
+    const failure = await session.failToolCall(
+      call,
+      new ClassifiedToolError("malformed_json", "Bad frame", ["frame: content-length mismatch", "parse offset: 9"]).failureType,
+      ["frame: content-length mismatch", "parse offset: 9"]
+    );
 
     expect(failure.failureCause).toBe("protocol-parse-failure");
     expect(failure.safeSummary).not.toContain("content-length mismatch");

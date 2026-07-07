@@ -21,7 +21,7 @@ describe("Demo Story Mode", () => {
     expect(html).toContain("Evidence");
     expect(html).toContain("Recovery");
     expect(html).toContain("Scenario input");
-    expect(html).toContain("aria-current=\"step\"");
+    expect(html).toContain('aria-current="step"');
   });
 
   it("renders loading and empty states for story data lifecycle", () => {

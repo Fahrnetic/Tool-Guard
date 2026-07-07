@@ -7,9 +7,7 @@ import type { BundlePayload, ReportsPayload } from "../src/lib/model.js";
 
 describe("Evidence Bundle Viewer", () => {
   it("renders bundle health, loopback links, and print export controls", () => {
-    const html = renderToStaticMarkup(
-      <EvidenceReportViewer payload={reportsPayload} bundlePayload={bundlePayload} status="ready" />
-    );
+    const html = renderToStaticMarkup(<EvidenceReportViewer payload={reportsPayload} bundlePayload={bundlePayload} status="ready" />);
 
     expect(html).toContain("Evidence Bundle Viewer");
     expect(html).toContain("Manifest health");

@@ -1,0 +1,20 @@
+errorTracking:
+  provider: sentry
+  node:
+    package: "@sentry/node"
+    initializer: packages/core/src/error-tracking.ts
+    dsnEnv: SENTRY_DSN
+  react:
+    package: "@sentry/react"
+    dsnEnv: SENTRY_DSN
+  python:
+    package: sentry-sdk
+    optionalDependencyGroup: dev
+  breadcrumbs:
+    include:
+      - runId
+      - traceId
+      - toolCallId
+      - routeType
+  sourceMaps:
+    workflow: .github/workflows/release.yml

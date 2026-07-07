@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import json
 import importlib.util
+import json
 import threading
 import time
 import unittest
@@ -16,6 +16,7 @@ from toolguard_adapters import (
     LangGraphToolGuardTool,
     ToolGuardConfig,
     ToolGuardSidecarClient,
+    scrub_log_value,
 )
 
 
@@ -59,7 +60,7 @@ class FakeSidecar:
         self.server = ThreadingHTTPServer(("127.0.0.1", 3666), SidecarHandler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
 
-    def __enter__(self) -> "FakeSidecar":
+    def __enter__(self) -> FakeSidecar:
         self.thread.start()
         return self
 
@@ -85,6 +86,11 @@ def config(adapter_name: str = "toolguard-langgraph", timeout_seconds: float = 1
 
 
 class PythonAdapterTests(unittest.TestCase):
+    def test_structured_logging_scrubs_secret_shaped_values(self) -> None:
+        scrubbed = scrub_log_value({"authorization": "placeholder-credential-value"})
+
+        self.assertEqual(scrubbed, {"authorization": "[REDACTED]"})
+
     def test_langgraph_wrapper_routes_success_through_sidecar(self) -> None:
         with FakeSidecar(
             [
@@ -115,7 +121,9 @@ class PythonAdapterTests(unittest.TestCase):
         self.assertEqual(server.requests[0]["routeMetadata"]["routeType"], "sdk-wrapped-python")
         self.assertEqual(server.requests[0]["routeMetadata"]["coverage"]["claim"], "observed")
         self.assertEqual(server.requests[0]["routeMetadata"]["coverage"]["evidenceScope"], "route")
-        self.assertRegex(server.requests[0]["routeMetadata"]["traceContext"]["traceparent"], r"^00-[0-9a-f]{32}-[0-9a-f]{16}-01$")
+        self.assertRegex(
+            server.requests[0]["routeMetadata"]["traceContext"]["traceparent"], r"^00-[0-9a-f]{32}-[0-9a-f]{16}-01$"
+        )
 
     def test_crewai_wrapper_routes_success_through_sidecar(self) -> None:
         with FakeSidecar(
@@ -222,7 +230,9 @@ class PythonAdapterTests(unittest.TestCase):
                         "doNotRetrySameCall": True,
                         "safeRecoveryOptions": ["Use the fixture sandbox cwd."],
                         "humanFix": "Set the fixture cwd.",
-                        "evidenceLinks": [{"artifactId": "artifact_failure", "href": "artifacts/failure.txt", "label": "raw"}],
+                        "evidenceLinks": [
+                            {"artifactId": "artifact_failure", "href": "artifacts/failure.txt", "label": "raw"}
+                        ],
                         "safeSummary": "Tool fixture.wrong-cwd failed with cwd_mismatch.",
                         "rawDetailsSeparated": True,
                     },
@@ -280,7 +290,12 @@ class PythonAdapterTests(unittest.TestCase):
                 {},
                 run_name="python indexed run",
                 tags=["python", "run-index"],
-                labels={"session": "session-token=" + ("x" * 36), "task": "run index", "repo": "toolplane", "agent": "python-test"},
+                labels={
+                    "session": "session-label-" + ("x" * 36),
+                    "task": "run index",
+                    "repo": "toolplane",
+                    "agent": "python-test",
+                },
             )
 
         self.assertEqual(response["status"], "success")
@@ -365,8 +380,9 @@ class PythonAdapterTests(unittest.TestCase):
         "optional smoke: install langgraph to run real LangGraph API flow",
     )
     def test_optional_langgraph_smoke_real_graph_flow(self) -> None:
-        from langgraph.graph import END, START, StateGraph
         from typing import TypedDict
+
+        from langgraph.graph import END, START, StateGraph
 
         class SmokeState(TypedDict, total=False):
             topic: str
@@ -407,9 +423,9 @@ class PythonAdapterTests(unittest.TestCase):
         "optional smoke: install crewai to run real CrewAI BaseTool API flow",
     )
     def test_optional_crewai_smoke_real_basetool_flow(self) -> None:
+
         from crewai.tools import BaseTool
         from pydantic import BaseModel, Field
-        from typing import Type
 
         class ToolGuardSmokeInput(BaseModel):
             topic: str = Field(default="adapter", description="Smoke-test topic routed through ToolGuard.")
@@ -417,7 +433,7 @@ class PythonAdapterTests(unittest.TestCase):
         class ToolGuardCrewAISmokeTool(BaseTool):
             name: str = "ToolGuard fixture.good"
             description: str = "Routes a CrewAI BaseTool call through the ToolGuard wrapper."
-            args_schema: Type[BaseModel] = ToolGuardSmokeInput
+            args_schema: type[BaseModel] = ToolGuardSmokeInput
 
             def _run(self, topic: str = "adapter") -> str:
                 tool = CrewAIToolGuardTool("fixture.good", config=config("toolguard-crewai"))

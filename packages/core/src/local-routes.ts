@@ -98,7 +98,9 @@ const BROWSER_IMPORT_LIMITATIONS = [
   "Screenshots are represented by metadata and safe console/network summaries by default."
 ] as const;
 
-export function wrapLocalToolFunction(options: LocalFunctionWrapperOptions): (arguments_: JsonObject) => Promise<LocalFunctionWrapperResult> {
+export function wrapLocalToolFunction(
+  options: LocalFunctionWrapperOptions
+): (arguments_: JsonObject) => Promise<LocalFunctionWrapperResult> {
   return async (arguments_: JsonObject): Promise<LocalFunctionWrapperResult> => {
     const downstreamServerId = createId("server");
     const registry = new ToolRegistry();
@@ -320,7 +322,11 @@ function boundedNumber(value: unknown, minimum: number, maximum: number): number
   return Math.min(maximum, Math.max(minimum, Math.trunc(parsed)));
 }
 
-function boundJsonValueWithSummary(value: JsonValue): { readonly value: JsonValue; readonly count: number; readonly reasons: readonly string[] } {
+function boundJsonValueWithSummary(value: JsonValue): {
+  readonly value: JsonValue;
+  readonly count: number;
+  readonly reasons: readonly string[];
+} {
   const state = { count: 0, reasons: new Set<string>() };
   const bounded = boundJsonValue(value, state, 0);
   return { value: bounded, count: state.count, reasons: [...state.reasons] };
@@ -337,9 +343,7 @@ function boundJsonValue(value: JsonValue, state: { count: number; reasons: Set<s
     return `${value.slice(0, HTTP_IMPORT_MAX_STRING_LENGTH)}[TRUNCATED:max-string-length:${value.length - HTTP_IMPORT_MAX_STRING_LENGTH}]`;
   }
   if (Array.isArray(value)) {
-    const entries = value
-      .slice(0, HTTP_IMPORT_MAX_ARRAY_ENTRIES)
-      .map((entry) => boundJsonValue(entry, state, depth + 1));
+    const entries = value.slice(0, HTTP_IMPORT_MAX_ARRAY_ENTRIES).map((entry) => boundJsonValue(entry, state, depth + 1));
     if (value.length > HTTP_IMPORT_MAX_ARRAY_ENTRIES) {
       entries.push(truncationMarker("max-array-entries", state, value.length - HTTP_IMPORT_MAX_ARRAY_ENTRIES));
     }
@@ -366,10 +370,12 @@ function truncationMarker(reason: string, state: { count: number; reasons: Set<s
 }
 
 function openAiToolCall(payload: JsonObject): { id?: string; name: string; arguments: JsonObject } {
-  const functionCall = payload.function && typeof payload.function === "object" && !Array.isArray(payload.function)
-    ? (payload.function as JsonObject)
-    : payload;
-  const rawArguments = typeof functionCall.arguments === "string" ? parseJsonObject(functionCall.arguments) : jsonObject(functionCall.arguments);
+  const functionCall =
+    payload.function && typeof payload.function === "object" && !Array.isArray(payload.function)
+      ? (payload.function as JsonObject)
+      : payload;
+  const rawArguments =
+    typeof functionCall.arguments === "string" ? parseJsonObject(functionCall.arguments) : jsonObject(functionCall.arguments);
   return {
     ...(typeof payload.id === "string" ? { id: payload.id } : {}),
     name: typeof functionCall.name === "string" ? functionCall.name : "provider.tool",

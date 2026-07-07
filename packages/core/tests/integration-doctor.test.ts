@@ -58,17 +58,21 @@ describe("integration doctor route coverage", () => {
     expect(receipt.osPlatform).toBe("powershell");
     expect(receipt.transport).toBe("stdio");
     expect(receipt.configHash).toBe("fnv1a-roo-selected");
-    expect(receipt.platformPassport).toEqual(expect.objectContaining({
-      hostId: "roo-code",
-      hostName: "Roo Code",
-      osPlatform: "powershell",
-      transport: "stdio",
-      configHash: "fnv1a-roo-selected"
-    }));
-    expect(receipt.evidenceLinks[0]).toEqual(expect.objectContaining({
-      hostId: "roo-code",
-      configHash: "fnv1a-roo-selected"
-    }));
+    expect(receipt.platformPassport).toEqual(
+      expect.objectContaining({
+        hostId: "roo-code",
+        hostName: "Roo Code",
+        osPlatform: "powershell",
+        transport: "stdio",
+        configHash: "fnv1a-roo-selected"
+      })
+    );
+    expect(receipt.evidenceLinks[0]).toEqual(
+      expect.objectContaining({
+        hostId: "roo-code",
+        configHash: "fnv1a-roo-selected"
+      })
+    );
     expect(receipt.hostId).not.toBe("cline");
   }, 20_000);
 
@@ -115,9 +119,7 @@ describe("integration doctor route coverage", () => {
         passportId: "passport_local_cli_supervised",
         visibilityLevel: "supervised"
       }),
-      checkedCapabilities: expect.arrayContaining([
-        expect.objectContaining({ capability: "pass probe", status: "available" })
-      ]),
+      checkedCapabilities: expect.arrayContaining([expect.objectContaining({ capability: "pass probe", status: "available" })]),
       routeCoverage: expect.arrayContaining([
         expect.objectContaining({ state: "unsupported" }),
         expect.objectContaining({ state: "not-verified" }),
@@ -366,9 +368,7 @@ describe("integration doctor route coverage", () => {
         ])
       );
       expect(receipt.routeCoverage.find((entry) => entry.state === "unsupported")?.evidence).toMatch(/only|not intercepted/i);
-      expect(receipt.routeCoverage.find((entry) => entry.state === "producing-evidence")?.evidence).toMatch(
-        /evidence artifact/i
-      );
+      expect(receipt.routeCoverage.find((entry) => entry.state === "producing-evidence")?.evidence).toMatch(/evidence artifact/i);
       expect(receipt.evidenceLinks).not.toHaveLength(0);
     }
 
@@ -397,18 +397,16 @@ describe("integration doctor route coverage", () => {
     const diagnostics = await readJson<{ failures: Array<{ toolName: string }> }>(path.join(bundleDir, "diagnostics.json"));
     expect(diagnostics.failures.some((failure) => failure.toolName.startsWith("doctor.smoke."))).toBe(false);
 
-    const manifest = await readJson<{ artifactHashes: Array<{ relativePath: string; sha256: string }> }>(
-      result.bundleManifest
-    );
+    const manifest = await readJson<{ artifactHashes: Array<{ relativePath: string; sha256: string }> }>(result.bundleManifest);
     expect(manifest.artifactHashes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ relativePath: "integration-verification-receipts.json" }),
         expect.objectContaining({ relativePath: "diagnostics.json" })
       ])
     );
-    expect(
-      manifest.artifactHashes.find((entry) => entry.relativePath === "integration-verification-receipts.json")?.sha256
-    ).toMatch(/^[a-f0-9]{64}$/);
+    expect(manifest.artifactHashes.find((entry) => entry.relativePath === "integration-verification-receipts.json")?.sha256).toMatch(
+      /^[a-f0-9]{64}$/
+    );
   }, 40_000);
 });
 

@@ -95,8 +95,8 @@ export function HealthMatrix({ health, status, error, topologySelection }: Healt
           <StatusChip label="Tool Server Health Matrix" tone="selected" />
           <h2 className="mt-3 text-2xl font-semibold text-text">Harness, adapter, and downstream health</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
-            Core `/api/health` emits separate harness, adapter, downstream server, and downstream tool rows. Sort columns
-            with Enter or Space, filter status and failure fields, and move row focus with Tab.
+            Core `/api/health` emits separate harness, adapter, downstream server, and downstream tool rows. Sort columns with Enter or
+            Space, filter status and failure fields, and move row focus with Tab.
           </p>
           <div className="mt-4 flex flex-wrap gap-2" aria-label="Health matrix layers rendered distinctly">
             {["harness", "adapter", "downstream server", "downstream tool"].map((layer) => (
@@ -117,7 +117,10 @@ export function HealthMatrix({ health, status, error, topologySelection }: Healt
 
       <div className="overflow-hidden rounded-2xl border border-border bg-bg-panel/90 shadow-2xl shadow-black/20">
         <div className="max-h-[62vh] overflow-auto">
-          <table className="min-w-[1120px] w-full border-separate border-spacing-0 text-left text-sm" aria-label="Tool server health matrix">
+          <table
+            className="min-w-[1120px] w-full border-separate border-spacing-0 text-left text-sm"
+            aria-label="Tool server health matrix"
+          >
             <thead className="sticky top-0 z-10 bg-bg-elevated text-xs uppercase tracking-[0.16em] text-text-dim">
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>
@@ -136,7 +139,9 @@ export function HealthMatrix({ health, status, error, topologySelection }: Healt
                         aria-label={`Sort by ${String(header.column.columnDef.header)}`}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
-                        <span aria-hidden="true">{header.column.getIsSorted() === "asc" ? "↑" : header.column.getIsSorted() === "desc" ? "↓" : "↕"}</span>
+                        <span aria-hidden="true">
+                          {header.column.getIsSorted() === "asc" ? "↑" : header.column.getIsSorted() === "desc" ? "↓" : "↕"}
+                        </span>
                       </button>
                     </th>
                   ))}
@@ -145,20 +150,28 @@ export function HealthMatrix({ health, status, error, topologySelection }: Healt
             </thead>
             <tbody>
               {table.getRowModel().rows.map((row) => {
-                const highlighted = selectionMatchesValues(topologySelection, [row.original.id, row.original.name, row.original.downstreamServerId, row.original.runId]);
+                const highlighted = selectionMatchesValues(topologySelection, [
+                  row.original.id,
+                  row.original.name,
+                  row.original.downstreamServerId,
+                  row.original.runId
+                ]);
                 return (
-                <tr
-                  key={row.id}
-                  tabIndex={0}
-                  className={`group outline-none transition hover:bg-primary/5 focus-visible:bg-primary/10 ${highlighted ? "bg-primary/10" : ""}`}
-                  aria-label={healthRowAccessibleLabel(row.original)}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="border-b border-border/70 px-4 py-3 align-top text-text-muted group-focus-visible:text-text">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
-                </tr>
+                  <tr
+                    key={row.id}
+                    tabIndex={0}
+                    className={`group outline-none transition hover:bg-primary/5 focus-visible:bg-primary/10 ${highlighted ? "bg-primary/10" : ""}`}
+                    aria-label={healthRowAccessibleLabel(row.original)}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <td
+                        key={cell.id}
+                        className="border-b border-border/70 px-4 py-3 align-top text-text-muted group-focus-visible:text-text"
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
                 );
               })}
             </tbody>
@@ -170,11 +183,7 @@ export function HealthMatrix({ health, status, error, topologySelection }: Healt
 }
 
 function LayerBadge({ layer }: { readonly layer: string }) {
-  return (
-    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${layerClasses(layer)}`}>
-      {layer}
-    </span>
-  );
+  return <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${layerClasses(layer)}`}>{layer}</span>;
 }
 
 function layerClasses(layer: string): string {

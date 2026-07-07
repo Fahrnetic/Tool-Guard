@@ -22,7 +22,23 @@ describe("Observed Impact panel", () => {
 
   it("shows useful empty guidance before any impact rows exist", () => {
     const html = renderToStaticMarkup(
-      <ImpactPanel payload={{ runId: "run_empty", generatedAt: "2026-06-29T00:00:00.000Z", summary: { entries: 0, observedChanges: 0, safeAffectedPaths: 0, processChildren: 0, rollbackSteps: 0, reversible: 0, blocked: 0 }, entries: [] }} status="ready" />
+      <ImpactPanel
+        payload={{
+          runId: "run_empty",
+          generatedAt: "2026-06-29T00:00:00.000Z",
+          summary: {
+            entries: 0,
+            observedChanges: 0,
+            safeAffectedPaths: 0,
+            processChildren: 0,
+            rollbackSteps: 0,
+            reversible: 0,
+            blocked: 0
+          },
+          entries: []
+        }}
+        status="ready"
+      />
     );
 
     expect(html).toContain("No observed impact yet");

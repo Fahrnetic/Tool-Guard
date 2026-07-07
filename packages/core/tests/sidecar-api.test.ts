@@ -88,7 +88,13 @@ describe("local sidecar API", () => {
           mode: "dry-run"
         })
       });
-      const dryRun = (await dryRunResponse.json()) as { status: string; category: string; dryRunOnly: boolean; safe: boolean; reason: string };
+      const dryRun = (await dryRunResponse.json()) as {
+        status: string;
+        category: string;
+        dryRunOnly: boolean;
+        safe: boolean;
+        reason: string;
+      };
 
       expect(dryRunResponse.status).toBe(200);
       expect(dryRun).toMatchObject({
@@ -246,9 +252,7 @@ describe("local sidecar API", () => {
           "artifact"
         ])
       );
-      expect(topology.edges.map((edge) => edge.type)).toEqual(
-        expect.arrayContaining(["routed-through", "produced-artifact", "caused-by"])
-      );
+      expect(topology.edges.map((edge) => edge.type)).toEqual(expect.arrayContaining(["routed-through", "produced-artifact", "caused-by"]));
       expect(topology.nodes.some((node) => node.status === "failed" || node.status === "degraded")).toBe(true);
       expect(topology.nodes.every((node) => node.correlation.runId === runId)).toBe(true);
       expect(topology.generatedFrom.ledgerCount).toBeGreaterThan(0);
@@ -292,7 +296,12 @@ describe("local sidecar API", () => {
       expect(emptyTopologyResponse.status).toBe(200);
       expect(emptyNarrativeResponse.status).toBe(200);
       expect(loadingTopologyResponse.status).toBe(200);
-      const emptyTopology = (await emptyTopologyResponse.json()) as { runId: string; nodes: unknown[]; edges: unknown[]; summary: { nodes: number } };
+      const emptyTopology = (await emptyTopologyResponse.json()) as {
+        runId: string;
+        nodes: unknown[];
+        edges: unknown[];
+        summary: { nodes: number };
+      };
       const emptyNarrative = (await emptyNarrativeResponse.json()) as { runId: string; text: string };
       const loadingTopology = (await loadingTopologyResponse.json()) as { runId: string };
 
@@ -632,9 +641,7 @@ describe("local sidecar API", () => {
         body: "{not-json"
       });
       expect(malformed.status).toBe(400);
-      expect(((await malformed.json()) as { failureCard: FailureCard }).failureCard.failureType).toBe(
-        "sidecar_protocol_error"
-      );
+      expect(((await malformed.json()) as { failureCard: FailureCard }).failureCard.failureType).toBe("sidecar_protocol_error");
 
       const oversized = await fetch(`${origin}/api/sidecar/v1/tool-calls`, {
         method: "POST",
@@ -642,9 +649,7 @@ describe("local sidecar API", () => {
         body: "x".repeat(256 * 1024 + 1)
       });
       expect(oversized.status).toBe(413);
-      expect(((await oversized.json()) as { failureCard: FailureCard }).failureCard.failureType).toBe(
-        "sidecar_protocol_error"
-      );
+      expect(((await oversized.json()) as { failureCard: FailureCard }).failureCard.failureType).toBe("sidecar_protocol_error");
 
       const events = handle.session.recorder.events;
       expect(events.filter((event) => event.type === "tool.call.failed")).toHaveLength(2);
@@ -704,7 +709,11 @@ describe("local sidecar API", () => {
         })
       });
       expect(replayResponse.status).toBe(200);
-      const replay = (await replayResponse.json()) as { status: string; sourceRunId: string; freshCorrelation?: { traceId: string; toolCallId: string } };
+      const replay = (await replayResponse.json()) as {
+        status: string;
+        sourceRunId: string;
+        freshCorrelation?: { traceId: string; toolCallId: string };
+      };
       expect(replay.status).toBe("failed");
       expect(replay.sourceRunId).toBe(handle.session.runId);
       expect(replay.freshCorrelation?.traceId).toMatch(/^trace_/);
@@ -714,7 +723,21 @@ describe("local sidecar API", () => {
       expect(exportResponse.status).toBe(200);
       const reportsResponse = await fetch(`${origin}/api/reports`);
       expect(reportsResponse.status).toBe(200);
-      const reports = (await reportsResponse.json()) as { reports: { reportHtml: string; reportUrl: string; manifestJson: string; manifestUrl: string; artifactHashList: string; artifactHashUrl: string; redactionSummaryPath: string; redactionSummaryUrl: string; manifestValid: boolean; narrative: string; artifacts: { artifactId: string; artifactUrl: string }[] }[] };
+      const reports = (await reportsResponse.json()) as {
+        reports: {
+          reportHtml: string;
+          reportUrl: string;
+          manifestJson: string;
+          manifestUrl: string;
+          artifactHashList: string;
+          artifactHashUrl: string;
+          redactionSummaryPath: string;
+          redactionSummaryUrl: string;
+          manifestValid: boolean;
+          narrative: string;
+          artifacts: { artifactId: string; artifactUrl: string }[];
+        }[];
+      };
       expect(reports.reports[0]).toMatchObject({ manifestValid: true });
       expect(reports.reports[0]?.reportHtml).toContain("report.html");
       expect(reports.reports[0]?.manifestJson).toContain("manifest.json");
@@ -738,7 +761,9 @@ describe("local sidecar API", () => {
 
       const artifactHashesResponse = await fetch(reports.reports[0]?.artifactHashUrl ?? "");
       expect(artifactHashesResponse.status).toBe(200);
-      expect(await artifactHashesResponse.json()).toEqual(expect.arrayContaining([expect.objectContaining({ artifactId: expect.stringMatching(/^artifact_/) })]));
+      expect(await artifactHashesResponse.json()).toEqual(
+        expect.arrayContaining([expect.objectContaining({ artifactId: expect.stringMatching(/^artifact_/) })])
+      );
 
       const redactionSummaryResponse = await fetch(reports.reports[0]?.redactionSummaryUrl ?? "");
       expect(redactionSummaryResponse.status).toBe(200);

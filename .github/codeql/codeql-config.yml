@@ -1,0 +1,12 @@
+name: ToolGuard CodeQL
+
+queries:
+  - uses: security-and-quality
+
+paths:
+  - packages
+
+paths-ignore:
+  - "**/dist/**"
+  - "**/node_modules/**"
+  - "**/runs/**"

@@ -8,3 +8,38 @@ requires-python = ">=3.10"
 langgraph-smoke = ["langgraph"]
 crewai-smoke = ["crewai"]
 smoke = ["langgraph", "crewai"]
+dev = ["black", "coverage", "deptry", "mypy", "pytest-xdist", "radon", "ruff", "sentry-sdk", "prometheus-client", "vulture"]
+
+[tool.black]
+line-length = 120
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unused_configs = true
+files = ["toolguard_adapters"]
+
+[tool.coverage.run]
+branch = true
+source = ["toolguard_adapters"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+skip_covered = true
+
+[tool.radon]
+cc_min = "B"
+exclude = "tests/*"
+
+[tool.vulture]
+paths = ["toolguard_adapters"]
+min_confidence = 90

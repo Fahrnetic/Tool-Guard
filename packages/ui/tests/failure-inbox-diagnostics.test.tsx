@@ -15,8 +15,8 @@ describe("Failure Inbox root-cause diagnosis panel", () => {
     expect(html).toContain("Low confidence");
     expect(html).toContain("Weak inference, not fact");
     expect(html).toContain("Treat it as a lead to verify, not as established root cause.");
-    expect(html).toContain("href=\"http://127.0.0.1:3660/api/reports/run_diag/artifacts/artifact_stderr\"");
-    expect(html).toContain("href=\"#anchor_safe_env\"");
+    expect(html).toContain('href="http://127.0.0.1:3660/api/reports/run_diag/artifacts/artifact_stderr"');
+    expect(html).toContain('href="#anchor_safe_env"');
     expect(html).toContain("Missing binary stderr");
     expect(html).toContain("Safe environment facts");
     expect(html).toContain("Estimated context impact");

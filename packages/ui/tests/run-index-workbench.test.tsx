@@ -23,12 +23,16 @@ describe("Run Index Workbench", () => {
   });
 
   it("filters by failure type, route, tool/status, and time", () => {
-    const filtered = filterRunIndexRecords(payload.records, {
-      failureType: "malformed_json",
-      routeType: "mcp",
-      toolOrStatus: "failed",
-      timeWindow: "24h"
-    }, new Date("2026-06-29T12:00:00.000Z"));
+    const filtered = filterRunIndexRecords(
+      payload.records,
+      {
+        failureType: "malformed_json",
+        routeType: "mcp",
+        toolOrStatus: "failed",
+        timeWindow: "24h"
+      },
+      new Date("2026-06-29T12:00:00.000Z")
+    );
 
     expect(filtered.map((record) => record.runId)).toEqual(["run_mediated_2", "run_mediated_1"]);
   });

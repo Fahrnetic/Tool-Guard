@@ -65,11 +65,7 @@ export function scoreBlastRadius(input: {
     "manual-review": 20,
     "irreversible-risk": 35
   };
-  add(
-    "reversibility",
-    reversibilityScore[input.reversibility],
-    `Reversibility classified as ${input.reversibility}.`
-  );
+  add("reversibility", reversibilityScore[input.reversibility], `Reversibility classified as ${input.reversibility}.`);
 
   const riskScore: Record<RegisteredTool["destructiveRisk"], number> = {
     none: 0,
@@ -86,7 +82,13 @@ export function scoreBlastRadius(input: {
     add("circuit-containment", -10, "Circuit breaker fast-failed before downstream execution.");
   }
 
-  const score = Math.max(0, Math.min(100, factors.reduce((sum, factor) => sum + factor.score, 0)));
+  const score = Math.max(
+    0,
+    Math.min(
+      100,
+      factors.reduce((sum, factor) => sum + factor.score, 0)
+    )
+  );
   return {
     score,
     label: labelBlastRadius(score),
@@ -180,7 +182,8 @@ export function buildRecordedRouteConfig(input: {
     routeType: nonEmpty(metadata?.routeType) ?? input.call.sourcePath,
     routeId: nonEmpty(metadata?.routeId) ?? `${input.call.adapterId}:${input.call.downstreamServerId}:${input.call.toolName}`,
     downstreamTargetIdentity:
-      nonEmpty(metadata?.downstreamTargetIdentity) ?? `${input.call.downstreamServerId}:${input.call.originalToolName ?? input.call.toolName}`,
+      nonEmpty(metadata?.downstreamTargetIdentity) ??
+      `${input.call.downstreamServerId}:${input.call.originalToolName ?? input.call.toolName}`,
     ...(metadata?.endpoint ? { endpoint: metadata.endpoint } : {}),
     ...(metadata?.transport ? { transport: metadata.transport } : {}),
     toolRoute: {
@@ -209,8 +212,7 @@ export function classifyRetryLoop(input: {
   readonly threshold?: number;
 }): RetryLoopFinding {
   const threshold = input.threshold ?? 3;
-  const classification =
-    input.repeatedFailures >= threshold ? "loop-detected" : input.scheduledRetry ? "recovery-retry" : "none";
+  const classification = input.repeatedFailures >= threshold ? "loop-detected" : input.scheduledRetry ? "recovery-retry" : "none";
   const explanation =
     classification === "loop-detected"
       ? `Repeated same-tool and same-arguments failures reached ${input.repeatedFailures}; stop repeating the identical call and change recovery strategy.`
@@ -289,7 +291,11 @@ function stableStringify(value: JsonObject): string {
 function sortJson(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortJson);
   if (value && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, sortJson(item)]));
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, item]) => [key, sortJson(item)])
+    );
   }
   return value;
 }

@@ -9,12 +9,7 @@ export type DemoStoryScenarioId =
   | "cli-non-zero-exit"
   | "python-sidecar-unavailable";
 
-export type DemoStoryStageId =
-  | "run-raw"
-  | "run-through-toolguard"
-  | "inspect-topology"
-  | "simulate-policy"
-  | "export-evidence";
+export type DemoStoryStageId = "run-raw" | "run-through-toolguard" | "inspect-topology" | "simulate-policy" | "export-evidence";
 
 export interface DemoStoryStage {
   readonly id: DemoStoryStageId;
@@ -245,7 +240,8 @@ export const DEMO_STORY_STAGE_ORDER: readonly DemoStoryStage[] = [
     id: "export-evidence",
     label: "Export evidence",
     narrative: "Export local evidence and reports for review, with secret-shaped values redacted from user-visible output.",
-    expectedOutcome: "Report, manifest, artifact hashes, redaction summary, topology, and simulation receipts are linked through loopback routes."
+    expectedOutcome:
+      "Report, manifest, artifact hashes, redaction summary, topology, and simulation receipts are linked through loopback routes."
   }
 ];
 
@@ -357,7 +353,8 @@ export function buildDemoStoryModePayload(): DemoStoryModePayload {
         "UI on http://127.0.0.1:3661",
         "Fixture stack is in-process or loopback-only on approved ports 3662-3664"
       ],
-      cleanupOnScenarioReset: "Reset uses deterministic fixture IDs, resets the fixture stack, and clears only ToolGuard-owned scenario state.",
+      cleanupOnScenarioReset:
+        "Reset uses deterministic fixture IDs, resets the fixture stack, and clears only ToolGuard-owned scenario state.",
       cleanupOnExit: "demo:serve traps SIGINT/SIGTERM and closes Core/API, the owned UI child process by PID, and fixture stack handles.",
       noExternalServices: true
     }
@@ -391,9 +388,10 @@ function makeScenario(input: {
     fixtureId: input.fixtureId,
     scenarioSeed: input.scenarioSeed,
     scenarioInput,
-    route: input.id === "malformed-mcp-response" || input.id === "cli-non-zero-exit" || input.id === "python-sidecar-unavailable"
-      ? "loopback-only"
-      : "fixture-only",
+    route:
+      input.id === "malformed-mcp-response" || input.id === "cli-non-zero-exit" || input.id === "python-sidecar-unavailable"
+        ? "loopback-only"
+        : "fixture-only",
     fixtureOnly: true,
     loopbackOnly: true,
     deterministicOutcome: input.deterministicOutcome,

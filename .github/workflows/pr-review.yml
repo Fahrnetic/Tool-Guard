@@ -1,0 +1,38 @@
+name: Automated PR Review Summary
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  summarize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+            const packageAreas = [...new Set(files.map((file) => file.filename.split("/").slice(0, 2).join("/")))].slice(0, 12);
+            const body = [
+              "Automated review summary:",
+              "",
+              `- Files changed: ${files.length}`,
+              `- Primary areas: ${packageAreas.join(", ") || "root"}`,
+              "- Required local gate: `pnpm verify`",
+              "- Security reminder: confirm no generated runs, secrets, or raw artifacts are included."
+            ].join("\n");
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });

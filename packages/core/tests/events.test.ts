@@ -2,13 +2,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-  CANONICAL_VISIBILITY_SCHEMA_VERSION,
-  CoreSession,
-  createId,
-  type CoreEvent,
-  type ToolCall
-} from "../src/index.js";
+import { CANONICAL_VISIBILITY_SCHEMA_VERSION, CoreSession, createId, type CoreEvent, type ToolCall } from "../src/index.js";
 
 function makeToolCall(sourcePath: ToolCall["sourcePath"]): ToolCall {
   return {

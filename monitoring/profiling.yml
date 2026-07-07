@@ -1,0 +1,12 @@
+profiling:
+  node:
+    command: pnpm profile:core
+    tool: clinic doctor
+    target: packages/core/dist/server.js
+  python:
+    command: python3 -m cProfile -m unittest discover -s tests -p 'test_*.py'
+    package: packages/python-adapters
+  artifacts:
+    ignorePatterns:
+      - .clinic/
+      - profile-output/

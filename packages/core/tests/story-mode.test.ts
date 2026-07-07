@@ -116,10 +116,7 @@ describe("demo story mode data", () => {
         errors: []
       }
     });
-    expect(fixtureResets).toEqual([
-      "malformed-mcp-response:fixture.mcp-malformed-response",
-      "malformed-mcp-response:story-seed-005"
-    ]);
+    expect(fixtureResets).toEqual(["malformed-mcp-response:fixture.mcp-malformed-response", "malformed-mcp-response:story-seed-005"]);
     expect(closedPids).toEqual([4242]);
 
     const secondReset = await runtime.resetScenario("malformed-mcp-response");

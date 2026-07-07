@@ -36,13 +36,27 @@ export function HarnessIntegrations({ payload, status, error }: HarnessIntegrati
   const coverageRows = useMemo(() => mergeCoverageRows(payload?.routeCoverage ?? [], receipts), [payload?.routeCoverage, receipts]);
 
   if (status === "loading") {
-    return <StatePanel status="loading" title="Loading Harness Integrations" message="Fetching supported routes and claim levels from `/api/integrations`." />;
+    return (
+      <StatePanel
+        status="loading"
+        title="Loading Harness Integrations"
+        message="Fetching supported routes and claim levels from `/api/integrations`."
+      />
+    );
   }
   if (status === "error") {
-    return <StatePanel status="error" title="Harness Integrations unavailable" message={error ?? "Core did not return integration metadata."} />;
+    return (
+      <StatePanel status="error" title="Harness Integrations unavailable" message={error ?? "Core did not return integration metadata."} />
+    );
   }
   if (!payload || payload.integrations.length === 0) {
-    return <StatePanel status="empty" title="No integrations listed" message="Integration claim metadata is not available yet. The wizard will show configured, available, unsupported, and not-yet-verified routes after Core responds." />;
+    return (
+      <StatePanel
+        status="empty"
+        title="No integrations listed"
+        message="Integration claim metadata is not available yet. The wizard will show configured, available, unsupported, and not-yet-verified routes after Core responds."
+      />
+    );
   }
 
   async function runProbe(routeType: VerificationRouteType, integration: IntegrationView, platform: PlatformCommandSnippet["platform"]) {
@@ -64,7 +78,9 @@ export function HarnessIntegrations({ payload, status, error }: HarnessIntegrati
     setExportMessage(undefined);
     try {
       const bundle = await exportBundle();
-      setExportMessage(`Safe evidence bundle ready: ${bundle.manifestValid ? "manifest valid" : "manifest has warnings"} at ${bundle.manifestUrl}. Redacted visibility labels, route receipts, passports, and diagnostics are included.`);
+      setExportMessage(
+        `Safe evidence bundle ready: ${bundle.manifestValid ? "manifest valid" : "manifest has warnings"} at ${bundle.manifestUrl}. Redacted visibility labels, route receipts, passports, and diagnostics are included.`
+      );
     } catch (caught) {
       setVerifyError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -78,9 +94,8 @@ export function HarnessIntegrations({ payload, status, error }: HarnessIntegrati
         <StatusChip label="Integration verification wizard" tone="selected" />
         <h2 className="mt-3 text-2xl font-semibold text-text">Harness Integration Verification</h2>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
-          Each target states its supported route and claim level. ToolGuard only claims protection for calls routed through
-          MCP, SDK wrappers, the CLI shim, or ToolGuard APIs. Native host tools are not intercepted unless they use one of
-          those routes.
+          Each target states its supported route and claim level. ToolGuard only claims protection for calls routed through MCP, SDK
+          wrappers, the CLI shim, or ToolGuard APIs. Native host tools are not intercepted unless they use one of those routes.
         </p>
       </div>
 
@@ -101,21 +116,21 @@ export function HarnessIntegrations({ payload, status, error }: HarnessIntegrati
 
       <div className="grid gap-4 lg:grid-cols-[0.92fr_1.08fr]">
         <section className="grid gap-4 md:grid-cols-2">
-        {payload.integrations.map((integration) => (
-          <button
-            key={integration.id}
-            type="button"
-            onClick={() => setSelectedId(integration.id)}
-            className={`rounded-2xl border bg-bg-panel/90 p-5 text-left transition hover:border-primary/45 active:scale-[0.99] ${selectedIntegration?.id === integration.id ? "border-primary/60" : "border-border"}`}
-          >
-            <div className="flex flex-wrap gap-2">
-              <StatusChip label={integration.route} tone={toneFor(integration.status)} />
-              <StatusChip label={stateLabel(integration.status)} tone={toneFor(integration.status)} />
-            </div>
-            <h3 className="mt-4 text-lg font-semibold text-text">{integration.name}</h3>
-            <p className="mt-2 text-sm leading-6 text-text-muted">{integration.limitation}</p>
-          </button>
-        ))}
+          {payload.integrations.map((integration) => (
+            <button
+              key={integration.id}
+              type="button"
+              onClick={() => setSelectedId(integration.id)}
+              className={`rounded-2xl border bg-bg-panel/90 p-5 text-left transition hover:border-primary/45 active:scale-[0.99] ${selectedIntegration?.id === integration.id ? "border-primary/60" : "border-border"}`}
+            >
+              <div className="flex flex-wrap gap-2">
+                <StatusChip label={integration.route} tone={toneFor(integration.status)} />
+                <StatusChip label={stateLabel(integration.status)} tone={toneFor(integration.status)} />
+              </div>
+              <h3 className="mt-4 text-lg font-semibold text-text">{integration.name}</h3>
+              <p className="mt-2 text-sm leading-6 text-text-muted">{integration.limitation}</p>
+            </button>
+          ))}
         </section>
 
         <section className="space-y-4">
@@ -131,7 +146,9 @@ export function HarnessIntegrations({ payload, status, error }: HarnessIntegrati
             />
           ) : null}
           {verifyError ? <p className="rounded-xl border border-danger/40 bg-danger/10 p-4 text-sm text-danger">{verifyError}</p> : null}
-          {exportMessage ? <p className="rounded-xl border border-success/35 bg-success/10 p-4 text-sm text-success">{exportMessage}</p> : null}
+          {exportMessage ? (
+            <p className="rounded-xl border border-success/35 bg-success/10 p-4 text-sm text-success">{exportMessage}</p>
+          ) : null}
         </section>
       </div>
     </section>
@@ -190,9 +207,7 @@ function OnboardingWorkbench(input: {
   const routeSnippets = routeType ? input.snippets.filter((snippet) => snippet.route === routeType) : [];
   const availablePlatforms: PlatformCommandSnippet["platform"][] =
     routeSnippets.length > 0 ? [...new Set(routeSnippets.map((snippet) => snippet.platform))] : ["posix"];
-  const selectedSnippet =
-    routeSnippets.find((snippet) => snippet.platform === input.selectedPlatform) ??
-    routeSnippets[0];
+  const selectedSnippet = routeSnippets.find((snippet) => snippet.platform === input.selectedPlatform) ?? routeSnippets[0];
   const setupSnippet = setupSnippetFor(selected, input.selectedPlatform);
   const receiptScope = selected ? receiptMatchScopeFor(selected, input.selectedPlatform) : undefined;
   const latestReceipt = selected ? input.receipts.find((receipt) => receiptMatchesIntegration(receipt, selected, receiptScope)) : undefined;
@@ -206,10 +221,13 @@ function OnboardingWorkbench(input: {
         ? "Unsupported. Route this harness through MCP, SDK wrappers, CLI supervision, or the ToolGuard API before expecting evidence."
         : routeType === "mcp-routed" && coverage?.evidenceFreshness === "recent"
           ? "Warning. Route-level MCP evidence exists, but no exact harness passport receipt matched this host identity, host family, or config hash."
-        : "Warning. No local smoke-test receipt is visible yet. Run the next setup command below.";
+          : "Warning. No local smoke-test receipt is visible yet. Run the next setup command below.";
 
   return (
-    <section className="rounded-3xl border border-primary/20 bg-bg-panel/90 p-5 shadow-2xl shadow-black/25" aria-labelledby="visibility-workbench-heading">
+    <section
+      className="rounded-3xl border border-primary/20 bg-bg-panel/90 p-5 shadow-2xl shadow-black/25"
+      aria-labelledby="visibility-workbench-heading"
+    >
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <div>
           <StatusChip label="Route-first onboarding" tone="selected" />
@@ -217,8 +235,8 @@ function OnboardingWorkbench(input: {
             Start with what ToolGuard can actually see
           </h3>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            Pick a harness and platform, then copy a shared setup snippet. The workbench keeps unsupported paths visible,
-            shows the next local command, and labels visibility by route instead of promising universal interception.
+            Pick a harness and platform, then copy a shared setup snippet. The workbench keeps unsupported paths visible, shows the next
+            local command, and labels visibility by route instead of promising universal interception.
           </p>
 
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -298,13 +316,29 @@ function OnboardingWorkbench(input: {
               <code>{setupSnippet.command}</code>
             </pre>
             <p className="mt-3 text-xs leading-5 text-text-subtle">
-              Snippet source: shared ToolGuard setup generator. Placeholders such as &lt;TOOLPLANE_REPO&gt; avoid developer-machine absolute paths.
+              Snippet source: shared ToolGuard setup generator. Placeholders such as &lt;TOOLPLANE_REPO&gt; avoid developer-machine absolute
+              paths.
             </p>
           </section>
 
           <section className="rounded-2xl border border-border bg-bg/55 p-4" aria-live="polite" aria-label="Smoke-test receipt status">
             <div className="flex flex-wrap gap-2">
-              <StatusChip label={latestReceipt || (routeLevelCoverageAppliesToPassport && coverage?.evidenceFreshness === "recent") ? "success" : selected?.status === "unsupported" ? "unsupported" : "warning"} tone={latestReceipt || (routeLevelCoverageAppliesToPassport && coverage?.evidenceFreshness === "recent") ? "healthy" : selected?.status === "unsupported" ? "failed" : "warning"} />
+              <StatusChip
+                label={
+                  latestReceipt || (routeLevelCoverageAppliesToPassport && coverage?.evidenceFreshness === "recent")
+                    ? "success"
+                    : selected?.status === "unsupported"
+                      ? "unsupported"
+                      : "warning"
+                }
+                tone={
+                  latestReceipt || (routeLevelCoverageAppliesToPassport && coverage?.evidenceFreshness === "recent")
+                    ? "healthy"
+                    : selected?.status === "unsupported"
+                      ? "failed"
+                      : "warning"
+                }
+              />
               {coverage?.claim === "not-covered" ? <StatusChip label="not-covered" tone="failed" /> : null}
             </div>
             <p className="mt-3 text-sm leading-6 text-text-muted">{smokeStatus}</p>
@@ -312,7 +346,12 @@ function OnboardingWorkbench(input: {
         </div>
       </div>
 
-      <PassportDeck integrations={input.integrations} coverageRows={input.coverageRows} receipts={input.receipts} selectedPlatform={input.selectedPlatform} />
+      <PassportDeck
+        integrations={input.integrations}
+        coverageRows={input.coverageRows}
+        receipts={input.receipts}
+        selectedPlatform={input.selectedPlatform}
+      />
     </section>
   );
 }
@@ -328,7 +367,9 @@ function PassportDeck(input: {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h4 className="text-lg font-semibold text-text">Harness passports</h4>
-          <p className="mt-1 text-sm text-text-muted">Each passport lists evidence fields, limitations, freshness, and current visibility level.</p>
+          <p className="mt-1 text-sm text-text-muted">
+            Each passport lists evidence fields, limitations, freshness, and current visibility level.
+          </p>
         </div>
         <StatusChip label={`${input.integrations.length} harnesses`} tone="neutral" />
       </div>
@@ -346,7 +387,11 @@ function PassportDeck(input: {
   );
 }
 
-function PassportCard({ integration, coverage, receipt }: {
+function PassportCard({
+  integration,
+  coverage,
+  receipt
+}: {
   readonly integration: IntegrationView;
   readonly coverage: IntegrationRouteCoverageView | undefined;
   readonly receipt: VerificationReceipt | undefined;
@@ -357,7 +402,7 @@ function PassportCard({ integration, coverage, receipt }: {
     ? receipt.checkedCapabilities.map((check) => `${check.capability}: ${check.status}`)
     : requiresExactPassportEvidence && coverage?.evidenceFreshness === "recent"
       ? ["Exact harness receipt: not verified", "Route-level MCP evidence was not projected onto this host passport"]
-    : coverage?.checks.map((check) => `${check.label}: ${check.state}`) ?? ["Smoke-test receipt: not verified"];
+      : (coverage?.checks.map((check) => `${check.label}: ${check.state}`) ?? ["Smoke-test receipt: not verified"]);
   return (
     <article className="rounded-2xl border border-border bg-bg/55 p-4" tabIndex={0}>
       <div className="flex flex-wrap gap-2">
@@ -374,12 +419,20 @@ function PassportCard({ integration, coverage, receipt }: {
         <div>
           <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-text-dim">Last verified</dt>
           <dd className="mt-2 text-text-muted">
-            {receipt ? new Date(receipt.timestamp).toLocaleString() : requiresExactPassportEvidence ? "No exact harness proof yet" : coverage?.lastEvidenceAt ? new Date(coverage.lastEvidenceAt).toLocaleString() : "No local proof yet"}
+            {receipt
+              ? new Date(receipt.timestamp).toLocaleString()
+              : requiresExactPassportEvidence
+                ? "No exact harness proof yet"
+                : coverage?.lastEvidenceAt
+                  ? new Date(coverage.lastEvidenceAt).toLocaleString()
+                  : "No local proof yet"}
           </dd>
         </div>
         <div>
           <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-text-dim">Limitations</dt>
-          <dd className="mt-2 text-text-muted">{coverage?.limitation ?? "Route coverage is unknown until a local setup or smoke test runs."}</dd>
+          <dd className="mt-2 text-text-muted">
+            {coverage?.limitation ?? "Route coverage is unknown until a local setup or smoke test runs."}
+          </dd>
         </div>
       </dl>
     </article>
@@ -419,11 +472,14 @@ function CoverageMatrix({ rows }: { readonly rows: readonly IntegrationRouteCove
           <StatusChip label="Route coverage matrix" tone="selected" />
           <h3 className="mt-3 text-xl font-semibold text-text">Coverage honesty by integration route</h3>
           <p className="mt-2 max-w-4xl text-sm leading-6 text-text-muted">
-            The matrix separates mediated, supervised, observed, and not-covered paths. Availability is only claimed when
-            local evidence exists, and stale or missing evidence is shown as a warning instead of false confidence.
+            The matrix separates mediated, supervised, observed, and not-covered paths. Availability is only claimed when local evidence
+            exists, and stale or missing evidence is shown as a warning instead of false confidence.
           </p>
         </div>
-        <StatusChip label={`${warnings.length} evidence warning${warnings.length === 1 ? "" : "s"}`} tone={warnings.length > 0 ? "warning" : "healthy"} />
+        <StatusChip
+          label={`${warnings.length} evidence warning${warnings.length === 1 ? "" : "s"}`}
+          tone={warnings.length > 0 ? "warning" : "healthy"}
+        />
       </div>
 
       <div className="mt-5 overflow-x-auto">
@@ -456,10 +512,14 @@ function CoverageMatrix({ rows }: { readonly rows: readonly IntegrationRouteCove
                 </td>
                 <td className="border-b border-border/70 px-3 py-4 align-top">
                   <StatusChip label={freshnessLabel(row.evidenceFreshness)} tone={toneForFreshness(row.evidenceFreshness)} />
-                  {row.lastEvidenceAt ? <p className="mt-2 text-xs text-text-subtle">{new Date(row.lastEvidenceAt).toLocaleString()}</p> : null}
+                  {row.lastEvidenceAt ? (
+                    <p className="mt-2 text-xs text-text-subtle">{new Date(row.lastEvidenceAt).toLocaleString()}</p>
+                  ) : null}
                 </td>
                 <td className="border-b border-border/70 px-3 py-4 align-top">
-                  {row.warning ? <p className="rounded-xl border border-warning/35 bg-warning/10 p-3 text-xs leading-5 text-warning">{row.warning}</p> : null}
+                  {row.warning ? (
+                    <p className="rounded-xl border border-warning/35 bg-warning/10 p-3 text-xs leading-5 text-warning">{row.warning}</p>
+                  ) : null}
                   <p className="mt-2 text-xs leading-5 text-text-muted">{row.limitation}</p>
                   <details className="mt-2 rounded-lg border border-border/70 bg-bg/45 p-2 text-xs text-text-muted">
                     <summary className="cursor-pointer font-semibold text-text">Evidence checks</summary>
@@ -488,14 +548,17 @@ function RouteComparisonPanel(input: {
   const comparisons = input.rows.map((row) => routeComparisonFor(row, input.history));
   const visibleRows = comparisons.length > 0 ? comparisons : defaultCoverageRows().map((row) => routeComparisonFor(row, []));
   return (
-    <section className="rounded-3xl border border-primary/20 bg-bg-panel/90 p-5 shadow-xl shadow-black/20" aria-label="Route comparison by visibility depth">
+    <section
+      className="rounded-3xl border border-primary/20 bg-bg-panel/90 p-5 shadow-xl shadow-black/20"
+      aria-label="Route comparison by visibility depth"
+    >
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <StatusChip label="Route comparison" tone="selected" />
           <h3 className="mt-3 text-xl font-semibold text-text">Compare visibility depth, evidence, freshness, and blind spots</h3>
           <p className="mt-2 max-w-4xl text-sm leading-6 text-text-muted">
-            Persisted passport history, route receipts, and adapter visibility imports are compared side by side. Unsupported,
-            stale, and unverified routes stay visible with the next safe action instead of success styling.
+            Persisted passport history, route receipts, and adapter visibility imports are compared side by side. Unsupported, stale, and
+            unverified routes stay visible with the next safe action instead of success styling.
           </p>
         </div>
         <StatusChip label={`${visibleRows.length} route types`} tone={visibleRows.length >= 3 ? "healthy" : "warning"} />
@@ -655,7 +718,14 @@ function routeComparisonFor(
       : row.lastEvidenceAt
         ? `${freshnessLabel(row.evidenceFreshness)} recorded at ${new Date(row.lastEvidenceAt).toLocaleString()}.`
         : "No persisted passport or route evidence is available yet.",
-    availableLabel: row.available && row.evidenceFreshness === "recent" ? "verified" : row.configured ? "unverified" : row.claim === "not-covered" ? "unsupported" : "not available",
+    availableLabel:
+      row.available && row.evidenceFreshness === "recent"
+        ? "verified"
+        : row.configured
+          ? "unverified"
+          : row.claim === "not-covered"
+            ? "unsupported"
+            : "not available",
     availableTone: row.available && row.evidenceFreshness === "recent" ? "healthy" : row.claim === "not-covered" ? "failed" : "degraded",
     blindSpots: blindSpotsFor(row),
     nextAction: nextActionFor(row)
@@ -689,14 +759,23 @@ function blindSpotsFor(row: IntegrationRouteCoverageView): string {
 }
 
 function nextActionFor(row: IntegrationRouteCoverageView): string {
-  if (row.claim === "not-covered") return "Choose MCP, SDK wrapper, CLI supervision, API routing, or an import path before claiming coverage.";
+  if (row.claim === "not-covered")
+    return "Choose MCP, SDK wrapper, CLI supervision, API routing, or an import path before claiming coverage.";
   if (row.evidenceFreshness === "stale") return "Re-run a local route probe to refresh the passport and evidence receipt.";
   if (row.evidenceFreshness === "missing") return "Run the route-specific smoke test or import visibility evidence for this route.";
   if (!row.available) return "Resolve failed capability checks, then re-run the local verification probe.";
   return "Keep this route in the mediated or supervised setup path and export the receipt with the evidence bundle.";
 }
 
-function WizardPanel({ integration, platform, receipts, verifying, onVerify, exporting, onExport }: {
+function WizardPanel({
+  integration,
+  platform,
+  receipts,
+  verifying,
+  onVerify,
+  exporting,
+  onExport
+}: {
   readonly integration: IntegrationView;
   readonly platform: PlatformCommandSnippet["platform"];
   readonly receipts: readonly VerificationReceipt[];
@@ -708,13 +787,14 @@ function WizardPanel({ integration, platform, receipts, verifying, onVerify, exp
   const routeType = routeTypeForIntegration(integration);
   const receiptScope = receiptMatchScopeFor(integration, platform);
   const matchingReceipts = routeType ? receipts.filter((receipt) => receiptMatchesIntegration(receipt, integration, receiptScope)) : [];
-  const probeButtonLabel = integration.status === "unsupported"
-    ? "Unsupported route"
-    : !routeType
-      ? "Probe not available"
-      : verifying === routeType
-        ? "Running local probe..."
-        : "Run verification probe";
+  const probeButtonLabel =
+    integration.status === "unsupported"
+      ? "Unsupported route"
+      : !routeType
+        ? "Probe not available"
+        : verifying === routeType
+          ? "Running local probe..."
+          : "Run verification probe";
   return (
     <div className="rounded-2xl border border-border bg-bg-panel/90 p-5" data-testid="selected-harness-wizard">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -728,21 +808,26 @@ function WizardPanel({ integration, platform, receipts, verifying, onVerify, exp
       <div className="mt-5 rounded-xl border border-border bg-bg/55 p-4">
         <h4 className="text-sm font-semibold text-text">Route limitation</h4>
         <p className="mt-2 text-sm leading-6 text-text-muted">
-          Verification is local-only and limited to the routed boundary shown here. It does not prove native host
-          interception, global IDE interception, or direct framework tool interception outside ToolGuard.
+          Verification is local-only and limited to the routed boundary shown here. It does not prove native host interception, global IDE
+          interception, or direct framework tool interception outside ToolGuard.
         </p>
       </div>
 
       <div className="mt-5">
         <h4 className="text-sm font-semibold text-text">Copy-ready setup snippet</h4>
-        <pre className="mt-2 overflow-x-auto rounded-xl border border-border bg-bg p-4 text-xs leading-5 text-text-muted" data-testid="selected-setup-snippet"><code>{setupSnippetFor(integration, platform).command}</code></pre>
+        <pre
+          className="mt-2 overflow-x-auto rounded-xl border border-border bg-bg p-4 text-xs leading-5 text-text-muted"
+          data-testid="selected-setup-snippet"
+        >
+          <code>{setupSnippetFor(integration, platform).command}</code>
+        </pre>
       </div>
 
       <div className="mt-5 flex flex-wrap gap-2">
         <button
           type="button"
           disabled={!routeType || integration.status === "unsupported" || verifying === routeType}
-          onClick={() => routeType ? onVerify(routeType, integration, platform) : undefined}
+          onClick={() => (routeType ? onVerify(routeType, integration, platform) : undefined)}
           className="rounded-xl border border-primary/50 bg-primary/15 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/25 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {probeButtonLabel}
@@ -760,7 +845,11 @@ function WizardPanel({ integration, platform, receipts, verifying, onVerify, exp
       <div className="mt-5 space-y-3">
         <h4 className="text-sm font-semibold text-text">Verification receipts</h4>
         {matchingReceipts.length === 0 ? (
-          <StatePanel status="empty" title="No receipt for this route" message="Run a local probe to record timestamped capability checks, limitations, and evidence artifact links." />
+          <StatePanel
+            status="empty"
+            title="No receipt for this route"
+            message="Run a local probe to record timestamped capability checks, limitations, and evidence artifact links."
+          />
         ) : (
           matchingReceipts.map((receipt) => <ReceiptCard key={receipt.receiptId} receipt={receipt} />)
         )}
@@ -812,7 +901,9 @@ function ReceiptCard({ receipt }: { readonly receipt: VerificationReceipt }) {
       <div className="flex flex-wrap gap-2">
         <StatusChip label={receipt.routeType} tone="selected" />
         <StatusChip label={new Date(receipt.timestamp).toLocaleString()} tone="neutral" />
-        {receipt.smokeTestStatus ? <StatusChip label={`smoke ${receipt.smokeTestStatus}`} tone={receipt.smokeTestStatus === "passed" ? "healthy" : "degraded"} /> : null}
+        {receipt.smokeTestStatus ? (
+          <StatusChip label={`smoke ${receipt.smokeTestStatus}`} tone={receipt.smokeTestStatus === "passed" ? "healthy" : "degraded"} />
+        ) : null}
       </div>
       <p className="mt-3 text-sm leading-6 text-text-muted">{receipt.limitation}</p>
       {passport ? (
@@ -821,7 +912,9 @@ function ReceiptCard({ receipt }: { readonly receipt: VerificationReceipt }) {
           <dl className="mt-3 grid gap-2 text-xs leading-5 text-text-muted sm:grid-cols-2">
             <div>
               <dt className="font-semibold uppercase tracking-[0.16em] text-text-dim">Host / platform</dt>
-              <dd>{passport.hostName ?? passport.hostId} on {passport.osPlatform}</dd>
+              <dd>
+                {passport.hostName ?? passport.hostId} on {passport.osPlatform}
+              </dd>
             </div>
             <div>
               <dt className="font-semibold uppercase tracking-[0.16em] text-text-dim">Transport</dt>
@@ -863,15 +956,17 @@ function ReceiptCard({ receipt }: { readonly receipt: VerificationReceipt }) {
           <ul className="mt-3 space-y-2 text-sm text-text-muted">
             {nativeActions.map((action) => (
               <li key={`${action.action}-${action.coverage}`} className="rounded-md border border-border/70 bg-bg/45 p-2">
-                <span className="font-semibold text-text">{action.action}</span>: <StatusChip label={action.coverage} tone={action.coverage === "not-covered" ? "failed" : "degraded"} />{" "}
-                {action.limitation}
+                <span className="font-semibold text-text">{action.action}</span>:{" "}
+                <StatusChip label={action.coverage} tone={action.coverage === "not-covered" ? "failed" : "degraded"} /> {action.limitation}
               </li>
             ))}
           </ul>
         ) : null}
       </section>
       <div className="mt-4 flex flex-wrap gap-2">
-        {receipt.evidenceLinks.map((link) => <StatusChip key={link.artifactId} label={link.label} tone="selected" />)}
+        {receipt.evidenceLinks.map((link) => (
+          <StatusChip key={link.artifactId} label={link.label} tone="selected" />
+        ))}
       </div>
     </article>
   );
@@ -894,13 +989,16 @@ interface RenderedSetupSnippet {
   readonly command: string;
 }
 
-export function setupSnippetFor(integration: IntegrationView | undefined, platform: PlatformCommandSnippet["platform"] = "posix"): RenderedSetupSnippet {
+export function setupSnippetFor(
+  integration: IntegrationView | undefined,
+  platform: PlatformCommandSnippet["platform"] = "posix"
+): RenderedSetupSnippet {
   const snippets = generateVisibilitySetupSnippets();
   if (!integration) return { title: "Unsupported route", command: "" };
   if (integration.route === "MCP-routed") {
     const hosts = mcpHostSnippetsForIntegration(integration, snippets.mcpHosts);
-    const command = snippetForRouteAndPlatform(snippets.platforms, "mcp-routed", platform)?.command ??
-      snippetCommand(snippets.platforms, "mcp-posix");
+    const command =
+      snippetForRouteAndPlatform(snippets.platforms, "mcp-routed", platform)?.command ?? snippetCommand(snippets.platforms, "mcp-posix");
     if (hosts.length === 0) {
       return {
         title: `${integration.name} MCP setup`,
@@ -919,11 +1017,17 @@ export function setupSnippetFor(integration: IntegrationView | undefined, platfo
   }
   if (integration.route === "SDK-wrapped") {
     const snippet = snippetForRouteAndPlatform(snippets.platforms, "sdk-wrapped-python", platform);
-    return { title: snippet?.title ?? "Python SDK wrapper", command: snippet?.command ?? snippetCommand(snippets.platforms, "python-wrapper") };
+    return {
+      title: snippet?.title ?? "Python SDK wrapper",
+      command: snippet?.command ?? snippetCommand(snippets.platforms, "python-wrapper")
+    };
   }
   if (integration.route === "CLI-supervised") {
     const snippet = snippetForRouteAndPlatform(snippets.platforms, "cli-supervised", platform);
-    return { title: snippet?.title ?? "CLI supervised command", command: snippet?.command ?? snippetCommand(snippets.platforms, "cli-posix") };
+    return {
+      title: snippet?.title ?? "CLI supervised command",
+      command: snippet?.command ?? snippetCommand(snippets.platforms, "cli-posix")
+    };
   }
   return {
     title: "Unsupported route",
@@ -945,10 +1049,7 @@ function renderMcpHostSetup(host: HostConfigSnippet, platformCommand: string): s
   ].join("\n");
 }
 
-function mcpHostSnippetsForIntegration(
-  integration: IntegrationView,
-  hosts: readonly HostConfigSnippet[]
-): readonly HostConfigSnippet[] {
+function mcpHostSnippetsForIntegration(integration: IntegrationView, hosts: readonly HostConfigSnippet[]): readonly HostConfigSnippet[] {
   const hostIds = mcpHostIdsForIntegration(integration);
   if (hostIds.length > 0) {
     return hosts.filter((host) => hostIds.includes(host.hostId));
@@ -993,20 +1094,14 @@ function selectedTransportForIntegration(integration: IntegrationView): string |
 }
 
 function isSupportedMcpHostId(value: string): value is SupportedMcpHostId {
-  return [
-    "cline",
-    "roo-code",
-    "claude-desktop",
-    "claude-code",
-    "cursor",
-    "windsurf",
-    "codex-cli",
-    "opencode",
-    "hermes"
-  ].includes(value);
+  return ["cline", "roo-code", "claude-desktop", "claude-code", "cursor", "windsurf", "codex-cli", "opencode", "hermes"].includes(value);
 }
 
-export function receiptMatchesIntegration(receipt: VerificationReceipt, integration: IntegrationView, scope: ReceiptMatchScope = {}): boolean {
+export function receiptMatchesIntegration(
+  receipt: VerificationReceipt,
+  integration: IntegrationView,
+  scope: ReceiptMatchScope = {}
+): boolean {
   const routeType = routeTypeForIntegration(integration);
   if (!routeType || receipt.routeType !== routeType) return false;
   if (!receiptMatchesSelectedRouteScope(receipt, scope)) return false;
@@ -1019,13 +1114,21 @@ export function receiptMatchesIntegration(receipt: VerificationReceipt, integrat
   if (receipt.hostId && hostIds.includes(receipt.hostId as SupportedMcpHostId)) return true;
   if (receipt.supportedHostIds?.some((hostId) => hostIds.includes(hostId as SupportedMcpHostId))) return true;
   if (receipt.configHash && configHashes.has(receipt.configHash)) return true;
-  if (receipt.hostFamily && receipt.hostFamily === (integration.hostFamily ?? hostConfigs[0]?.hostFamily) && !hasExactReceiptHostMetadata(receipt)) return true;
-  return receipt.evidenceLinks.some((link) =>
-    link.integrationId === integration.id ||
-    (link.hostId ? hostIds.includes(link.hostId as SupportedMcpHostId) : false) ||
-    (link.supportedHostIds?.some((hostId) => hostIds.includes(hostId as SupportedMcpHostId)) ?? false) ||
-    (link.configHash ? configHashes.has(link.configHash) : false) ||
-    (link.hostFamily ? link.hostFamily === (integration.hostFamily ?? hostConfigs[0]?.hostFamily) && !hasExactReceiptHostMetadata(link) : false)
+  if (
+    receipt.hostFamily &&
+    receipt.hostFamily === (integration.hostFamily ?? hostConfigs[0]?.hostFamily) &&
+    !hasExactReceiptHostMetadata(receipt)
+  )
+    return true;
+  return receipt.evidenceLinks.some(
+    (link) =>
+      link.integrationId === integration.id ||
+      (link.hostId ? hostIds.includes(link.hostId as SupportedMcpHostId) : false) ||
+      (link.supportedHostIds?.some((hostId) => hostIds.includes(hostId as SupportedMcpHostId)) ?? false) ||
+      (link.configHash ? configHashes.has(link.configHash) : false) ||
+      (link.hostFamily
+        ? link.hostFamily === (integration.hostFamily ?? hostConfigs[0]?.hostFamily) && !hasExactReceiptHostMetadata(link)
+        : false)
   );
 }
 
@@ -1043,12 +1146,7 @@ function hasExactReceiptHostMetadata(scope: {
   readonly supportedHostIds?: readonly string[];
   readonly configHash?: string;
 }): boolean {
-  return Boolean(
-    scope.integrationId ||
-    scope.hostId ||
-    (scope.supportedHostIds && scope.supportedHostIds.length > 0) ||
-    scope.configHash
-  );
+  return Boolean(scope.integrationId || scope.hostId || (scope.supportedHostIds && scope.supportedHostIds.length > 0) || scope.configHash);
 }
 
 export function configHash(value: string): string {

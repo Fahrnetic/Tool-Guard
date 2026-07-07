@@ -99,10 +99,7 @@ interface DestructiveAssessment {
   readonly reason: string;
 }
 
-export async function runToolplaneCli(
-  argv: readonly string[],
-  options: ToolplaneCliOptions = {}
-): Promise<ToolplaneRunResult> {
+export async function runToolplaneCli(argv: readonly string[], options: ToolplaneCliOptions = {}): Promise<ToolplaneRunResult> {
   const executableName = options.executableName ?? "toolplane";
   if (argv[0] === "setup-snippets") {
     return renderSetupSnippets(argv, options);
@@ -159,9 +156,7 @@ export async function runToolplaneCli(
     destructiveRisk: assessment.destructive ? "high" : "none",
     preflight: () => ({
       status: "healthy",
-      summary: assessment.destructive
-        ? `Command classified as destructive: ${assessment.reason}`
-        : "Command passed CLI process preflight."
+      summary: assessment.destructive ? `Command classified as destructive: ${assessment.reason}` : "Command passed CLI process preflight."
     }),
     execute: async ({ signal, call: activeCall }) => {
       if (assessment.destructive && parsed.fixtureOnly) {
@@ -196,10 +191,7 @@ export async function runToolplaneCli(
           artifactId: stdoutArtifact.artifactId,
           redactionCount,
           reasons: summary.redactionReasons,
-          streams: [
-            ...(summary.stdoutRedactionCount > 0 ? ["stdout"] : []),
-            ...(summary.stderrRedactionCount > 0 ? ["stderr"] : [])
-          ]
+          streams: [...(summary.stdoutRedactionCount > 0 ? ["stdout"] : []), ...(summary.stderrRedactionCount > 0 ? ["stderr"] : [])]
         });
         if (summary.stderrRedactionCount > 0) {
           await session.emitOutputSanitized(activeCall, "CLI stderr stream output was redacted for model safety.", {
@@ -313,10 +305,7 @@ export function parseToolplaneRunArgs(argv: readonly string[]): ParsedRunOptions
         timeoutMs = parsePositiveInteger(requireValue(optionArgs, ++index, "--timeout-ms"), "--timeout-ms");
         break;
       case "--output-limit-bytes":
-        outputLimitBytes = parsePositiveInteger(
-          requireValue(optionArgs, ++index, "--output-limit-bytes"),
-          "--output-limit-bytes"
-        );
+        outputLimitBytes = parsePositiveInteger(requireValue(optionArgs, ++index, "--output-limit-bytes"), "--output-limit-bytes");
         break;
       case "--evidence-root":
         evidenceRoot = requireValue(optionArgs, ++index, "--evidence-root");
@@ -382,10 +371,7 @@ export function parseToolplaneRunArgs(argv: readonly string[]): ParsedRunOptions
   };
 }
 
-async function renderIntegrationDoctor(
-  argv: readonly string[],
-  options: ToolplaneCliOptions
-): Promise<ToolplaneRunResult> {
+async function renderIntegrationDoctor(argv: readonly string[], options: ToolplaneCliOptions): Promise<ToolplaneRunResult> {
   const output = {
     ...(options.stdout ? { stdout: options.stdout } : {}),
     ...(options.stderr ? { stderr: options.stderr } : {})
@@ -545,7 +531,7 @@ async function executeProcess(parsed: ParsedRunOptions, signal: AbortSignal): Pr
         stderrRedactionCount: stderrRedaction.count,
         redactionReasons: [...new Set([...stdoutRedaction.reasons, ...stderrRedaction.reasons])],
         pid: child.pid ?? null,
-        processGroupId: process.platform === "win32" ? child.pid ?? null : child.pid ? -child.pid : null,
+        processGroupId: process.platform === "win32" ? (child.pid ?? null) : child.pid ? -child.pid : null,
         startedAt: startedAtIso,
         endedAt: new Date().toISOString(),
         exitCode,
@@ -822,7 +808,9 @@ function renderRunResult(result: ToolplaneRunResult, parsed: ParsedRunOptions, o
     stdout(`Replay safety: ${displayReplaySafety(result.trustSummary.replaySafety)}\n`);
     stdout(`Bundle manifest: ${result.trustSummary.manifestPath}\n`);
     stdout(`Integrity covers: ${result.trustSummary.integrityFiles.join(", ")}\n`);
-    stdout("Diagnostic integrity covers: context-metrics.json, diagnostics.json, issue-packet.md, topology.json, ledger.jsonl, replay-recipes.json\n");
+    stdout(
+      "Diagnostic integrity covers: context-metrics.json, diagnostics.json, issue-packet.md, topology.json, ledger.jsonl, replay-recipes.json\n"
+    );
     if (result.trustSummary.validationErrors.length > 0) {
       stdout(`Trust warnings: ${result.trustSummary.validationErrors.join("; ")}\n`);
     }

@@ -6,12 +6,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { describe, expect, it } from "vitest";
 import { CoreSession, ToolRegistry, createId } from "@toolplane/core";
-import {
-  SdkDownstreamMcpServer,
-  ToolGuardMcpRouter,
-  createInMemoryDownstreamServer,
-  type DownstreamMcpServer
-} from "../src/index.js";
+import { SdkDownstreamMcpServer, ToolGuardMcpRouter, createInMemoryDownstreamServer, type DownstreamMcpServer } from "../src/index.js";
 import { loadToolGuardProfileFromEnvironment } from "../src/server.js";
 
 describe("MCP SDK boundary behavior", () => {

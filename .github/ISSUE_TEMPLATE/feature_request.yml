@@ -1,0 +1,32 @@
+name: Feature request
+description: Propose a new ToolGuard capability.
+title: "[Feature]: "
+labels: ["type: feature", "priority: needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or agent workflow needs improvement?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Describe the desired behavior and acceptance criteria.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - area: core
+        - area: cli
+        - area: mcp-adapter
+        - area: python-adapters
+        - area: ui
+        - area: infra
+    validations:
+      required: true

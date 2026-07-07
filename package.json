@@ -9,6 +9,7 @@
     "build": "pnpm -r build",
     "demo": "pnpm --filter @toolplane/mcp-adapter demo:portfolio",
     "demo:mcp": "pnpm --filter @toolplane/mcp-adapter demo",
+    "demo:otel": "pnpm --filter @toolplane/core demo:otel",
     "demo:raw-failure": "pnpm --filter @toolplane/core demo:raw-failure",
     "demo:serve": "pnpm --filter @toolplane/mcp-adapter demo:serve",
     "demo:toolplane": "pnpm --filter @toolplane/core demo:toolplane",
@@ -16,18 +17,66 @@
     "dev:core": "pnpm --filter @toolplane/core dev",
     "dev:fixtures": "pnpm --filter @toolplane/mcp-adapter dev:fixtures",
     "dev:ui": "pnpm --filter @toolplane/ui dev -- --host 127.0.0.1 --port 3661",
-    "lint": "pnpm -r lint",
+    "changeset": "changeset",
+    "docs:check": "node scripts/check-docs.mjs",
+    "docs:generate": "typedoc --json docs-api.json",
+    "format:check": "prettier --check .",
+    "format:write": "prettier --write .",
+    "lint": "eslint . && pnpm -r lint",
+    "quality": "node scripts/check-feature-flags.mjs && node scripts/check-todos.mjs && node scripts/check-branch-protection.mjs && node scripts/check-backlog-health-config.mjs && pnpm --filter @toolplane/python-adapters complexity && pnpm --filter @toolplane/python-adapters deadcode && knip --no-progress --include dependencies,unlisted,binaries && syncpack lint --dependency-types prod,dev,peer && depcruise --config .dependency-cruiser.cjs packages --output-type err && jscpd --silent",
+    "profile:core": "clinic doctor -- node packages/core/dist/server.js",
+    "security:secrets": "gitleaks detect --no-git --redact --source .",
+    "size": "size-limit",
+    "release:version": "changeset version",
     "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "test:coverage": "pnpm -r test:coverage",
+    "typecheck": "pnpm -r typecheck",
+    "verify": "pnpm docs:check && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm quality && pnpm build"
   },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,json,md,css,yml,yaml}": "prettier --check",
+    "*.{js,jsx,ts,tsx}": "eslint"
+  },
+  "size-limit": [
+    {
+      "path": "packages/ui/dist/assets/*.js",
+      "limit": "250 KB"
+    }
+  ],
   "devDependencies": {
+    "@changesets/cli": "^2.31.0",
+    "@eslint/js": "^9.39.4",
+    "@size-limit/preset-app": "^12.1.0",
     "@toolplane/cli": "workspace:*",
     "@toolplane/ui": "workspace:*",
     "@types/node": "^24.10.0",
+    "@vitest/coverage-v8": "^4.0.15",
+    "clinic": "^13.0.0",
+    "depcheck": "^1.4.7",
+    "dependency-cruiser": "^18.0.0",
+    "eslint": "^9.39.4",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "husky": "^9.1.7",
+    "jscpd": "^5.0.11",
+    "knip": "^6.24.0",
+    "lint-staged": "^17.0.8",
+    "prettier": "^3.9.4",
+    "size-limit": "^12.1.0",
+    "syncpack": "^15.3.2",
+    "typedoc": "^0.28.20",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.63.0",
     "vitest": "4.0.15"
   },
   "engines": {
     "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "@sentry/node": "^10.63.0",
+    "@sentry/react": "^10.63.0",
+    "posthog-js": "^1.398.0",
+    "prom-client": "^15.1.3"
   }
 }

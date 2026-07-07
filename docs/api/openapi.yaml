@@ -1,0 +1,100 @@
+openapi: 3.1.0
+info:
+  title: ToolGuard Local Core API
+  version: 0.0.0
+  description: Local-first API for ToolGuard health, events, evidence, policies, and route diagnostics.
+servers:
+  - url: http://127.0.0.1:3660
+paths:
+  /health:
+    get:
+      summary: Lightweight Core API health check.
+      responses:
+        "200":
+          description: Core API is reachable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /api/health:
+    get:
+      summary: Detailed ToolGuard run health payload.
+      responses:
+        "200":
+          description: Health details for the current run.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /metrics:
+    get:
+      summary: Prometheus-compatible local metrics.
+      responses:
+        "200":
+          description: Text exposition format metrics.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /events:
+    get:
+      summary: Server-sent event stream for ToolGuard Core events.
+      responses:
+        "200":
+          description: Event stream.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+  /api/runs/latest:
+    get:
+      summary: Latest run metadata and evidence paths.
+      responses:
+        "200":
+          description: Latest run metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [runId, eventsPath, evidenceDir]
+                properties:
+                  runId:
+                    type: string
+                  eventsPath:
+                    type: string
+                  evidenceDir:
+                    type: string
+  /api/sidecar/v1/tool-calls:
+    post:
+      summary: Python sidecar adapter tool-call ingestion endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Tool call result or fail-closed Failure Card.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      required: [ok, service, runId, events]
+      properties:
+        ok:
+          type: boolean
+        service:
+          type: string
+        runId:
+          type: string
+        events:
+          type: integer
+          minimum: 0

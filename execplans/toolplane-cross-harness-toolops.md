@@ -25,14 +25,14 @@ Why this is better than Toolplane:
 
 Other viable names to keep in the naming backlog:
 
-| Name | Why it works | Concern |
-|---|---|---|
-| **ToolGuard** | Most self-explanatory and portfolio-friendly. | Generic, should do trademark/package checks before public release. |
-| **CallGuard** | Clearly protects tool calls. | Could sound like telephony/security. |
-| **ToolOps** | Owns the category directly. | More category than product name. |
-| **FailSafe Tools** | Explains reliability focus. | Longer and less distinctive. |
-| **TraceGuard** | Emphasizes evidence and observability. | Understates execution control. |
-| **CircuitKit** | Suggests circuit breakers and reliability. | Less obvious for agent tools. |
+| Name               | Why it works                                  | Concern                                                            |
+| ------------------ | --------------------------------------------- | ------------------------------------------------------------------ |
+| **ToolGuard**      | Most self-explanatory and portfolio-friendly. | Generic, should do trademark/package checks before public release. |
+| **CallGuard**      | Clearly protects tool calls.                  | Could sound like telephony/security.                               |
+| **ToolOps**        | Owns the category directly.                   | More category than product name.                                   |
+| **FailSafe Tools** | Explains reliability focus.                   | Longer and less distinctive.                                       |
+| **TraceGuard**     | Emphasizes evidence and observability.        | Understates execution control.                                     |
+| **CircuitKit**     | Suggests circuit breakers and reliability.    | Less obvious for agent tools.                                      |
 
 Implementation guidance:
 
@@ -96,24 +96,24 @@ ToolGuard should position itself as **ToolOps for AI agents**: preflight, safe e
 
 The integration landscape was checked with current web and GitHub/doc evidence before this plan was finalized.
 
-| Target | Evidence observed | Integration implication |
-|---|---|---|
-| Model Context Protocol clients | `modelcontextprotocol.io/clients` lists MCP-capable apps. | MCP proxy/router is the highest-leverage first adapter. |
-| Cline | `docs.cline.bot/mcp/mcp-overview` and server configuration docs. | Integrate through MCP server config first. |
-| Roo Code | `docs.roocode.com/features/mcp/overview` and `using-mcp-in-roo`. | Integrate through MCP server config first. |
-| Claude Desktop / Claude Code | MCP local server setup is the public boundary. | Treat host internals as closed. Use MCP. |
-| Cursor | `cursor.com/docs/mcp` and `cursor.com/docs/cli/mcp`. | Use MCP config snippets and verification. |
-| Windsurf/Cascade | `docs.windsurf.com/windsurf/cascade/mcp` documents stdio/HTTP/SSE MCP. | Use MCP config, with admin/policy guidance later. |
-| Codex CLI | OpenAI Codex docs include MCP, CLI config, and approvals/security. | Use MCP first, then CLI shim. |
-| OpenCode | Docs expose CLI, tool, MCP server, and permission concepts. | Use MCP first, map ToolGuard policy where practical. |
-| LangGraph/LangChain | LangGraph, `langchain-mcp-adapters`, and ToolNode/tool docs expose tool boundaries. | Highest-priority native Python adapter. |
-| AutoGen | Docs include Workbench and MCP tool modules. | v0.3 Workbench wrapper, with version-drift caution. |
-| CrewAI | Docs include MCP server tools, `MCPServerAdapter`, DSL integration, and `crewai-tools`. | v0.3 wrapper around tools/MCP adapter. |
-| Playwright MCP | `microsoft/playwright-mcp` and Playwright docs. | Treat as downstream MCP tool server in v0.2. |
-| browser-use | Public docs/repo expose custom tools/actions. | v0.3 Python/browser adapter. |
-| Stagehand | Browserbase/Stagehand docs expose `act`, `observe`, `extract`, and agent APIs. | v0.3 JS/browser adapter. |
-| Aider | Public evidence for stable MCP/native boundary is weak or conflicting. | Do not overclaim. Start with CLI shim. |
-| Crush-style CLIs | Internal tool boundary exists in source/docs, but stable plugin boundary is unclear. | Start with CLI/session wrapper, source-review native plugin later. |
+| Target                         | Evidence observed                                                                       | Integration implication                                            |
+| ------------------------------ | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Model Context Protocol clients | `modelcontextprotocol.io/clients` lists MCP-capable apps.                               | MCP proxy/router is the highest-leverage first adapter.            |
+| Cline                          | `docs.cline.bot/mcp/mcp-overview` and server configuration docs.                        | Integrate through MCP server config first.                         |
+| Roo Code                       | `docs.roocode.com/features/mcp/overview` and `using-mcp-in-roo`.                        | Integrate through MCP server config first.                         |
+| Claude Desktop / Claude Code   | MCP local server setup is the public boundary.                                          | Treat host internals as closed. Use MCP.                           |
+| Cursor                         | `cursor.com/docs/mcp` and `cursor.com/docs/cli/mcp`.                                    | Use MCP config snippets and verification.                          |
+| Windsurf/Cascade               | `docs.windsurf.com/windsurf/cascade/mcp` documents stdio/HTTP/SSE MCP.                  | Use MCP config, with admin/policy guidance later.                  |
+| Codex CLI                      | OpenAI Codex docs include MCP, CLI config, and approvals/security.                      | Use MCP first, then CLI shim.                                      |
+| OpenCode                       | Docs expose CLI, tool, MCP server, and permission concepts.                             | Use MCP first, map ToolGuard policy where practical.               |
+| LangGraph/LangChain            | LangGraph, `langchain-mcp-adapters`, and ToolNode/tool docs expose tool boundaries.     | Highest-priority native Python adapter.                            |
+| AutoGen                        | Docs include Workbench and MCP tool modules.                                            | v0.3 Workbench wrapper, with version-drift caution.                |
+| CrewAI                         | Docs include MCP server tools, `MCPServerAdapter`, DSL integration, and `crewai-tools`. | v0.3 wrapper around tools/MCP adapter.                             |
+| Playwright MCP                 | `microsoft/playwright-mcp` and Playwright docs.                                         | Treat as downstream MCP tool server in v0.2.                       |
+| browser-use                    | Public docs/repo expose custom tools/actions.                                           | v0.3 Python/browser adapter.                                       |
+| Stagehand                      | Browserbase/Stagehand docs expose `act`, `observe`, `extract`, and agent APIs.          | v0.3 JS/browser adapter.                                           |
+| Aider                          | Public evidence for stable MCP/native boundary is weak or conflicting.                  | Do not overclaim. Start with CLI shim.                             |
+| Crush-style CLIs               | Internal tool boundary exists in source/docs, but stable plugin boundary is unclear.    | Start with CLI/session wrapper, source-review native plugin later. |
 
 ## Product definition
 
@@ -190,26 +190,31 @@ Legend:
    - Opens circuits by server/tool/failure type after threshold.
 
 10. **Output sanitizer / prompt-injection detector**
-   - Redacts secrets and token-shaped strings.
-   - Detects suspicious tool output patterns such as attempts to override system instructions, exfiltrate env variables, disable safety rules, or instruct retries.
-   - Emits `output.sanitized` and can return a warning or failure card.
+
+- Redacts secrets and token-shaped strings.
+- Detects suspicious tool output patterns such as attempts to override system instructions, exfiltrate env variables, disable safety rules, or instruct retries.
+- Emits `output.sanitized` and can return a warning or failure card.
 
 11. **Evidence recorder**
-   - Writes append-only JSONL events.
-   - Stores bounded raw stderr/stdout artifacts separately.
-   - Stores redaction manifest, report manifest, and static HTML report.
+
+- Writes append-only JSONL events.
+- Stores bounded raw stderr/stdout artifacts separately.
+- Stores redaction manifest, report manifest, and static HTML report.
 
 12. **Trace/replay engine**
-   - Replays captured calls against fixtures or compatible downstream servers.
-   - Compares old/new normalized outcome, failure card, latency, and artifacts.
+
+- Replays captured calls against fixtures or compatible downstream servers.
+- Compares old/new normalized outcome, failure card, latency, and artifacts.
 
 13. **Local event bus**
-   - In-process pub/sub for tests.
-   - SSE endpoint for UI in v0.1-v0.2.
-   - WebSocket optional later for bi-directional replay controls.
+
+- In-process pub/sub for tests.
+- SSE endpoint for UI in v0.1-v0.2.
+- WebSocket optional later for bi-directional replay controls.
 
 14. **Report exporter**
-   - Generates static HTML and `manifest.json` with hashes and redacted artifact references.
+
+- Generates static HTML and `manifest.json` with hashes and redacted artifact references.
 
 ### Call flow
 
@@ -253,7 +258,7 @@ export interface FailureCard {
   adapterId: string;
   downstreamServerId?: string;
   failureType: FailureType;
-  severity: 'info' | 'warning' | 'error' | 'critical';
+  severity: "info" | "warning" | "error" | "critical";
   rootCause: string;
   retryable: boolean;
   doNotRetrySameCall: boolean;
@@ -288,20 +293,20 @@ Events are append-only JSON objects with shared correlation fields.
 
 ```ts
 export type UIEventType =
-  | 'run.started'
-  | 'run.completed'
-  | 'adapter.connected'
-  | 'server.preflight.started'
-  | 'server.preflight.completed'
-  | 'tool.call.started'
-  | 'tool.call.completed'
-  | 'tool.call.failed'
-  | 'tool.retry.scheduled'
-  | 'circuit.opened'
-  | 'circuit.closed'
-  | 'output.sanitized'
-  | 'evidence.artifact.created'
-  | 'report.exported';
+  | "run.started"
+  | "run.completed"
+  | "adapter.connected"
+  | "server.preflight.started"
+  | "server.preflight.completed"
+  | "tool.call.started"
+  | "tool.call.completed"
+  | "tool.call.failed"
+  | "tool.retry.scheduled"
+  | "circuit.opened"
+  | "circuit.closed"
+  | "output.sanitized"
+  | "evidence.artifact.created"
+  | "report.exported";
 
 export interface UIEvent<TPayload = unknown> {
   id: string;
@@ -336,27 +341,27 @@ Required correlation IDs:
 export interface Harness {
   id: string;
   name: string;
-  kind: 'mcp-client' | 'python-framework' | 'cli' | 'browser-system' | 'generic';
+  kind: "mcp-client" | "python-framework" | "cli" | "browser-system" | "generic";
   version?: string;
-  connection: 'stdio' | 'http' | 'sse' | 'websocket' | 'in-process' | 'subprocess';
+  connection: "stdio" | "http" | "sse" | "websocket" | "in-process" | "subprocess";
   capabilities: string[];
 }
 
 export interface Adapter {
   id: string;
   name: string;
-  kind: 'mcp-proxy' | 'langgraph' | 'autogen' | 'crewai' | 'cli-shim' | 'browser' | 'http';
+  kind: "mcp-proxy" | "langgraph" | "autogen" | "crewai" | "cli-shim" | "browser" | "http";
   harnessId: string;
-  status: 'connected' | 'degraded' | 'disconnected';
+  status: "connected" | "degraded" | "disconnected";
 }
 
 export interface DownstreamServer {
   id: string;
   name: string;
-  kind: 'mcp' | 'process' | 'http' | 'browser' | 'git' | 'test-runner' | 'fixture';
+  kind: "mcp" | "process" | "http" | "browser" | "git" | "test-runner" | "fixture";
   command?: string;
   cwd?: string;
-  transport?: 'stdio' | 'http' | 'sse';
+  transport?: "stdio" | "http" | "sse";
   envKeys?: string[];
   health: PreflightStatus;
   circuit: CircuitBreakerState;
@@ -369,13 +374,13 @@ export interface ToolDefinition {
   inputSchema: unknown;
   outputSchema?: unknown;
   downstreamServerId: string;
-  risk: 'safe' | 'read' | 'write' | 'destructive' | 'unknown';
+  risk: "safe" | "read" | "write" | "destructive" | "unknown";
   tags: string[];
 }
 
 export interface ToolCard {
   tool: ToolDefinition;
-  status: 'available' | 'degraded' | 'blocked' | 'unknown';
+  status: "available" | "degraded" | "blocked" | "unknown";
   lastPreflight?: PreflightFinding[];
   policy?: PolicyRef;
 }
@@ -397,7 +402,7 @@ export interface ToolCall {
 export interface ToolResult {
   toolCallId: string;
   attemptId: string;
-  status: 'success' | 'failed' | 'cancelled' | 'blocked';
+  status: "success" | "failed" | "cancelled" | "blocked";
   outputPreview?: unknown;
   outputRef?: string;
   failureCard?: FailureCard;
@@ -405,22 +410,22 @@ export interface ToolResult {
 }
 
 export type FailureType =
-  | 'cwd_mismatch'
-  | 'server_start_failed'
-  | 'initialize_failed'
-  | 'tool_not_found'
-  | 'schema_invalid'
-  | 'malformed_json'
-  | 'timeout'
-  | 'stream_hang'
-  | 'process_crash'
-  | 'permission_denied'
-  | 'network_failure'
-  | 'rate_limited'
-  | 'prompt_injection_output'
-  | 'secret_leak_risk'
-  | 'destructive_action_blocked'
-  | 'unknown';
+  | "cwd_mismatch"
+  | "server_start_failed"
+  | "initialize_failed"
+  | "tool_not_found"
+  | "schema_invalid"
+  | "malformed_json"
+  | "timeout"
+  | "stream_hang"
+  | "process_crash"
+  | "permission_denied"
+  | "network_failure"
+  | "rate_limited"
+  | "prompt_injection_output"
+  | "secret_leak_risk"
+  | "destructive_action_blocked"
+  | "unknown";
 
 export interface Policy {
   id: string;
@@ -433,7 +438,7 @@ export interface Policy {
 }
 
 export interface CircuitBreakerState {
-  state: 'closed' | 'open' | 'half-open';
+  state: "closed" | "open" | "half-open";
   openedAt?: string;
   lastFailureType?: FailureType;
   consecutiveFailures: number;
@@ -442,7 +447,7 @@ export interface CircuitBreakerState {
 export interface EvidenceArtifact {
   id: string;
   runId: string;
-  kind: 'jsonl' | 'stdout' | 'stderr' | 'raw-error' | 'screenshot' | 'report-html' | 'manifest' | 'replay-diff';
+  kind: "jsonl" | "stdout" | "stderr" | "raw-error" | "screenshot" | "report-html" | "manifest" | "replay-diff";
   path: string;
   sha256: string;
   redacted: boolean;
@@ -475,26 +480,26 @@ export interface ReportManifest {
 
 ## Harness integration matrix
 
-| Target | Priority | Feasibility | Boundary | Adapter plan | Cannot protect in v0 |
-|---|---:|---|---|---|---|
-| Cline | v0.2 | High | MCP server config | ToolGuard MCP proxy exposes virtual tools. | Native Cline internal tools not routed via MCP. |
-| Roo Code | v0.2 | High | MCP server config | Same MCP proxy plus config snippet. | Internal/editor actions outside MCP. |
-| Claude Desktop/Code | v0.2 | High | MCP local server config | MCP proxy using stdio/HTTP. | Closed host internals and built-in tools. |
-| Cursor | v0.2 | High | MCP settings/CLI MCP | MCP proxy config. | Cursor-native edits/search if not MCP-routed. |
-| Windsurf/Cascade | v0.2 | High | MCP stdio/HTTP/SSE | MCP proxy config. | Admin/team controls beyond generated config. |
-| Hermes | v0.3 | Medium | MCP documented, direct plugins unclear | MCP first, native later after source/docs review. | Direct Hermes tool registry if not public. |
-| LangGraph | v0.3 | Very high | ToolNode/tool wrappers | Python package wraps tools and reports to sidecar. | Calls bypassing wrapper. |
-| AutoGen | v0.3 | Medium | Workbench/MCP tools | Workbench wrapper or MCP downstream adapter. | Version churn and unsupported legacy APIs. |
-| CrewAI | v0.3 | High | MCPServerAdapter/BaseTool | Wrap BaseTool or MCPServerAdapter outputs. | Tools not registered through CrewAI abstractions. |
-| Playwright MCP | v0.2 target | High | Downstream MCP server | Treat as tool target behind ToolGuard. | Browser actions not mediated by Playwright MCP. |
-| browser-use | v0.3 | High | Custom tools/actions | Python action wrapper. | Browser internals outside registered actions. |
-| Stagehand | v0.3 | High | SDK calls: act/observe/extract/agent | JS/Python wrapper around calls. | Raw Playwright calls not wrapped. |
-| Aider | v0.4 | Low/Medium | CLI process boundary | `toolguard run -- aider ...` or `toolplane run -- aider ...`. | Fine-grained internal tool calls. |
-| OpenCode | v0.2/v0.4 | High | MCP plus CLI process | MCP first, CLI shim later. | Internal operations not using MCP if shim only sees process. |
-| Codex CLI | v0.2/v0.4 | High | MCP plus CLI process | MCP first, `toolguard run -- codex ...` later. | Built-in tools outside MCP unless process-wrapped. |
-| Droid/Factory-style | v0.3/v0.4 | Medium/High | MCP/custom droid config | MCP gateway first, custom policy docs later. | Host-native tool calls unless routed. |
-| Shell/git/tests | v0.4 | High | Process execution | Process connector with safe allowlists and redaction. | Destructive commands blocked unless explicitly fixture-only. |
-| HTTP APIs | v0.4 | High | HTTP connector | Wrap fetch requests and redact headers/body. | Existing app HTTP clients not using connector. |
+| Target              |    Priority | Feasibility | Boundary                               | Adapter plan                                                  | Cannot protect in v0                                         |
+| ------------------- | ----------: | ----------- | -------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------ |
+| Cline               |        v0.2 | High        | MCP server config                      | ToolGuard MCP proxy exposes virtual tools.                    | Native Cline internal tools not routed via MCP.              |
+| Roo Code            |        v0.2 | High        | MCP server config                      | Same MCP proxy plus config snippet.                           | Internal/editor actions outside MCP.                         |
+| Claude Desktop/Code |        v0.2 | High        | MCP local server config                | MCP proxy using stdio/HTTP.                                   | Closed host internals and built-in tools.                    |
+| Cursor              |        v0.2 | High        | MCP settings/CLI MCP                   | MCP proxy config.                                             | Cursor-native edits/search if not MCP-routed.                |
+| Windsurf/Cascade    |        v0.2 | High        | MCP stdio/HTTP/SSE                     | MCP proxy config.                                             | Admin/team controls beyond generated config.                 |
+| Hermes              |        v0.3 | Medium      | MCP documented, direct plugins unclear | MCP first, native later after source/docs review.             | Direct Hermes tool registry if not public.                   |
+| LangGraph           |        v0.3 | Very high   | ToolNode/tool wrappers                 | Python package wraps tools and reports to sidecar.            | Calls bypassing wrapper.                                     |
+| AutoGen             |        v0.3 | Medium      | Workbench/MCP tools                    | Workbench wrapper or MCP downstream adapter.                  | Version churn and unsupported legacy APIs.                   |
+| CrewAI              |        v0.3 | High        | MCPServerAdapter/BaseTool              | Wrap BaseTool or MCPServerAdapter outputs.                    | Tools not registered through CrewAI abstractions.            |
+| Playwright MCP      | v0.2 target | High        | Downstream MCP server                  | Treat as tool target behind ToolGuard.                        | Browser actions not mediated by Playwright MCP.              |
+| browser-use         |        v0.3 | High        | Custom tools/actions                   | Python action wrapper.                                        | Browser internals outside registered actions.                |
+| Stagehand           |        v0.3 | High        | SDK calls: act/observe/extract/agent   | JS/Python wrapper around calls.                               | Raw Playwright calls not wrapped.                            |
+| Aider               |        v0.4 | Low/Medium  | CLI process boundary                   | `toolguard run -- aider ...` or `toolplane run -- aider ...`. | Fine-grained internal tool calls.                            |
+| OpenCode            |   v0.2/v0.4 | High        | MCP plus CLI process                   | MCP first, CLI shim later.                                    | Internal operations not using MCP if shim only sees process. |
+| Codex CLI           |   v0.2/v0.4 | High        | MCP plus CLI process                   | MCP first, `toolguard run -- codex ...` later.                | Built-in tools outside MCP unless process-wrapped.           |
+| Droid/Factory-style |   v0.3/v0.4 | Medium/High | MCP/custom droid config                | MCP gateway first, custom policy docs later.                  | Host-native tool calls unless routed.                        |
+| Shell/git/tests     |        v0.4 | High        | Process execution                      | Process connector with safe allowlists and redaction.         | Destructive commands blocked unless explicitly fixture-only. |
+| HTTP APIs           |        v0.4 | High        | HTTP connector                         | Wrap fetch requests and redact headers/body.                  | Existing app HTTP clients not using connector.               |
 
 ## UI/UX specification
 
@@ -530,7 +535,7 @@ Suggested OKLCH CSS tokens:
   --color-muted: oklch(0.68 0.018 260);
   --color-success: oklch(0.72 0.14 150);
   --color-warning: oklch(0.78 0.14 82);
-  --color-destructive: oklch(0.66 0.20 28);
+  --color-destructive: oklch(0.66 0.2 28);
   --color-info: oklch(0.72 0.09 235);
 }
 ```

@@ -83,9 +83,7 @@ export async function runMcpAdapterDemo(options: McpAdapterDemoOptions = {}): Pr
           }
         ],
         handler: async () => {
-          throw new ClassifiedToolError("malformed_json", "Malformed fixture payload", [
-            'raw payload: {"unterminated": true'
-          ]);
+          throw new ClassifiedToolError("malformed_json", "Malformed fixture payload", ['raw payload: {"unterminated": true']);
         }
       })
     ],
@@ -118,13 +116,15 @@ export async function runMcpAdapterDemo(options: McpAdapterDemoOptions = {}): Pr
   }
 }
 
-export async function createMcpAdapterDemoApiServer(options: {
-  readonly host?: string;
-  readonly port?: number;
-  readonly evidenceRoot?: string;
-  readonly runId?: string;
-  readonly storyScenarioRuntime?: DemoStoryScenarioRuntime;
-} = {}): Promise<McpAdapterDemoApiServerHandle> {
+export async function createMcpAdapterDemoApiServer(
+  options: {
+    readonly host?: string;
+    readonly port?: number;
+    readonly evidenceRoot?: string;
+    readonly runId?: string;
+    readonly storyScenarioRuntime?: DemoStoryScenarioRuntime;
+  } = {}
+): Promise<McpAdapterDemoApiServerHandle> {
   const evidenceRoot = options.evidenceRoot ?? (await mkdtemp(path.join(os.tmpdir(), "toolguard-mcp-demo-api-")));
   const session = new CoreSession({
     evidenceRoot,

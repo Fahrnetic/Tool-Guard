@@ -304,11 +304,7 @@ export class CoreSession {
     });
   }
 
-  async emitGeneratedArtifact(
-    type: "topology.generated" | "narrative.generated",
-    summary: string,
-    data: JsonValue
-  ): Promise<CoreEvent> {
+  async emitGeneratedArtifact(type: "topology.generated" | "narrative.generated", summary: string, data: JsonValue): Promise<CoreEvent> {
     const last = this.#recorder.events.at(-1);
     const context = last
       ? {
@@ -347,11 +343,7 @@ export class CoreSession {
     );
   }
 
-  async emitVisibilityImported(
-    call: ToolCall,
-    summary: string,
-    data: JsonObject & { readonly artifactId?: StableId }
-  ): Promise<CoreEvent> {
+  async emitVisibilityImported(call: ToolCall, summary: string, data: JsonObject & { readonly artifactId?: StableId }): Promise<CoreEvent> {
     return await this.#emit("visibility.imported", call, summary, {
       ...(data.artifactId ? { artifactId: data.artifactId } : {}),
       data
@@ -456,9 +448,15 @@ export class CoreSession {
         await this.#emit("output.sanitized", call, `Suspicious output contained for ${call.toolName}`, {
           data: { reason: suspicious.failureType, artifactId: artifact.artifactId }
         });
-        const failure = await this.#recordFailure(call, suspicious, ["Unsafe downstream output stored as raw evidence."], [
-          artifact
-        ], tool, undefined, JSON.stringify(rawOutput));
+        const failure = await this.#recordFailure(
+          call,
+          suspicious,
+          ["Unsafe downstream output stored as raw evidence."],
+          [artifact],
+          tool,
+          undefined,
+          JSON.stringify(rawOutput)
+        );
         await this.#recordTargetFailure(call, failure.failureType);
         return failure;
       }
@@ -481,7 +479,9 @@ export class CoreSession {
         contextImpact: buildContextImpact({
           rawContent: serialized,
           modelFacingContent: JSON.stringify(overLimit ? { truncated: true, artifactId: artifact.artifactId } : rawOutput),
-          safeDisplayedContent: overLimit ? `Tool ${call.toolName} completed successfully, but output was truncated for model safety.` : serialized,
+          safeDisplayedContent: overLimit
+            ? `Tool ${call.toolName} completed successfully, but output was truncated for model safety.`
+            : serialized,
           outputLimitBytes: this.#outputLimitBytes,
           fingerprint: buildCallFingerprint(call, undefined)
         })
@@ -491,14 +491,7 @@ export class CoreSession {
         tool,
         outcome: "completed",
         artifactIds: [artifact.artifactId],
-        observedImpact: await this.#observedImpact(
-          impactStart,
-          call,
-          "completed",
-          [artifact.relativePath],
-          rawOutput,
-          tool.routeMetadata
-        )
+        observedImpact: await this.#observedImpact(impactStart, call, "completed", [artifact.relativePath], rawOutput, tool.routeMetadata)
       });
       await this.#recordTargetSuccess(call, targetKey);
       return result;
@@ -518,14 +511,7 @@ export class CoreSession {
         getRawFailureDetails(error),
         [],
         tool,
-        await this.#observedImpact(
-          impactStart,
-          call,
-          observedOutcome,
-          [],
-          getRawFailureDetails(error),
-          tool.routeMetadata
-        )
+        await this.#observedImpact(impactStart, call, observedOutcome, [], getRawFailureDetails(error), tool.routeMetadata)
       );
       await this.#recordTargetFailure(call, failure.failureType);
       return failure;
@@ -654,7 +640,9 @@ export class CoreSession {
         ...baseFailure,
         safeSummary: finalSafeSummary,
         contextImpact: buildContextImpact({
-          rawContent: rawContentForContext ?? [rawDetails.join("\n"), ...existingArtifacts.map((existing) => `artifact:${existing.kind}:${existing.byteLength}`)].join("\n"),
+          rawContent:
+            rawContentForContext ??
+            [rawDetails.join("\n"), ...existingArtifacts.map((existing) => `artifact:${existing.kind}:${existing.byteLength}`)].join("\n"),
           modelFacingContent: finalSafeSummary,
           safeDisplayedContent: finalSafeSummary,
           fingerprint,
@@ -692,8 +680,7 @@ export class CoreSession {
       failureType: input.failureType,
       outcome: input.outcome
     });
-    const effectState =
-      sideEffect.effectState === "unknown" && input.observedImpact?.outcome === "none" ? "none" : sideEffect.effectState;
+    const effectState = sideEffect.effectState === "unknown" && input.observedImpact?.outcome === "none" ? "none" : sideEffect.effectState;
     const summary =
       sideEffect.effectState === "unknown" && effectState === "none"
         ? `Call failed for ${call.toolName}; postflight checks found no observed local mutation.`
@@ -903,9 +890,7 @@ export class CoreSession {
       policyDecisionId: call.policyDecisionId,
       visibility: buildVisibilityMetadata(call),
       ...(options.artifactId ? { artifactId: options.artifactId } : {}),
-      ...(data
-        ? { data: redactJsonValue(data as JsonValue) as NonNullable<CoreEvent["data"]> }
-        : {})
+      ...(data ? { data: redactJsonValue(data as JsonValue) as NonNullable<CoreEvent["data"]> } : {})
     };
 
     await this.#recorder.appendEvent(event);
@@ -947,9 +932,7 @@ export class CoreSession {
       ...(context.policyDecisionId ? { policyDecisionId: context.policyDecisionId } : {}),
       visibility: contextVisibilityMetadata(context),
       ...(options.artifactId ? { artifactId: options.artifactId } : {}),
-      ...(options.data
-        ? { data: redactJsonValue(options.data as JsonValue) as NonNullable<CoreEvent["data"]> }
-        : {})
+      ...(options.data ? { data: redactJsonValue(options.data as JsonValue) as NonNullable<CoreEvent["data"]> } : {})
     };
 
     await this.#recorder.appendEvent(event);
@@ -987,9 +970,7 @@ async function executeWithAbort(execute: () => Promise<JsonValue> | JsonValue, s
       return;
     }
 
-    execution
-      .then((value) => settle(() => resolve(value)))
-      .catch((error: unknown) => settle(() => reject(error)));
+    execution.then((value) => settle(() => resolve(value))).catch((error: unknown) => settle(() => reject(error)));
   });
 }
 

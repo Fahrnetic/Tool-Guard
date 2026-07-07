@@ -49,7 +49,10 @@ export function Overview({ run, health, topology, policies, reports, bundle, sta
   return (
     <div className="space-y-6">
       <section className="relative overflow-hidden rounded-[2rem] border border-primary/25 bg-[radial-gradient(circle_at_18%_0%,oklch(0.64_0.18_235_/_0.22),transparent_30rem),radial-gradient(circle_at_84%_6%,oklch(0.62_0.16_310_/_0.15),transparent_28rem),linear-gradient(135deg,oklch(0.19_0.038_260),oklch(0.10_0.02_260))] p-6 shadow-2xl shadow-black/30">
-        <div className="absolute right-8 top-8 hidden h-36 w-36 rounded-full border border-primary/25 bg-primary/5 blur-sm lg:block" aria-hidden="true" />
+        <div
+          className="absolute right-8 top-8 hidden h-36 w-36 rounded-full border border-primary/25 bg-primary/5 blur-sm lg:block"
+          aria-hidden="true"
+        />
         <div className="relative flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-4xl">
             <div className="flex flex-wrap gap-2">
@@ -60,9 +63,8 @@ export function Overview({ run, health, topology, policies, reports, bundle, sta
               One landing screen for run status, risk, policy, and evidence readiness.
             </h2>
             <p className="mt-3 text-sm leading-6 text-text-muted sm:text-base">
-              This command center combines Core health, topology, side-effect, retry, policy, and evidence signals. It
-              stays useful when Core is loading, empty, partially degraded, or offline, and it avoids claims beyond
-              routed ToolGuard boundaries.
+              This command center combines Core health, topology, side-effect, retry, policy, and evidence signals. It stays useful when
+              Core is loading, empty, partially degraded, or offline, and it avoids claims beyond routed ToolGuard boundaries.
             </p>
           </div>
           <div className="rounded-2xl border border-border bg-bg-panel/85 p-4">
@@ -156,7 +158,9 @@ export function Overview({ run, health, topology, policies, reports, bundle, sta
               ))}
             </ul>
           ) : (
-            <p className="mt-3 text-sm leading-6 text-text-muted">No report export event yet. Exported reports will appear here with local artifact links.</p>
+            <p className="mt-3 text-sm leading-6 text-text-muted">
+              No report export event yet. Exported reports will appear here with local artifact links.
+            </p>
           )}
         </div>
       </section>

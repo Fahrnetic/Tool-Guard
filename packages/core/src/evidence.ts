@@ -124,8 +124,7 @@ export class EvidenceRecorder {
     const artifactDir = path.join(this.#runDir, "artifacts");
     await mkdir(artifactDir, { recursive: true });
 
-    const serialized =
-      typeof input.content === "string" ? input.content : `${JSON.stringify(input.content, null, 2)}\n`;
+    const serialized = typeof input.content === "string" ? input.content : `${JSON.stringify(input.content, null, 2)}\n`;
     const relativePath = path.join("artifacts", input.fileName);
     await writeFile(path.join(this.#runDir, relativePath), serialized, "utf8");
 

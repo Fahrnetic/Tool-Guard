@@ -60,10 +60,7 @@ describe("context and token waste accounting", () => {
       execute: () => ({ blob: "x".repeat(512) })
     });
 
-    const result = (await session.executeToolCall(
-      registry,
-      makeCall({ runId, toolName: "fixture.big" })
-    )) as ToolResult;
+    const result = (await session.executeToolCall(registry, makeCall({ runId, toolName: "fixture.big" }))) as ToolResult;
 
     expect(result.contextImpact.modelFacingContent.bytes).toBeGreaterThan(0);
     expect(result.contextImpact.modelFacingContent.chars).toBeGreaterThan(0);
@@ -99,10 +96,7 @@ describe("context and token waste accounting", () => {
       execute: () => ({ message: "safe prefix", authorization: secret })
     });
 
-    const failure = (await session.executeToolCall(
-      registry,
-      makeCall({ runId, toolName: "fixture.secret" })
-    )) as FailureCard;
+    const failure = (await session.executeToolCall(registry, makeCall({ runId, toolName: "fixture.secret" }))) as FailureCard;
 
     expect(failure.failureType).toBe("secret_leak_risk");
     expect(failure.contextImpact.redactionSavings.bytes).toBeGreaterThan(0);
@@ -136,10 +130,7 @@ describe("context and token waste accounting", () => {
       }
     });
 
-    const failure = (await session.executeToolCall(
-      registry,
-      makeCall({ runId, toolName: "fixture.retry-loop" })
-    )) as FailureCard;
+    const failure = (await session.executeToolCall(registry, makeCall({ runId, toolName: "fixture.retry-loop" }))) as FailureCard;
 
     expect(calls).toBe(3);
     expect(failure.contextImpact.duplicateRetryContext.repeatedFingerprintCount).toBe(3);
@@ -153,18 +144,14 @@ describe("context and token waste accounting", () => {
     const runId = createId("run");
     const session = new CoreSession({ evidenceRoot: root, runId });
 
-    const failure = await session.failToolCall(
-      makeCall({ runId, toolName: "fixture.final-summary" }),
-      "timeout",
-      ["deadline exceeded after model-facing side-effect accounting"]
-    );
+    const failure = await session.failToolCall(makeCall({ runId, toolName: "fixture.final-summary" }), "timeout", [
+      "deadline exceeded after model-facing side-effect accounting"
+    ]);
 
     expect(failure.safeSummary).toContain("Side effects:");
     expect(failure.contextImpact.modelFacingContent.bytes).toBe(Buffer.byteLength(failure.safeSummary, "utf8"));
     expect(failure.contextImpact.modelFacingContent.chars).toBe([...failure.safeSummary].length);
-    expect(failure.contextImpact.tokenEstimate.estimatedTokens).toBe(
-      failure.contextImpact.modelFacingContent.estimatedTokens
-    );
+    expect(failure.contextImpact.tokenEstimate.estimatedTokens).toBe(failure.contextImpact.modelFacingContent.estimatedTokens);
   });
 
   it("adds context waste deltas to policy simulation and estimation notes to reports", async () => {
@@ -177,9 +164,7 @@ describe("context and token waste accounting", () => {
       scenarioId: "retry-loop-failure",
       proposedPolicy: { retryLimit: 0 }
     });
-    expect(simulation.contextDelta.before.estimatedTokens).toBeGreaterThan(
-      simulation.contextDelta.after.estimatedTokens
-    );
+    expect(simulation.contextDelta.before.estimatedTokens).toBeGreaterThan(simulation.contextDelta.after.estimatedTokens);
     expect(simulation.contextDelta.delta.estimatedTokens).toBeLessThan(0);
     expect(simulation.contextDelta.estimation.method).toBe("heuristic-chars-div-4");
 

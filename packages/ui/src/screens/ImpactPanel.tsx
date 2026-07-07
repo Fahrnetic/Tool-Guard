@@ -13,7 +13,13 @@ interface ImpactPanelProps {
 
 export function ImpactPanel({ payload, status, error }: ImpactPanelProps) {
   if (status === "loading") {
-    return <StatePanel status="loading" title="Loading observed impact" message="Fetching side-effect ledger rows and observed local impact from `/api/impact`." />;
+    return (
+      <StatePanel
+        status="loading"
+        title="Loading observed impact"
+        message="Fetching side-effect ledger rows and observed local impact from `/api/impact`."
+      />
+    );
   }
   if (status === "error") {
     return <StatePanel status="error" title="Impact panel unavailable" message={error ?? "Core did not return observed impact."} />;
@@ -47,8 +53,8 @@ export function ImpactPanel({ payload, status, error }: ImpactPanelProps) {
         </div>
         <h2 className="mt-3 text-3xl font-black tracking-[-0.035em] text-text">Observed local impact and rollback guidance</h2>
         <p className="mt-2 max-w-4xl text-sm leading-6 text-text-muted">
-          This panel lists measured file changes, contained safe paths, child process lifecycle facts, reversibility,
-          attribution, and rollback guidance. It distinguishes observed facts from inferred or blocked impact.
+          This panel lists measured file changes, contained safe paths, child process lifecycle facts, reversibility, attribution, and
+          rollback guidance. It distinguishes observed facts from inferred or blocked impact.
         </p>
       </div>
 
@@ -83,8 +89,14 @@ function ImpactEntryCard({ entry }: { readonly entry: ImpactEntryView }) {
         <div>
           <div className="flex flex-wrap gap-2">
             <StatusChip label={entry.effectState} tone={effectTone(entry.effectState)} />
-            <StatusChip label={`Reversibility: ${entry.reversibility}`} tone={entry.reversibility === "irreversible-risk" ? "failed" : "healthy"} />
-            <StatusChip label={`Attribution: ${entry.attributionLevel}`} tone={entry.attributionLevel === "unknown" ? "warning" : "selected"} />
+            <StatusChip
+              label={`Reversibility: ${entry.reversibility}`}
+              tone={entry.reversibility === "irreversible-risk" ? "failed" : "healthy"}
+            />
+            <StatusChip
+              label={`Attribution: ${entry.attributionLevel}`}
+              tone={entry.attributionLevel === "unknown" ? "warning" : "selected"}
+            />
             <StatusChip label={`Blast radius: ${entry.blastRadius.label}`} tone={blastTone(entry.blastRadius.label)} />
           </div>
           <h3 className="mt-3 text-xl font-semibold text-text">{entry.toolName}</h3>
@@ -147,7 +159,10 @@ function ImpactEntryCard({ entry }: { readonly entry: ImpactEntryView }) {
 
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         <InfoBlock title="Attribution basis" body={`${entry.causalClaim} Evidence: ${entry.evidenceBasis.join(", ")}.`} />
-        <InfoBlock title="Counter evidence" body={entry.counterEvidence.length > 0 ? entry.counterEvidence.join(" ") : "No counter-evidence recorded."} />
+        <InfoBlock
+          title="Counter evidence"
+          body={entry.counterEvidence.length > 0 ? entry.counterEvidence.join(" ") : "No counter-evidence recorded."}
+        />
         <div className="rounded-xl border border-border bg-bg/55 p-4">
           <h4 className="text-sm font-semibold text-text">Rollback guidance</h4>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-text-muted">
@@ -190,7 +205,8 @@ function ImpactEntryCard({ entry }: { readonly entry: ImpactEntryView }) {
 
 function fallbackRollbackGuidance(entry: ImpactEntryView): readonly string[] {
   if (entry.effectState === "blocked") return ["No rollback required. ToolGuard blocked the action before downstream execution."];
-  if (entry.reversibility === "irreversible-risk") return ["Do not replay automatically. Review separated evidence and restore from a trusted backup if mutation is confirmed."];
+  if (entry.reversibility === "irreversible-risk")
+    return ["Do not replay automatically. Review separated evidence and restore from a trusted backup if mutation is confirmed."];
   return ["No observed workspace file changes require rollback."];
 }
 

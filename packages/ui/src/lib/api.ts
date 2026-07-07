@@ -80,7 +80,10 @@ export async function savePolicyPreview(input: { timeoutMs: number; retryLimit: 
   });
 }
 
-export async function simulatePolicy(input: { scenarioId: PolicyScenarioId; proposedPolicy: PolicyDraft }, signal?: AbortSignal): Promise<PolicySimulation> {
+export async function simulatePolicy(
+  input: { scenarioId: PolicyScenarioId; proposedPolicy: PolicyDraft },
+  signal?: AbortSignal
+): Promise<PolicySimulation> {
   return await fetchJson<PolicySimulation>("/api/policy/simulate", signal, {
     method: "POST",
     body: JSON.stringify(input),
@@ -92,17 +95,20 @@ export async function fetchIntegrations(signal?: AbortSignal): Promise<Integrati
   return await fetchJson<IntegrationsPayload>("/api/integrations", signal);
 }
 
-export async function verifyIntegration(input: {
-  routeType: VerificationRouteType;
-  integrationId?: string;
-  hostId?: string;
-  hostName?: string;
-  hostFamily?: string;
-  supportedHostIds?: readonly string[];
-  platform?: string;
-  transport?: string;
-  configHash?: string;
-}, signal?: AbortSignal): Promise<VerificationReceipt> {
+export async function verifyIntegration(
+  input: {
+    routeType: VerificationRouteType;
+    integrationId?: string;
+    hostId?: string;
+    hostName?: string;
+    hostFamily?: string;
+    supportedHostIds?: readonly string[];
+    platform?: string;
+    transport?: string;
+    configHash?: string;
+  },
+  signal?: AbortSignal
+): Promise<VerificationReceipt> {
   return await fetchJson<VerificationReceipt>("/api/integrations/verify", signal, {
     method: "POST",
     body: JSON.stringify(input),
@@ -131,7 +137,15 @@ export async function resetStoryScenario(input: { scenarioId: string }, signal?:
 }
 
 export async function requestReplay(
-  input: { toolName: string; sourceRunId: string; fixtureOnly: boolean; mode?: string; destructive?: boolean; safeLoopback?: boolean; dryRunOnly?: boolean },
+  input: {
+    toolName: string;
+    sourceRunId: string;
+    fixtureOnly: boolean;
+    mode?: string;
+    destructive?: boolean;
+    safeLoopback?: boolean;
+    dryRunOnly?: boolean;
+  },
   signal?: AbortSignal
 ): Promise<ReplayResponse> {
   return await fetchJsonAllowingStatus<ReplayResponse>("/api/replay", signal, {

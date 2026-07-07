@@ -1,15 +1,8 @@
 import { redactStringWithSummary } from "./redaction.js";
-import type {
-  ContextImpactMetrics,
-  ContextSavings,
-  ContextSizeEstimate,
-  ContextTokenEstimate,
-  ContextWasteDelta
-} from "./types.js";
+import type { ContextImpactMetrics, ContextSavings, ContextSizeEstimate, ContextTokenEstimate, ContextWasteDelta } from "./types.js";
 
 const HEURISTIC_METHOD = "heuristic-chars-div-4" as const;
-const HEURISTIC_PROVENANCE =
-  "Provider token usage unavailable; estimated locally from character count divided by four.";
+const HEURISTIC_PROVENANCE = "Provider token usage unavailable; estimated locally from character count divided by four.";
 
 export interface ContextImpactInput {
   readonly rawContent: string;

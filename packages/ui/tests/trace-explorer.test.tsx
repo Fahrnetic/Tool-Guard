@@ -34,16 +34,18 @@ describe("Trace Explorer topology selection", () => {
       ]
     } satisfies TopologySelection;
 
-    const html = renderToStaticMarkup(
-      <TraceExplorer payload={makeTracePayload()} status="ready" topologySelection={topologySelection} />
-    );
+    const html = renderToStaticMarkup(<TraceExplorer payload={makeTracePayload()} status="ready" topologySelection={topologySelection} />);
 
     expect(html).toContain("node_attempt_selected");
     expect(html).toContain("toolcall_selected");
     expect(html).toContain("artifact_selected");
-    expect(html).toContain("aria-selected=\"true\" class=\"rounded-xl border p-3 outline-none transition hover:border-primary/45 focus-visible:border-primary border-primary bg-primary/10 shadow-lg shadow-primary/10\"");
-    expect(html).toContain("aria-selected=\"true\" class=\"border-l-2 transition hover:bg-primary/5 border-primary bg-primary/10\"");
-    expect(html).toContain("aria-selected=\"true\" class=\"rounded-lg border p-3 transition border-primary bg-primary/10 shadow-lg shadow-primary/10\"");
+    expect(html).toContain(
+      'aria-selected="true" class="rounded-xl border p-3 outline-none transition hover:border-primary/45 focus-visible:border-primary border-primary bg-primary/10 shadow-lg shadow-primary/10"'
+    );
+    expect(html).toContain('aria-selected="true" class="border-l-2 transition hover:bg-primary/5 border-primary bg-primary/10"');
+    expect(html).toContain(
+      'aria-selected="true" class="rounded-lg border p-3 transition border-primary bg-primary/10 shadow-lg shadow-primary/10"'
+    );
     expect(html.match(/aria-selected="true"/g)).toHaveLength(3);
   });
 });

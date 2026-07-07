@@ -21,14 +21,14 @@ Toolplane is the monorepo. **ToolGuard** is the product surface in it. It works 
 
 ## Why it exists
 
-AI agents are getting better at deciding *what* to call. The operational layer around those calls is still brittle. Tool calls fail in ways that are hard to debug and easy to make unsafe:
+AI agents are getting better at deciding _what_ to call. The operational layer around those calls is still brittle. Tool calls fail in ways that are hard to debug and easy to make unsafe:
 
-| Symptom | What happens today | What ToolGuard does |
-| --- | --- | --- |
-| Downstream crash / hang / malformed data | Adapter loses correlation between harness, server, tool call, attempt, and artifact | Stitches every hop into one correlated event stream |
-| Non-zero exit, context flood, secret-shaped output | Raw stdout floods the model or leaks bearer/private keys | Enforces output budgets and redacts before model-facing output |
-| Destructive or injected command | Workspace mutated or injection text reaches the model | Policy gates block before execution; injection text is contained |
-| Incident / eval review | Screenshots and hand-written explanations | Replayable evidence bundle with hashes, manifests, and receipts |
+| Symptom                                            | What happens today                                                                  | What ToolGuard does                                              |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Downstream crash / hang / malformed data           | Adapter loses correlation between harness, server, tool call, attempt, and artifact | Stitches every hop into one correlated event stream              |
+| Non-zero exit, context flood, secret-shaped output | Raw stdout floods the model or leaks bearer/private keys                            | Enforces output budgets and redacts before model-facing output   |
+| Destructive or injected command                    | Workspace mutated or injection text reaches the model                               | Policy gates block before execution; injection text is contained |
+| Incident / eval review                             | Screenshots and hand-written explanations                                           | Replayable evidence bundle with hashes, manifests, and receipts  |
 
 ToolGuard makes tool execution observable, policy-aware, and replayable, without making MCP, a shell, a UI, or a Python framework the core abstraction.
 
@@ -50,11 +50,11 @@ ToolGuard makes tool execution observable, policy-aware, and replayable, without
 
 Requirements from repo metadata:
 
-| Requirement | Version |
-| --- | --- |
-| Node.js | `>=22.0.0` |
-| pnpm | `10.25.0` |
-| Python | `3` (for `@toolplane/python-adapters`) |
+| Requirement | Version                                |
+| ----------- | -------------------------------------- |
+| Node.js     | `>=22.0.0`                             |
+| pnpm        | `10.25.0`                              |
+| Python      | `3` (for `@toolplane/python-adapters`) |
 
 ```bash
 pnpm install
@@ -85,11 +85,11 @@ All demos are local-first and fixture-driven. They do **not** require cloud cred
 
 `pnpm demo:serve` runs the flagship story-mode stack on approved loopback ports only:
 
-| Surface | Address |
-| --- | --- |
-| Core / API / SSE | `http://127.0.0.1:3660` |
-| UI | `http://127.0.0.1:3661` |
-| Fixture stack | `http://127.0.0.1:3662`-`3664` |
+| Surface          | Address                        |
+| ---------------- | ------------------------------ |
+| Core / API / SSE | `http://127.0.0.1:3660`        |
+| UI               | `http://127.0.0.1:3661`        |
+| Fixture stack    | `http://127.0.0.1:3662`-`3664` |
 
 The launcher refuses ports outside the approved `3660-3669` range and traps shutdown to clean up ToolGuard-owned processes.
 
@@ -103,20 +103,26 @@ The demo is designed to read clearly on screen: start with the before/after arc,
 
 ToolGuard treats "any platform and any harness" as route coverage, not universal native interception. Compatibility claims use these labels:
 
-| Label | Meaning |
-| --- | --- |
-| `mediated` | ToolGuard is the execution boundary, such as direct Core/API/demo calls, MCP-routed calls, or explicit JS/TS wrappers. |
-| `supervised` | ToolGuard supervises a process boundary, such as `toolguard run --`, but cannot see native in-process host tools. |
-| `observed` | Explicit wrappers or imports report useful facts with less control than mediated execution. |
-| `imported` | ToolGuard organizes bounded, redacted imported logs, receipts, or HTTP/webhook payloads after the fact. |
-| `not-covered` | No routed, wrapped, supervised, imported, or API boundary is present. |
-| `unknown` | ToolGuard has not received enough route evidence or a current smoke-test receipt yet. |
+| Label         | Meaning                                                                                                                |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `mediated`    | ToolGuard is the execution boundary, such as direct Core/API/demo calls, MCP-routed calls, or explicit JS/TS wrappers. |
+| `supervised`  | ToolGuard supervises a process boundary, such as `toolguard run --`, but cannot see native in-process host tools.      |
+| `observed`    | Explicit wrappers or imports report useful facts with less control than mediated execution.                            |
+| `imported`    | ToolGuard organizes bounded, redacted imported logs, receipts, or HTTP/webhook payloads after the fact.                |
+| `not-covered` | No routed, wrapped, supervised, imported, or API boundary is present.                                                  |
+| `unknown`     | ToolGuard has not received enough route evidence or a current smoke-test receipt yet.                                  |
 
 - **Route-first onboarding:** the Harness Integrations workbench lets users choose a harness and platform, copy shared POSIX shell, PowerShell, CMD, WSL, container, or CI setup snippets, and see exact harness passport coverage.
 - **Receipts and doctor output:** `pnpm doctor:integrations` emits human output or stable JSON with route passports, checked capabilities, limitations, route-specific evidence links, no-secret status, and CI receipt artifact paths.
 - **Canonical visibility:** events, run indexes, receipts, and bundles use `toolguard.visibility.v1` metadata with visibility level, coverage claim, route passport ID, harness/platform fields, W3C trace context, redaction, and stable hashes.
 - **Interop and import paths:** Core can export local OpenTelemetry-compatible spans without credentials, import visibility JSONL, wrap explicit JS/TS functions, accept bounded HTTP/webhook imports, and import browser evidence summaries for screenshots, console, and network.
 - **Route comparison and first proof:** the UI compares mediated, supervised, observed, imported, unverified, and unsupported routes by evidence depth, freshness, and blind spots. The first-proof flow goes from setup snippet to safe smoke test, matching receipt/passport, diagnostic record, and evidence bundle export.
+
+---
+
+## Observability demo
+
+ToolGuard includes a local OpenTelemetry demo stack: OpenObserve for an all-in-one view, plus OpenTelemetry Collector, Prometheus, Grafana, and Loki for production-style exposure. Run `docker compose -f observability/openobserve/docker-compose.yml up`, then `pnpm demo:otel` to generate redacted OTLP-shaped traces, metrics, logs, and dashboard query examples under `runs/`.
 
 ---
 
@@ -179,13 +185,13 @@ toolplane/
 
 ### Package map
 
-| Package | Role | Grounded surfaces in this repo |
-| --- | --- | --- |
-| `@toolplane/core` | Protocol-independent ToolGuard runtime | `CoreSession`, `ToolRegistry`, `EventBus`, `EvidenceRecorder`, `exportStaticReport`, `exportEvidenceBundle`, `validateReportManifest`, `createCoreApiServer`, `SIDECAR_PROTOCOL_VERSION`, side-effect ledger, blast-radius scoring, retry-loop detection, topology, narrative, policy simulator, integration verification, story mode, redaction, classifier, chaos fixtures |
-| `@toolplane/cli` | Safe process wrapper for shell, git, tests, coding-agent supervision | `toolplane` and `toolguard` bins, `toolplane run -- <command>`, argv boundary preservation, timeout/cancellation, output limits, environment redaction, destructive command blocking |
-| `@toolplane/mcp-adapter` | MCP proxy/router between upstream MCP clients and downstream tools | deterministic virtual tool names, downstream preflight, MCP-compatible Failure Cards, SDK boundary tests, config snippet generation with MCP-routed-only limitations, portfolio demo, persistent `demo:serve` story-mode launcher |
-| `@toolplane/python-adapters` | Thin framework adapters for Python agent stacks | sidecar client, LangGraph wrapper, CrewAI wrapper, loopback-only sidecar endpoint validation, fail-closed protocol checks |
-| `@toolplane/ui` | Local observability UI | run health command center, live timeline, failure topology map, health matrix, failure inbox, trace explorer, replay lab, demo story mode, validation dashboard, policy studio, harness integrations, evidence bundle viewer |
+| Package                      | Role                                                                 | Grounded surfaces in this repo                                                                                                                                                                                                                                                                                                                                               |
+| ---------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@toolplane/core`            | Protocol-independent ToolGuard runtime                               | `CoreSession`, `ToolRegistry`, `EventBus`, `EvidenceRecorder`, `exportStaticReport`, `exportEvidenceBundle`, `validateReportManifest`, `createCoreApiServer`, `SIDECAR_PROTOCOL_VERSION`, side-effect ledger, blast-radius scoring, retry-loop detection, topology, narrative, policy simulator, integration verification, story mode, redaction, classifier, chaos fixtures |
+| `@toolplane/cli`             | Safe process wrapper for shell, git, tests, coding-agent supervision | `toolplane` and `toolguard` bins, `toolplane run -- <command>`, argv boundary preservation, timeout/cancellation, output limits, environment redaction, destructive command blocking                                                                                                                                                                                         |
+| `@toolplane/mcp-adapter`     | MCP proxy/router between upstream MCP clients and downstream tools   | deterministic virtual tool names, downstream preflight, MCP-compatible Failure Cards, SDK boundary tests, config snippet generation with MCP-routed-only limitations, portfolio demo, persistent `demo:serve` story-mode launcher                                                                                                                                            |
+| `@toolplane/python-adapters` | Thin framework adapters for Python agent stacks                      | sidecar client, LangGraph wrapper, CrewAI wrapper, loopback-only sidecar endpoint validation, fail-closed protocol checks                                                                                                                                                                                                                                                    |
+| `@toolplane/ui`              | Local observability UI                                               | run health command center, live timeline, failure topology map, health matrix, failure inbox, trace explorer, replay lab, demo story mode, validation dashboard, policy studio, harness integrations, evidence bundle viewer                                                                                                                                                 |
 
 Packages are private workspace packages at version `0.0.0`. They are **not** published to npm or PyPI.
 
@@ -199,14 +205,14 @@ ToolGuard treats suspicious output as hostile until proven safe and evaluates po
 
 ToolGuard normalizes tool failures into typed Failure Cards with root cause, retryability, safe recovery options, human fix guidance, evidence links, safe summaries, and `rawDetailsSeparated: true`.
 
-| Category | Failure classes |
-| --- | --- |
-| Call shape | `unknown_tool`, `invalid_arguments` |
-| Lifecycle | `timeout`, `cancellation` |
-| Environment | `cwd_mismatch`, `spawn_failure`, `sidecar_unavailable`, `sidecar_protocol_error` |
-| Downstream data | `malformed_json`, `process_crash`, `non_zero_exit`, `output_limit_exceeded` |
-| Safety | `prompt_injection_output`, `secret_leak_risk`, `destructive_action_blocked` |
-| Policy / resilience | `circuit_open`, `policy_blocked` |
+| Category            | Failure classes                                                                  |
+| ------------------- | -------------------------------------------------------------------------------- |
+| Call shape          | `unknown_tool`, `invalid_arguments`                                              |
+| Lifecycle           | `timeout`, `cancellation`                                                        |
+| Environment         | `cwd_mismatch`, `spawn_failure`, `sidecar_unavailable`, `sidecar_protocol_error` |
+| Downstream data     | `malformed_json`, `process_crash`, `non_zero_exit`, `output_limit_exceeded`      |
+| Safety              | `prompt_injection_output`, `secret_leak_risk`, `destructive_action_blocked`      |
+| Policy / resilience | `circuit_open`, `policy_blocked`                                                 |
 
 ### Policy and resilience
 
@@ -227,13 +233,13 @@ Detection and redaction are implemented for prompt-injection-like text, bearer t
 
 Typical demo output under `runs/` includes `events.jsonl`, raw artifacts, `report.html`, `manifest.json`, `artifact-hashes.json`, and `redaction-summary.json`. Demo-ready evidence also includes a side-effect ledger, topology and narrative exports, policy simulation receipts, integration verification receipts, retry-loop summaries, blast-radius summaries, and an exportable evidence bundle with a local viewer.
 
-| Concept | Behavior |
-| --- | --- |
-| Raw evidence separated | Raw stdout, stderr, and downstream results written as local artifacts, linked by ID |
-| Safe summaries model-facing | Report data and user-visible payloads pass through redaction helpers before display |
-| Output budgets enforced | Oversized payloads become bounded failures, not context floods |
-| Replay constrained | Replay endpoints expose metadata and block real-world or destructive replay unless fixture-only and safe |
-| Policy simulation dry-run | Previews outcomes from recorded scenarios without executing new downstream side effects |
+| Concept                         | Behavior                                                                                                                   |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Raw evidence separated          | Raw stdout, stderr, and downstream results written as local artifacts, linked by ID                                        |
+| Safe summaries model-facing     | Report data and user-visible payloads pass through redaction helpers before display                                        |
+| Output budgets enforced         | Oversized payloads become bounded failures, not context floods                                                             |
+| Replay constrained              | Replay endpoints expose metadata and block real-world or destructive replay unless fixture-only and safe                   |
+| Policy simulation dry-run       | Previews outcomes from recorded scenarios without executing new downstream side effects                                    |
 | Integration verification scoped | Receipts cover routed, wrapped, or supervised ToolGuard paths only, not native interception of tools that bypass ToolGuard |
 
 ---

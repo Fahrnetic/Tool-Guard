@@ -169,10 +169,7 @@ const RECOVERY: Record<FailureType, FailureClassification> = {
     likelyRootCause: "The local ToolGuard sidecar response did not match the expected versioned protocol.",
     retryable: false,
     doNotRetrySameCall: true,
-    safeRecoveryOptions: [
-      "Check the adapter and sidecar protocol versions.",
-      "Inspect sidecar response evidence before retrying."
-    ],
+    safeRecoveryOptions: ["Check the adapter and sidecar protocol versions.", "Inspect sidecar response evidence before retrying."],
     humanFix: "Upgrade the Python adapter and ToolGuard Core sidecar together so their protocol versions match."
   },
   unknown: {
@@ -185,12 +182,8 @@ const RECOVERY: Record<FailureType, FailureClassification> = {
   }
 };
 
-export function classifyFailure(input: {
-  readonly error?: unknown;
-  readonly failureType?: FailureType;
-}): FailureClassification {
-  const failureType =
-    input.failureType ?? (input.error instanceof ClassifiedToolError ? input.error.failureType : "unknown");
+export function classifyFailure(input: { readonly error?: unknown; readonly failureType?: FailureType }): FailureClassification {
+  const failureType = input.failureType ?? (input.error instanceof ClassifiedToolError ? input.error.failureType : "unknown");
   return RECOVERY[failureType] ?? RECOVERY.unknown;
 }
 

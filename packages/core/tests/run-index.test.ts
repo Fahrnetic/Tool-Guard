@@ -224,7 +224,7 @@ describe("durable run index", () => {
         harness: { name: "Core API demo" }
       }
     });
-    expect(JSON.stringify(record)).not.toContain("\"visibilityLevel\":\"observed\"");
+    expect(JSON.stringify(record)).not.toContain('"visibilityLevel":"observed"');
   });
 });
 

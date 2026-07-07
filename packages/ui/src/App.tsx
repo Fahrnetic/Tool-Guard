@@ -1,6 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell, type NavigationItem } from "./components/AppShell.js";
-import { fetchBundle, fetchFailures, fetchHealth, fetchImpact, fetchIntegrations, fetchLatestRun, fetchNarrative, fetchPolicies, fetchReplay, fetchReports, fetchRunIndex, fetchStoryMode, fetchTopology, fetchTrace, fetchTriage, fetchValidationDashboard, streamCoreEvents } from "./lib/api.js";
+import {
+  fetchBundle,
+  fetchFailures,
+  fetchHealth,
+  fetchImpact,
+  fetchIntegrations,
+  fetchLatestRun,
+  fetchNarrative,
+  fetchPolicies,
+  fetchReplay,
+  fetchReports,
+  fetchRunIndex,
+  fetchStoryMode,
+  fetchTopology,
+  fetchTrace,
+  fetchTriage,
+  fetchValidationDashboard,
+  streamCoreEvents
+} from "./lib/api.js";
 import type { CoreEvent } from "@toolplane/core";
 import type {
   FailureInboxPayload,
@@ -96,7 +114,24 @@ export function App() {
       controllers.add(controller);
       setData({ status: "loading" });
       try {
-        const [runResult, runIndexResult, healthResult, impactResult, triageResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, validationResult, reportsResult, bundleResult] = await Promise.allSettled([
+        const [
+          runResult,
+          runIndexResult,
+          healthResult,
+          impactResult,
+          triageResult,
+          topologyResult,
+          narrativeResult,
+          failureResult,
+          traceResult,
+          policyResult,
+          integrationResult,
+          replayResult,
+          storyResult,
+          validationResult,
+          reportsResult,
+          bundleResult
+        ] = await Promise.allSettled([
           fetchLatestRun(controller.signal),
           fetchRunIndex(controller.signal),
           fetchHealth(controller.signal),
@@ -139,13 +174,47 @@ export function App() {
           return;
         }
         if (run && run.eventCount === 0) {
-          setData({ run, ...(runIndex ? { runIndex } : {}), ...(health ? { health } : {}), ...(impact ? { impact } : {}), ...(triage ? { triage } : {}), ...(topology ? { topology } : {}), ...(narrative ? { narrative } : {}), ...(failures ? { failures } : {}), ...(trace ? { trace } : {}), ...(policies ? { policies } : {}), ...(integrations ? { integrations } : {}), ...(replay ? { replay } : {}), ...(story ? { story } : {}), ...(validation ? { validation } : {}), ...(reports ? { reports } : {}), ...(bundle ? { bundle } : {}), status: "empty" });
+          setData({
+            run,
+            ...(runIndex ? { runIndex } : {}),
+            ...(health ? { health } : {}),
+            ...(impact ? { impact } : {}),
+            ...(triage ? { triage } : {}),
+            ...(topology ? { topology } : {}),
+            ...(narrative ? { narrative } : {}),
+            ...(failures ? { failures } : {}),
+            ...(trace ? { trace } : {}),
+            ...(policies ? { policies } : {}),
+            ...(integrations ? { integrations } : {}),
+            ...(replay ? { replay } : {}),
+            ...(story ? { story } : {}),
+            ...(validation ? { validation } : {}),
+            ...(reports ? { reports } : {}),
+            ...(bundle ? { bundle } : {}),
+            status: "empty"
+          });
           return;
         }
-        const degradedError =
-          [runResult, runIndexResult, healthResult, impactResult, triageResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, validationResult, reportsResult, bundleResult].some((result) => result.status === "rejected")
-            ? "One Core endpoint returned an error."
-            : undefined;
+        const degradedError = [
+          runResult,
+          runIndexResult,
+          healthResult,
+          impactResult,
+          triageResult,
+          topologyResult,
+          narrativeResult,
+          failureResult,
+          traceResult,
+          policyResult,
+          integrationResult,
+          replayResult,
+          storyResult,
+          validationResult,
+          reportsResult,
+          bundleResult
+        ].some((result) => result.status === "rejected")
+          ? "One Core endpoint returned an error."
+          : undefined;
         setData({
           ...(run ? { run } : {}),
           ...(runIndex ? { runIndex } : {}),
@@ -163,7 +232,26 @@ export function App() {
           ...(validation ? { validation } : {}),
           ...(reports ? { reports } : {}),
           ...(bundle ? { bundle } : {}),
-          status: [runResult, runIndexResult, healthResult, impactResult, triageResult, topologyResult, narrativeResult, failureResult, traceResult, policyResult, integrationResult, replayResult, storyResult, validationResult, reportsResult, bundleResult].every((result) => result.status === "fulfilled") ? "ready" : "degraded",
+          status: [
+            runResult,
+            runIndexResult,
+            healthResult,
+            impactResult,
+            triageResult,
+            topologyResult,
+            narrativeResult,
+            failureResult,
+            traceResult,
+            policyResult,
+            integrationResult,
+            replayResult,
+            storyResult,
+            validationResult,
+            reportsResult,
+            bundleResult
+          ].every((result) => result.status === "fulfilled")
+            ? "ready"
+            : "degraded",
           ...(degradedError ? { error: degradedError } : {})
         });
       } finally {
@@ -183,20 +271,23 @@ export function App() {
     };
   }, [topologyRunId]);
 
-  const refetchTraceForSelection = useCallback(async (selection: { readonly id: string; readonly kind: string; readonly traceId?: string }) => {
-    setSelectedCorrelationId(selection.id);
-    const traceId = selection.kind === "trace" ? selection.id : (selection.traceId ?? data.trace?.traceId ?? "latest");
-    try {
-      const trace = await fetchTrace(traceId);
-      setData((current) => ({ ...current, trace, status: current.status === "error" ? "degraded" : current.status }));
-    } catch (error) {
-      setData((current) => ({
-        ...current,
-        status: "degraded",
-        error: error instanceof Error ? error.message : "Trace refetch failed for selected correlation ID."
-      }));
-    }
-  }, [data.trace?.traceId]);
+  const refetchTraceForSelection = useCallback(
+    async (selection: { readonly id: string; readonly kind: string; readonly traceId?: string }) => {
+      setSelectedCorrelationId(selection.id);
+      const traceId = selection.kind === "trace" ? selection.id : (selection.traceId ?? data.trace?.traceId ?? "latest");
+      try {
+        const trace = await fetchTrace(traceId);
+        setData((current) => ({ ...current, trace, status: current.status === "error" ? "degraded" : current.status }));
+      } catch (error) {
+        setData((current) => ({
+          ...current,
+          status: "degraded",
+          error: error instanceof Error ? error.message : "Trace refetch failed for selected correlation ID."
+        }));
+      }
+    },
+    [data.trace?.traceId]
+  );
 
   useEffect(() => {
     return streamCoreEvents({
@@ -239,19 +330,37 @@ export function App() {
           {...(data.error ? { error: data.error } : {})}
         />
       ) : active === "timeline" ? (
-        <Timeline events={streamEvents.length > 0 ? streamEvents : data.run?.events ?? []} status={data.status} streamState={streamState} {...(data.error ? { error: data.error } : {})} {...(topologySelection ? { topologySelection } : {})} />
+        <Timeline
+          events={streamEvents.length > 0 ? streamEvents : (data.run?.events ?? [])}
+          status={data.status}
+          streamState={streamState}
+          {...(data.error ? { error: data.error } : {})}
+          {...(topologySelection ? { topologySelection } : {})}
+        />
       ) : active === "run-index" ? (
-        <RunIndexWorkbench {...(data.runIndex ? { payload: data.runIndex } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
+        <RunIndexWorkbench
+          {...(data.runIndex ? { payload: data.runIndex } : {})}
+          status={data.status}
+          {...(data.error ? { error: data.error } : {})}
+        />
       ) : active === "triage" ? (
-        <FailureTriage {...(data.triage ? { payload: data.triage } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
+        <FailureTriage
+          {...(data.triage ? { payload: data.triage } : {})}
+          status={data.status}
+          {...(data.error ? { error: data.error } : {})}
+        />
       ) : active === "impact" ? (
-        <ImpactPanel {...(data.impact ? { payload: data.impact } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
+        <ImpactPanel
+          {...(data.impact ? { payload: data.impact } : {})}
+          status={data.status}
+          {...(data.error ? { error: data.error } : {})}
+        />
       ) : active === "topology" ? (
         <FailureTopologyMap
           {...(data.topology ? { topology: data.topology } : {})}
           {...(data.narrative ? { narrative: data.narrative } : {})}
           {...(data.failures ? { failures: data.failures } : {})}
-          events={streamEvents.length > 0 ? streamEvents : data.run?.events ?? []}
+          events={streamEvents.length > 0 ? streamEvents : (data.run?.events ?? [])}
           {...(data.trace ? { trace: data.trace } : {})}
           {...(data.health ? { health: data.health } : {})}
           {...(data.reports ? { reports: data.reports } : {})}
@@ -263,9 +372,19 @@ export function App() {
           onSelectNode={setTopologySelection}
         />
       ) : active === "health" ? (
-        <HealthMatrix {...(data.health ? { health: data.health } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} {...(topologySelection ? { topologySelection } : {})} />
+        <HealthMatrix
+          {...(data.health ? { health: data.health } : {})}
+          status={data.status}
+          {...(data.error ? { error: data.error } : {})}
+          {...(topologySelection ? { topologySelection } : {})}
+        />
       ) : active === "failures" ? (
-        <FailureInbox {...(data.failures ? { payload: data.failures } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} {...(topologySelection ? { topologySelection } : {})} />
+        <FailureInbox
+          {...(data.failures ? { payload: data.failures } : {})}
+          status={data.status}
+          {...(data.error ? { error: data.error } : {})}
+          {...(topologySelection ? { topologySelection } : {})}
+        />
       ) : active === "traces" ? (
         <TraceExplorer
           {...(data.trace ? { payload: data.trace } : {})}
@@ -278,20 +397,40 @@ export function App() {
       ) : active === "replay" ? (
         <ReplayLab {...(data.replay ? { payload: data.replay } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
       ) : active === "story" ? (
-        <DemoStoryMode {...(data.story ? { payload: data.story } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
+        <DemoStoryMode
+          {...(data.story ? { payload: data.story } : {})}
+          status={data.status}
+          {...(data.error ? { error: data.error } : {})}
+        />
       ) : active === "validation" ? (
-        <ValidationDashboard {...(data.validation ? { payload: data.validation } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
+        <ValidationDashboard
+          {...(data.validation ? { payload: data.validation } : {})}
+          status={data.status}
+          {...(data.error ? { error: data.error } : {})}
+        />
       ) : active === "policy" ? (
         <PolicyStudio
           {...(data.policies ? { payload: data.policies } : {})}
           status={data.status}
           {...(data.error ? { error: data.error } : {})}
-          onSaved={(policies) => setData((current) => ({ ...current, policies, status: current.status === "error" ? "degraded" : current.status }))}
+          onSaved={(policies) =>
+            setData((current) => ({ ...current, policies, status: current.status === "error" ? "degraded" : current.status }))
+          }
         />
       ) : active === "integrations" ? (
-        <HarnessIntegrations {...(data.integrations ? { payload: data.integrations } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} />
+        <HarnessIntegrations
+          {...(data.integrations ? { payload: data.integrations } : {})}
+          status={data.status}
+          {...(data.error ? { error: data.error } : {})}
+        />
       ) : active === "reports" ? (
-        <EvidenceReportViewer {...(data.reports ? { payload: data.reports } : {})} {...(data.bundle ? { bundlePayload: data.bundle } : {})} status={data.status} {...(data.error ? { error: data.error } : {})} {...(topologySelection ? { topologySelection } : {})} />
+        <EvidenceReportViewer
+          {...(data.reports ? { payload: data.reports } : {})}
+          {...(data.bundle ? { bundlePayload: data.bundle } : {})}
+          status={data.status}
+          {...(data.error ? { error: data.error } : {})}
+          {...(topologySelection ? { topologySelection } : {})}
+        />
       ) : (
         <ScreenStateGallery screen={active} />
       )}

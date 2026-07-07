@@ -2,7 +2,16 @@ import { useState } from "react";
 import { StatePanel } from "../components/StatePanel.js";
 import { StatusChip } from "../components/StatusChip.js";
 import { exportBundle, exportReport, fetchBundle, fetchReports } from "../lib/api.js";
-import { selectionMatchesValues, type BundlePayload, type BundleStatusView, type BundleView, type ReportView, type ReportsPayload, type ResourceStatus, type TopologySelection } from "../lib/model.js";
+import {
+  selectionMatchesValues,
+  type BundlePayload,
+  type BundleStatusView,
+  type BundleView,
+  type ReportView,
+  type ReportsPayload,
+  type ResourceStatus,
+  type TopologySelection
+} from "../lib/model.js";
 
 interface EvidenceReportViewerProps {
   readonly payload?: ReportsPayload;
@@ -39,7 +48,9 @@ export function EvidenceReportViewer({ payload, bundlePayload, status, error, to
 
   async function generateBundle() {
     setExportState("pending");
-    setExportMessage("Generating replayable evidence bundle, manifest validation, artifact hashes, redaction summary, and replay safety status.");
+    setExportMessage(
+      "Generating replayable evidence bundle, manifest validation, artifact hashes, redaction summary, and replay safety status."
+    );
     try {
       const exported = await exportBundle();
       const [nextReports, nextBundle] = await Promise.all([fetchReports(), fetchBundle()]);
@@ -54,7 +65,13 @@ export function EvidenceReportViewer({ payload, bundlePayload, status, error, to
   }
 
   if (status === "loading") {
-    return <StatePanel status="loading" title="Loading Evidence Bundle Viewer" message="Fetching bundle manifest health, artifact hashes, redaction summaries, replay safety, and report metadata from Core." />;
+    return (
+      <StatePanel
+        status="loading"
+        title="Loading Evidence Bundle Viewer"
+        message="Fetching bundle manifest health, artifact hashes, redaction summaries, replay safety, and report metadata from Core."
+      />
+    );
   }
   if (status === "error") {
     return <StatePanel status="error" title="Evidence bundles unavailable" message={error ?? "Core did not return bundle metadata."} />;
@@ -66,26 +83,47 @@ export function EvidenceReportViewer({ payload, bundlePayload, status, error, to
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <StatusChip label="Evidence Bundle Viewer" tone="selected" />
-            <h2 className="mt-3 text-2xl font-semibold text-text">Replayable evidence bundle health, hashes, redaction, and print export</h2>
+            <h2 className="mt-3 text-2xl font-semibold text-text">
+              Replayable evidence bundle health, hashes, redaction, and print export
+            </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
-              Export and inspect real Core evidence bundles through local loopback routes. Raw artifacts stay separate,
-              secret-shaped values stay redacted in safe previews, and every link is served from Core instead of file URLs.
+              Export and inspect real Core evidence bundles through local loopback routes. Raw artifacts stay separate, secret-shaped values
+              stay redacted in safe previews, and every link is served from Core instead of file URLs.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <ActionButton onClick={() => void generateBundle()} busy={exportState === "pending"} label={exportState === "pending" ? "Bundle pending..." : "Export evidence bundle"} />
-            <ActionButton onClick={() => void generateReport()} busy={exportState === "pending"} label="Refresh static report" variant="secondary" />
+            <ActionButton
+              onClick={() => void generateBundle()}
+              busy={exportState === "pending"}
+              label={exportState === "pending" ? "Bundle pending..." : "Export evidence bundle"}
+            />
+            <ActionButton
+              onClick={() => void generateReport()}
+              busy={exportState === "pending"}
+              label="Refresh static report"
+              variant="secondary"
+            />
           </div>
         </div>
       </div>
 
       {status === "degraded" ? (
-        <StatePanel status="degraded" title="Partial report metadata" message="Some Core endpoints failed, but report links and artifact metadata remain inspectable." />
+        <StatePanel
+          status="degraded"
+          title="Partial report metadata"
+          message="Some Core endpoints failed, but report links and artifact metadata remain inspectable."
+        />
       ) : null}
       {exportState !== "idle" ? (
         <StatePanel
           status={exportState === "pending" ? "loading" : exportState === "success" ? "ready" : "error"}
-          title={exportState === "success" ? "Report export succeeded" : exportState === "failure" ? "Report export failed" : "Report export running"}
+          title={
+            exportState === "success"
+              ? "Report export succeeded"
+              : exportState === "failure"
+                ? "Report export failed"
+                : "Report export running"
+          }
           message={exportMessage ?? "Report action state changed."}
         />
       ) : null}
@@ -113,10 +151,21 @@ export function EvidenceReportViewer({ payload, bundlePayload, status, error, to
   );
 }
 
-function ActionButton({ onClick, busy, label, variant = "primary" }: { readonly onClick: () => void; readonly busy: boolean; readonly label: string; readonly variant?: "primary" | "secondary" }) {
-  const classes = variant === "primary"
-    ? "border-primary/50 bg-primary/15 text-primary hover:bg-primary/25"
-    : "border-border bg-bg/55 text-text hover:border-primary/45 hover:text-primary";
+function ActionButton({
+  onClick,
+  busy,
+  label,
+  variant = "primary"
+}: {
+  readonly onClick: () => void;
+  readonly busy: boolean;
+  readonly label: string;
+  readonly variant?: "primary" | "secondary";
+}) {
+  const classes =
+    variant === "primary"
+      ? "border-primary/50 bg-primary/15 text-primary hover:bg-primary/25"
+      : "border-border bg-bg/55 text-text hover:border-primary/45 hover:text-primary";
   return (
     <button
       type="button"
@@ -140,7 +189,10 @@ function BundleCard({ bundle }: { readonly bundle: BundleView }) {
         <div>
           <div className="flex flex-wrap gap-2">
             <StatusChip label={bundle.exists ? "bundle exported" : "bundle missing"} tone={bundle.exists ? "healthy" : "degraded"} />
-            <StatusChip label={bundle.manifestValid ? "manifest valid" : "manifest pending"} tone={bundle.manifestValid ? "healthy" : "failed"} />
+            <StatusChip
+              label={bundle.manifestValid ? "manifest valid" : "manifest pending"}
+              tone={bundle.manifestValid ? "healthy" : "failed"}
+            />
             <StatusChip label={bundle.replaySafe ? "replay safe" : "replay withheld"} tone={bundle.replaySafe ? "healthy" : "degraded"} />
           </div>
           <h3 className="mt-3 text-xl font-semibold text-text">Evidence bundle {bundle.bundleId ?? "not exported"}</h3>
@@ -148,7 +200,9 @@ function BundleCard({ bundle }: { readonly bundle: BundleView }) {
         </div>
         <div className="grid gap-2 text-sm">
           {bundle.manifestUrl ? <LocalLink href={bundle.manifestUrl} label="Open bundle manifest.json" path={bundle.manifestUrl} /> : null}
-          {bundle.manifestValidationUrl ? <LocalLink href={bundle.manifestValidationUrl} label="Open manifest-validation.json" path={bundle.manifestValidationUrl} /> : null}
+          {bundle.manifestValidationUrl ? (
+            <LocalLink href={bundle.manifestValidationUrl} label="Open manifest-validation.json" path={bundle.manifestValidationUrl} />
+          ) : null}
         </div>
       </div>
 
@@ -163,9 +217,16 @@ function BundleCard({ bundle }: { readonly bundle: BundleView }) {
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h4 className="text-sm font-semibold text-text">Print and PDF export view</h4>
-            <p className="mt-1 text-xs leading-5 text-text-muted">Use browser print to save this compact, screenshot-friendly bundle summary. Print CSS keeps health indicators, local links, and hash status visible.</p>
+            <p className="mt-1 text-xs leading-5 text-text-muted">
+              Use browser print to save this compact, screenshot-friendly bundle summary. Print CSS keeps health indicators, local links,
+              and hash status visible.
+            </p>
           </div>
-          <button type="button" onClick={() => window.print()} className="min-h-11 rounded-xl border border-primary/45 bg-primary/10 px-4 text-sm font-semibold text-primary transition hover:bg-primary/20 active:scale-[0.98]">
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="min-h-11 rounded-xl border border-primary/45 bg-primary/10 px-4 text-sm font-semibold text-primary transition hover:bg-primary/20 active:scale-[0.98]"
+          >
             Print or save PDF
           </button>
         </div>
@@ -189,9 +250,25 @@ function BundleCard({ bundle }: { readonly bundle: BundleView }) {
                 return (
                   <tr key={file.relativePath} className="hover:bg-primary/5">
                     <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-text">{file.relativePath}</td>
-                    <td className="border-b border-border/70 px-3 py-2 font-mono text-xs"><a className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" href={file.url} target="_blank" rel="noreferrer">{file.url}</a></td>
-                    <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-text-muted">{file.sha256 || (file.key === "artifactHashesJson" ? "hash list source" : "missing hash")}</td>
-                    <td className="border-b border-border/70 px-3 py-2"><StatusChip label={fileOk ? (file.hashed ? "present and hashed" : "hash list generated") : "needs attention"} tone={fileOk ? "healthy" : "failed"} /></td>
+                    <td className="border-b border-border/70 px-3 py-2 font-mono text-xs">
+                      <a
+                        className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        href={file.url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {file.url}
+                      </a>
+                    </td>
+                    <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-text-muted">
+                      {file.sha256 || (file.key === "artifactHashesJson" ? "hash list source" : "missing hash")}
+                    </td>
+                    <td className="border-b border-border/70 px-3 py-2">
+                      <StatusChip
+                        label={fileOk ? (file.hashed ? "present and hashed" : "hash list generated") : "needs attention"}
+                        tone={fileOk ? "healthy" : "failed"}
+                      />
+                    </td>
                   </tr>
                 );
               })}
@@ -205,7 +282,12 @@ function BundleCard({ bundle }: { readonly bundle: BundleView }) {
         {rawArtifacts.length > 0 ? (
           <div className="mt-3 grid gap-2 md:grid-cols-2">
             {rawArtifacts.map((artifact) => (
-              <LocalLink key={artifact.relativePath} href={artifact.url} label="Open raw/untrusted artifact route" path={`${artifact.relativePath} · ${artifact.sha256}`} />
+              <LocalLink
+                key={artifact.relativePath}
+                href={artifact.url}
+                label="Open raw/untrusted artifact route"
+                path={`${artifact.relativePath} · ${artifact.sha256}`}
+              />
             ))}
           </div>
         ) : (
@@ -217,7 +299,8 @@ function BundleCard({ bundle }: { readonly bundle: BundleView }) {
 }
 
 function BundleHealthCard({ title, status }: { readonly title: string; readonly status: BundleStatusView }) {
-  const tone = status.status === "healthy" ? "healthy" : status.status === "blocked" ? "blocked" : status.status === "failed" ? "failed" : "degraded";
+  const tone =
+    status.status === "healthy" ? "healthy" : status.status === "blocked" ? "blocked" : status.status === "failed" ? "failed" : "degraded";
   return (
     <section className="rounded-xl border border-border bg-bg/60 p-4">
       <StatusChip label={status.label} tone={tone} />
@@ -234,9 +317,15 @@ function ReportCard({ report, topologySelection }: { readonly report: ReportView
         <div>
           <div className="flex flex-wrap gap-2">
             <StatusChip label={report.exists ? "exported" : "not exported"} tone={report.exists ? "healthy" : "degraded"} />
-            <StatusChip label={report.manifestValid ? "manifest valid" : "manifest needs attention"} tone={report.manifestValid ? "healthy" : "failed"} />
+            <StatusChip
+              label={report.manifestValid ? "manifest valid" : "manifest needs attention"}
+              tone={report.manifestValid ? "healthy" : "failed"}
+            />
             <StatusChip label={`${report.artifactCount} artifacts`} tone="neutral" />
-            <StatusChip label={`${report.redactionSummary.redactionCount} redactions`} tone={report.redactionSummary.redactionCount > 0 ? "degraded" : "neutral"} />
+            <StatusChip
+              label={`${report.redactionSummary.redactionCount} redactions`}
+              tone={report.redactionSummary.redactionCount > 0 ? "degraded" : "neutral"}
+            />
           </div>
           <h3 className="mt-3 text-xl font-semibold text-text">Run {report.runId}</h3>
           <p className="mt-1 text-sm text-text-muted">Generated {report.generatedAt}</p>
@@ -254,9 +343,16 @@ function ReportCard({ report, topologySelection }: { readonly report: ReportView
           title="Redaction proof"
           body={`${report.redactionSummary.redactionCount} redactions\n${
             report.redactionSummary.reasons.join("\n") || "No secret-shaped values appeared in this safe preview."
-          }\nBearer [REDACTED]\napi_key=[REDACTED]\n[REDACTED_PEM]`}
+          }\ncredential [REDACTED]\nkey assignment [REDACTED]\n[REDACTED_PEM]`}
         />
-        <PreviewBlock title="Manifest validation" body={report.validationErrors.length > 0 ? report.validationErrors.join("\n") : "Manifest references resolved and artifact hashes validated."} />
+        <PreviewBlock
+          title="Manifest validation"
+          body={
+            report.validationErrors.length > 0
+              ? report.validationErrors.join("\n")
+              : "Manifest references resolved and artifact hashes validated."
+          }
+        />
       </div>
 
       <section className="rounded-xl border border-border bg-bg/55 p-4">
@@ -283,18 +379,33 @@ function ReportCard({ report, topologySelection }: { readonly report: ReportView
             <tbody>
               {report.artifacts.map((artifact) => {
                 const hash = report.artifactHashes.find((item) => item.artifactId === artifact.artifactId);
-                const highlighted = selectionMatchesValues(topologySelection, [artifact.artifactId, artifact.relativePath, hash?.artifactId]);
+                const highlighted = selectionMatchesValues(topologySelection, [
+                  artifact.artifactId,
+                  artifact.relativePath,
+                  hash?.artifactId
+                ]);
                 return (
                   <tr key={artifact.artifactId} className={`hover:bg-primary/5 ${highlighted ? "bg-primary/10" : ""}`}>
                     <td className="border-b border-border/70 px-3 py-2 font-mono text-xs">
-                      <a href={artifact.artifactUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                      <a
+                        href={artifact.artifactUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      >
                         {artifact.artifactId}
                       </a>
                     </td>
-                    <td className="border-b border-border/70 px-3 py-2"><StatusChip label={artifact.kind} tone="neutral" /></td>
+                    <td className="border-b border-border/70 px-3 py-2">
+                      <StatusChip label={artifact.kind} tone="neutral" />
+                    </td>
                     <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-text-muted">{artifact.relativePath}</td>
-                    <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-text-muted">{hash?.sha256 ?? artifact.sha256}</td>
-                    <td className="border-b border-border/70 px-3 py-2">{artifact.redacted ? "redacted" : "metadata only, raw not previewed"}</td>
+                    <td className="border-b border-border/70 px-3 py-2 font-mono text-xs text-text-muted">
+                      {hash?.sha256 ?? artifact.sha256}
+                    </td>
+                    <td className="border-b border-border/70 px-3 py-2">
+                      {artifact.redacted ? "redacted" : "metadata only, raw not previewed"}
+                    </td>
                   </tr>
                 );
               })}
@@ -308,7 +419,12 @@ function ReportCard({ report, topologySelection }: { readonly report: ReportView
 
 function LocalLink({ href, label, path }: { readonly href: string; readonly label: string; readonly path: string }) {
   return (
-    <a href={href} target="_blank" rel="noreferrer" className="rounded-xl border border-border bg-bg/55 p-3 font-mono text-xs text-primary transition hover:border-primary/50 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="rounded-xl border border-border bg-bg/55 p-3 font-mono text-xs text-primary transition hover:border-primary/50 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+    >
       <span className="block font-sans text-sm font-semibold text-text">{label}</span>
       <span className="mt-1 block break-all">{path}</span>
     </a>

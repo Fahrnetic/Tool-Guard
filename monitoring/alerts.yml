@@ -1,0 +1,21 @@
+groups:
+  - name: toolguard-local
+    rules:
+      - alert: ToolGuardCoreUnavailable
+        expr: up{job="toolguard-core"} == 0
+        for: 2m
+        labels:
+          severity: warning
+          area: core
+        annotations:
+          summary: ToolGuard Core health check is unavailable.
+          runbook: runbooks/incident-response.md
+      - alert: ToolGuardFailureSpike
+        expr: increase(toolguard_failures_total[10m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          area: core
+        annotations:
+          summary: ToolGuard observed an unusual number of failed tool calls.
+          runbook: runbooks/incident-response.md

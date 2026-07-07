@@ -1,11 +1,6 @@
 import { createHash } from "node:crypto";
 import { redactString } from "./redaction.js";
-import type {
-  ToolCall,
-  VisibilityLevel,
-  VisibilityMetadata,
-  VisibilityTraceContext
-} from "./types.js";
+import type { ToolCall, VisibilityLevel, VisibilityMetadata, VisibilityTraceContext } from "./types.js";
 
 export const CANONICAL_VISIBILITY_SCHEMA_VERSION = "toolguard.visibility.v1" as const;
 
@@ -43,10 +38,10 @@ export function buildVisibilityMetadata(call: ToolCall): VisibilityMetadata {
         : {}),
       ...(call.routeMetadata?.platform?.osPlatform ? { osPlatform: safeString(call.routeMetadata.platform.osPlatform) } : {}),
       ...(call.routeMetadata?.platform?.osFamily ? { osFamily: call.routeMetadata.platform.osFamily } : {}),
-      ...(call.routeMetadata?.platform?.transport ?? call.routeMetadata?.transport?.kind
+      ...((call.routeMetadata?.platform?.transport ?? call.routeMetadata?.transport?.kind)
         ? { transport: safeString(call.routeMetadata.platform?.transport ?? call.routeMetadata.transport?.kind ?? "") }
         : {}),
-      ...(call.routeMetadata?.platform?.configHash ?? call.routeMetadata?.configHash ?? call.routeMetadata?.adapterConfigHash
+      ...((call.routeMetadata?.platform?.configHash ?? call.routeMetadata?.configHash ?? call.routeMetadata?.adapterConfigHash)
         ? {
             configHash: safeString(
               call.routeMetadata.platform?.configHash ?? call.routeMetadata.configHash ?? call.routeMetadata.adapterConfigHash ?? ""

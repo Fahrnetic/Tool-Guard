@@ -1,5 +1,22 @@
 export { PROJECT_NAME, PRODUCT_DISPLAY_NAME } from "./product.js";
 export { createId, type StableId } from "./ids.js";
+export { captureToolGuardError, initializeErrorTracking } from "./error-tracking.js";
+export { createStructuredLogEntry, writeStructuredLog, type LogLevel, type StructuredLogEntry } from "./logger.js";
+export { collectToolGuardMetrics, renderPrometheusMetrics, renderPrometheusRegistryMetrics, type ToolGuardMetrics } from "./metrics.js";
+export {
+  buildOpenObserveDashboardQueries,
+  buildOtlpLogs,
+  buildOtlpMetrics,
+  buildToolGuardOtelDemoPayloads,
+  exportToolGuardOtelDemo,
+  type OpenObserveDashboardQuery,
+  type OtlpGaugeMetric,
+  type OtlpLogRecord,
+  type OtlpLogsPayload,
+  type OtlpMetricsPayload,
+  type ToolGuardOtelDemoExportResult,
+  type ToolGuardOtelDemoPayloads
+} from "./otel-demo.js";
 export { EventBus, type CoreEvent, type CoreEventType, type CorrelationFields } from "./events.js";
 export {
   CANONICAL_VISIBILITY_SCHEMA_VERSION,
@@ -34,12 +51,7 @@ export {
 } from "./run-index.js";
 export { ToolRegistry, validateJsonSchema, type ArgumentValidationResult } from "./registry.js";
 export { CoreSession, type CoreSessionOptions } from "./session.js";
-export {
-  SIDECAR_PROTOCOL_VERSION,
-  createCoreApiServer,
-  type CoreApiServerHandle,
-  type CoreApiServerOptions
-} from "./server.js";
+export { SIDECAR_PROTOCOL_VERSION, createCoreApiServer, type CoreApiServerHandle, type CoreApiServerOptions } from "./server.js";
 export { exportStaticReport, validateReportManifest, type StaticReportResult, type ManifestValidationResult } from "./report.js";
 export {
   exportEvidenceBundle,

@@ -69,9 +69,23 @@ const payload: FailureTriagePayload = {
         { question: "next safe action", answer: "Do not retry the identical call.", evidence: [] }
       ],
       nextSafeActions: ["Do not retry the identical call until inputs, cwd, policy, or downstream health are changed."],
-      topologyLinks: [{ artifactId: stableId("topology"), label: "Topology node links", href: "http://127.0.0.1:3660/api/topology/run_triage" }],
-      timelineLinks: [{ artifactId: stableId("event_failed"), label: "Timeline event event_failed", href: "http://127.0.0.1:3660/api/runs/latest#event_failed" }],
-      evidenceLinks: [{ artifactId: stableId("artifact_stderr"), label: "stderr", href: "http://127.0.0.1:3660/api/reports/run_triage/artifacts/artifact_stderr" }],
+      topologyLinks: [
+        { artifactId: stableId("topology"), label: "Topology node links", href: "http://127.0.0.1:3660/api/topology/run_triage" }
+      ],
+      timelineLinks: [
+        {
+          artifactId: stableId("event_failed"),
+          label: "Timeline event event_failed",
+          href: "http://127.0.0.1:3660/api/runs/latest#event_failed"
+        }
+      ],
+      evidenceLinks: [
+        {
+          artifactId: stableId("artifact_stderr"),
+          label: "stderr",
+          href: "http://127.0.0.1:3660/api/reports/run_triage/artifacts/artifact_stderr"
+        }
+      ],
       rawArtifactLabels: ["raw-stderr: artifact_stderr"],
       issuePacketPreview: "## HIGH fixture.triage process_crash\n\n### Diagnosis\n\n- **what failed:** fixture.triage failed",
       factors: ["repeated failure fingerprint or retry loop"]

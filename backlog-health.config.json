@@ -1,0 +1,16 @@
+{
+  "priorityLabels": ["priority:critical", "priority:high", "priority:medium", "priority:low"],
+  "typeLabels": ["type:bug", "type:feature", "type:task", "type:docs"],
+  "areaLabels": ["area:cli", "area:core", "area:mcp", "area:python", "area:ui", "area:docs", "area:security"],
+  "stalenessDays": {
+    "priority:critical": 3,
+    "priority:high": 7,
+    "priority:medium": 30,
+    "priority:low": 90,
+    "default": 45
+  },
+  "criticalFailureLabels": ["priority:critical", "priority:high"],
+  "allowedStates": ["open"],
+  "maxUnlabeledOpenIssues": 0,
+  "maxIssuesMissingType": 0
+}

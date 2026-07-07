@@ -15,6 +15,7 @@ import { verifyIntegrationRoute } from "./integration-verification.js";
 import { importBrowserEvidence, importHttpWebhookEvidence } from "./local-routes.js";
 import { buildTriagePayload, exportIssuePacket } from "./triage.js";
 import { generateHostConfigSnippets } from "./setup-snippets.js";
+import { collectToolGuardMetrics, renderPrometheusMetrics } from "./metrics.js";
 import {
   buildDemoStoryModePayload,
   defaultDemoStoryScenarioRuntime,
@@ -104,6 +105,12 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
       const url = new URL(request.url ?? "/", `http://${host}:${port}`);
       if (url.pathname === "/health") {
         sendJson(response, 200, { ok: true, service: "ToolGuard Core", runId, events: session.recorder.events.length });
+        return;
+      }
+
+      if (url.pathname === "/metrics") {
+        response.writeHead(200, { "content-type": "text/plain; version=0.0.4" });
+        response.end(`${renderPrometheusMetrics(collectToolGuardMetrics(session.recorder.events))}\n`);
         return;
       }
 
@@ -234,7 +241,11 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
       }
 
       if (url.pathname === "/api/failures") {
-        sendJson(response, 200, await buildFailuresPayload(runId, session.recorder.events, session.recorder.runDir, configuredBaseUrl(host, port, server)));
+        sendJson(
+          response,
+          200,
+          await buildFailuresPayload(runId, session.recorder.events, session.recorder.runDir, configuredBaseUrl(host, port, server))
+        );
         return;
       }
 
@@ -244,7 +255,16 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
       }
 
       if (url.pathname === "/api/triage") {
-        sendJson(response, 200, buildTriagePayload({ runId, events: session.recorder.events, ledger: session.recorder.ledger, baseUrl: configuredBaseUrl(host, port, server) }));
+        sendJson(
+          response,
+          200,
+          buildTriagePayload({
+            runId,
+            events: session.recorder.events,
+            ledger: session.recorder.ledger,
+            baseUrl: configuredBaseUrl(host, port, server)
+          })
+        );
         return;
       }
 
@@ -253,7 +273,17 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
           sendJson(response, 405, { error: "method_not_allowed" });
           return;
         }
-        sendJson(response, 200, await exportIssuePacket({ runId, runDir: session.recorder.runDir, events: session.recorder.events, ledger: session.recorder.ledger, baseUrl: configuredBaseUrl(host, port, server) }));
+        sendJson(
+          response,
+          200,
+          await exportIssuePacket({
+            runId,
+            runDir: session.recorder.runDir,
+            events: session.recorder.events,
+            ledger: session.recorder.ledger,
+            baseUrl: configuredBaseUrl(host, port, server)
+          })
+        );
         return;
       }
 
@@ -303,7 +333,11 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
       }
 
       if (url.pathname === "/api/integrations") {
-        sendJson(response, 200, await buildIntegrationsPayload(runId, session.recorder.events, await session.recorder.listCoverageHistoryEvents()));
+        sendJson(
+          response,
+          200,
+          await buildIntegrationsPayload(runId, session.recorder.events, await session.recorder.listCoverageHistoryEvents())
+        );
         return;
       }
 
@@ -314,7 +348,9 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
         }
         const body = await readJsonBody(request, 64 * 1024);
         if (!body.ok || !isRecord(body.payload)) {
-          sendJson(response, body.ok ? 400 : body.statusCode, { error: body.ok ? "invalid_integration_verification_request" : body.message });
+          sendJson(response, body.ok ? 400 : body.statusCode, {
+            error: body.ok ? "invalid_integration_verification_request" : body.message
+          });
           return;
         }
         const routeType = parseRouteType(body.payload.routeType);
@@ -322,18 +358,22 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
           sendJson(response, 400, { error: "unknown_integration_route_type" });
           return;
         }
-        sendJson(response, 200, await verifyIntegrationRoute({
-          session,
-          routeType,
-          ...optionalStringField(body.payload, "integrationId"),
-          ...optionalStringField(body.payload, "hostId"),
-          ...optionalStringField(body.payload, "hostName"),
-          ...optionalStringField(body.payload, "hostFamily"),
-          ...optionalStringArrayField(body.payload, "supportedHostIds"),
-          ...optionalStringField(body.payload, "platform"),
-          ...optionalStringField(body.payload, "transport"),
-          ...optionalStringField(body.payload, "configHash")
-        }));
+        sendJson(
+          response,
+          200,
+          await verifyIntegrationRoute({
+            session,
+            routeType,
+            ...optionalStringField(body.payload, "integrationId"),
+            ...optionalStringField(body.payload, "hostId"),
+            ...optionalStringField(body.payload, "hostName"),
+            ...optionalStringField(body.payload, "hostFamily"),
+            ...optionalStringArrayField(body.payload, "supportedHostIds"),
+            ...optionalStringField(body.payload, "platform"),
+            ...optionalStringField(body.payload, "transport"),
+            ...optionalStringField(body.payload, "configHash")
+          })
+        );
         return;
       }
 
@@ -496,7 +536,11 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
       }
 
       if (url.pathname === "/api/bundle") {
-        sendJson(response, 200, await buildBundlePayload({ runId, runDir: session.recorder.runDir, baseUrl: configuredBaseUrl(host, port, server) }));
+        sendJson(
+          response,
+          200,
+          await buildBundlePayload({ runId, runDir: session.recorder.runDir, baseUrl: configuredBaseUrl(host, port, server) })
+        );
         return;
       }
 
@@ -511,7 +555,16 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
       }
 
       if (url.pathname === "/api/reports") {
-        sendJson(response, 200, await buildReportsPayload({ runId, runDir: session.recorder.runDir, events: session.recorder.events, baseUrl: configuredBaseUrl(host, port, server) }));
+        sendJson(
+          response,
+          200,
+          await buildReportsPayload({
+            runId,
+            runDir: session.recorder.runDir,
+            events: session.recorder.events,
+            baseUrl: configuredBaseUrl(host, port, server)
+          })
+        );
         return;
       }
 
@@ -542,7 +595,16 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
           sendJson(response, 404, { error: "report_run_not_found", runId: requestedRunId });
           return;
         }
-        sendJson(response, 200, await buildReportDetailPayload({ runId, runDir: session.recorder.runDir, events: session.recorder.events, baseUrl: configuredBaseUrl(host, port, server) }));
+        sendJson(
+          response,
+          200,
+          await buildReportDetailPayload({
+            runId,
+            runDir: session.recorder.runDir,
+            events: session.recorder.events,
+            baseUrl: configuredBaseUrl(host, port, server)
+          })
+        );
         return;
       }
 
@@ -772,8 +834,7 @@ function makeSidecarToolCall(payload: SidecarToolCallRequest, runId: StableId, r
     ...(typeof payload.originalToolName === "string" ? { originalToolName: payload.originalToolName } : {}),
     arguments: jsonObjectFrom(payload.arguments),
     deadlineMs: numberFrom(payload.deadlineMs, 1_000),
-    idempotency:
-      payload.idempotency === "non-idempotent" || payload.idempotency === "unknown" ? payload.idempotency : "idempotent",
+    idempotency: payload.idempotency === "non-idempotent" || payload.idempotency === "unknown" ? payload.idempotency : "idempotent",
     sourcePath: "framework-adapter",
     runName: stringFrom(payload.runName, `python ${toolName}`),
     tags: stringArrayFrom(payload.tags),
@@ -787,11 +848,7 @@ function makeSidecarToolCall(payload: SidecarToolCallRequest, runId: StableId, r
   };
 }
 
-function makeSidecarFailureToolCall(
-  payload: SidecarToolCallRequest | undefined,
-  runId: StableId,
-  toolName = "sidecar.request"
-): ToolCall {
+function makeSidecarFailureToolCall(payload: SidecarToolCallRequest | undefined, runId: StableId, toolName = "sidecar.request"): ToolCall {
   return {
     runId: stableIdFrom(payload?.correlation?.runId, runId),
     traceId: stableIdFrom(payload?.correlation?.traceId, createId("trace")),
@@ -807,8 +864,7 @@ function makeSidecarFailureToolCall(
     toolName,
     arguments: {},
     deadlineMs: numberFrom(payload?.deadlineMs, 1_000),
-    idempotency:
-      payload?.idempotency === "non-idempotent" || payload?.idempotency === "unknown" ? payload.idempotency : "idempotent",
+    idempotency: payload?.idempotency === "non-idempotent" || payload?.idempotency === "unknown" ? payload.idempotency : "idempotent",
     sourcePath: "framework-adapter",
     runName: stringFrom(payload?.runName, `python ${toolName}`),
     tags: stringArrayFrom(payload?.tags),
@@ -883,9 +939,7 @@ async function readSidecarJsonBody(request: http.IncomingMessage): Promise<Sidec
     return {
       ok: false,
       statusCode: 400,
-      message: `ToolGuard sidecar request body was malformed JSON: ${
-        error instanceof Error ? error.message : String(error)
-      }`
+      message: `ToolGuard sidecar request body was malformed JSON: ${error instanceof Error ? error.message : String(error)}`
     };
   }
 }
@@ -973,7 +1027,9 @@ function routeMetadataFrom(value: unknown, fallback: ToolRouteMetadata): ToolRou
       ...(typeof platform.hostId === "string" ? { hostId: platform.hostId } : {}),
       ...(typeof platform.hostName === "string" ? { hostName: platform.hostName } : {}),
       ...(typeof platform.hostFamily === "string" ? { hostFamily: platform.hostFamily } : {}),
-      ...(Array.isArray(platform.supportedHostIds) ? { supportedHostIds: platform.supportedHostIds.filter((item): item is string => typeof item === "string") } : {}),
+      ...(Array.isArray(platform.supportedHostIds)
+        ? { supportedHostIds: platform.supportedHostIds.filter((item): item is string => typeof item === "string") }
+        : {}),
       ...(typeof platform.osPlatform === "string" ? { osPlatform: platform.osPlatform } : {}),
       ...(typeof platform.transport === "string" ? { transport: platform.transport } : {}),
       ...(typeof platform.routePassportId === "string" ? { routePassportId: platform.routePassportId } : {}),
@@ -981,7 +1037,12 @@ function routeMetadataFrom(value: unknown, fallback: ToolRouteMetadata): ToolRou
     },
     coverage: {
       ...fallback.coverage,
-      ...(coverage.claim === "mediated" || coverage.claim === "supervised" || coverage.claim === "observed" || coverage.claim === "imported" || coverage.claim === "not-covered" || coverage.claim === "unknown"
+      ...(coverage.claim === "mediated" ||
+      coverage.claim === "supervised" ||
+      coverage.claim === "observed" ||
+      coverage.claim === "imported" ||
+      coverage.claim === "not-covered" ||
+      coverage.claim === "unknown"
         ? { claim: coverage.claim }
         : {}),
       ...(coverage.evidenceScope === "route" || coverage.evidenceScope === "harness" || coverage.evidenceScope === "host-config"
@@ -1133,7 +1194,10 @@ function artifactFileUrl(baseUrl: string, runId: StableId, artifactId: StableId)
 }
 
 function bundleFileUrl(baseUrl: string, runId: StableId, relativePath: string): string {
-  const encodedPath = relativePath.split(/[\\/]+/).map((part) => encodeURIComponent(part)).join("/");
+  const encodedPath = relativePath
+    .split(/[\\/]+/)
+    .map((part) => encodeURIComponent(part))
+    .join("/");
   return `${baseUrl}/api/bundles/${encodeURIComponent(runId)}/files/${encodedPath}`;
 }
 
@@ -1182,16 +1246,31 @@ async function serveBundleFile(input: {
   const match = /^\/api\/bundles\/([^/]+)\/files\/(.+)$/.exec(input.requestedPath);
   const requestedRunId = match ? decodeURIComponent(match[1] ?? "") : "";
   const requestedRelativePath = match
-    ? (match[2] ?? "").split("/").map((part) => decodeURIComponent(part)).join(path.sep)
+    ? (match[2] ?? "")
+        .split("/")
+        .map((part) => decodeURIComponent(part))
+        .join(path.sep)
     : "";
   if ((requestedRunId !== input.runId && requestedRunId !== "latest") || requestedRelativePath.length === 0) {
     sendJson(input.response, 404, { error: "bundle_file_not_found", runId: requestedRunId, fileName: requestedRelativePath });
     return;
   }
-  await serveRunFile(input.response, path.join(input.runDir, "bundle"), requestedRelativePath, contentTypeForBundleFile(requestedRelativePath), requestedRelativePath.includes(`raw-untrusted${path.sep}`));
+  await serveRunFile(
+    input.response,
+    path.join(input.runDir, "bundle"),
+    requestedRelativePath,
+    contentTypeForBundleFile(requestedRelativePath),
+    requestedRelativePath.includes(`raw-untrusted${path.sep}`)
+  );
 }
 
-async function serveRunFile(response: http.ServerResponse, runDir: string, relativePath: string, contentType: string, rawUntrusted = false): Promise<void> {
+async function serveRunFile(
+  response: http.ServerResponse,
+  runDir: string,
+  relativePath: string,
+  contentType: string,
+  rawUntrusted = false
+): Promise<void> {
   const safeRunDir = path.resolve(runDir);
   const filePath = path.resolve(runDir, relativePath);
   if (filePath !== safeRunDir && !filePath.startsWith(`${safeRunDir}${path.sep}`)) {
@@ -1245,7 +1324,9 @@ function contentTypeForBundleFile(fileName: string): string {
 }
 
 function contentTypeForArtifact(artifact: EvidenceArtifact): string {
-  return artifact.relativePath.endsWith(".json") || artifact.kind === "raw-result" ? "application/json; charset=utf-8" : "text/plain; charset=utf-8";
+  return artifact.relativePath.endsWith(".json") || artifact.kind === "raw-result"
+    ? "application/json; charset=utf-8"
+    : "text/plain; charset=utf-8";
 }
 
 async function handleReplayRequest(input: {
@@ -1259,7 +1340,8 @@ async function handleReplayRequest(input: {
   const requestedTool = stringValue(input.payload.toolName, "fixture.wrong-cwd");
   const fixtureOnly = input.payload.fixtureOnly === true;
   const dryRun = input.payload.mode === "dry-run" || input.payload.dryRunOnly === true;
-  const safeLoopback = input.payload.mode === "loopback" || input.payload.safeLoopback === true || requestedTool.startsWith("http.loopback.");
+  const safeLoopback =
+    input.payload.mode === "loopback" || input.payload.safeLoopback === true || requestedTool.startsWith("http.loopback.");
   const realWorld = input.payload.mode === "real-world" || input.payload.realWorld === true;
   const destructive = input.payload.destructive === true || requestedTool.includes("rm -rf") || requestedTool.includes("delete");
   if (dryRun && !destructive) {
@@ -1304,7 +1386,8 @@ async function handleReplayRequest(input: {
         sourceRunId,
         runId: input.runId,
         category: "not replayable",
-        reason: "Replay is fixture-only unless explicitly marked safe loopback or dry-run. This recipe is not replayable in live execution, so destructive or real-world commands are blocked before execution.",
+        reason:
+          "Replay is fixture-only unless explicitly marked safe loopback or dry-run. This recipe is not replayable in live execution, so destructive or real-world commands are blocked before execution.",
         safe: false,
         fixtureOnly
       }
@@ -1450,9 +1533,7 @@ function buildReplayPayload(runId: StableId, events: readonly CoreEvent[]): Json
         description: "Blocked by policy. Replay Lab never executes destructive real-world commands."
       }
     ],
-    latestReplayEvents: events
-      .filter((event) => event.parentId === runId)
-      .slice(-8) as unknown as JsonValue
+    latestReplayEvents: events.filter((event) => event.parentId === runId).slice(-8) as unknown as JsonValue
   };
 }
 
@@ -1563,12 +1644,7 @@ async function buildValidationDashboardPayload(input: {
         ? "No secret-shaped values found in ledger, topology labels, narratives, bundle metadata, or story text."
         : `Secret-shaped findings: ${secretFindings.join(", ")}`
     ),
-    validationCheck(
-      "process-hygiene",
-      "Process hygiene",
-      processHygiene.status,
-      processHygiene.detail
-    )
+    validationCheck("process-hygiene", "Process hygiene", processHygiene.status, processHygiene.detail)
   ];
 
   return {
@@ -1785,10 +1861,12 @@ async function buildBundlePayload(input: {
   }));
   const validationFile = await readJsonFile(validationPath);
   const redactionSummary = await readJsonFile(path.join(bundleDir, manifest.redaction.summaryFile));
-  const redactionCount = isRecord(redactionSummary) && typeof redactionSummary.redactionCount === "number" ? redactionSummary.redactionCount : 0;
-  const redactionReasons = isRecord(redactionSummary) && Array.isArray(redactionSummary.reasons)
-    ? redactionSummary.reasons.filter((reason): reason is string => typeof reason === "string")
-    : [];
+  const redactionCount =
+    isRecord(redactionSummary) && typeof redactionSummary.redactionCount === "number" ? redactionSummary.redactionCount : 0;
+  const redactionReasons =
+    isRecord(redactionSummary) && Array.isArray(redactionSummary.reasons)
+      ? redactionSummary.reasons.filter((reason): reason is string => typeof reason === "string")
+      : [];
   const requiredFiles = Object.entries(manifest.files).filter((entry): entry is [string, string] => typeof entry[1] === "string");
   const hashByPath = new Map(manifest.artifactHashes.map((artifact) => [artifact.relativePath, artifact]));
   const fileRows = requiredFiles.map(([key, relativePath]) => {
@@ -1831,7 +1909,9 @@ async function buildBundlePayload(input: {
       reportManifestErrors: [...manifest.reportManifestValidation.errors],
       replaySafe: manifest.replay.safe,
       replayReason: manifest.replay.reason,
-      replayInstructionsUrl: manifest.replay.instructionsFile ? bundleFileUrl(input.baseUrl, input.runId, manifest.replay.instructionsFile) : "",
+      replayInstructionsUrl: manifest.replay.instructionsFile
+        ? bundleFileUrl(input.baseUrl, input.runId, manifest.replay.instructionsFile)
+        : "",
       trust: {
         integrityCoveredFiles: [...manifest.trust.integrityCoveredFiles],
         containedLinksOnly: manifest.trust.containedLinksOnly,
@@ -1895,9 +1975,7 @@ function writeSseEvent(response: http.ServerResponse, event: CoreEvent): void {
 function buildHealthPayload(runId: StableId, events: readonly CoreEvent[]): JsonObject {
   const latestPreflight = findLastEventWithFindings(events);
   const findings = latestPreflight?.data && "findings" in latestPreflight.data ? latestPreflight.data.findings : [];
-  const findingRows = Array.isArray(findings)
-    ? findings.flatMap((finding) => (isRecord(finding) ? [finding] : []))
-    : [];
+  const findingRows = Array.isArray(findings) ? findings.flatMap((finding) => (isRecord(finding) ? [finding] : [])) : [];
   const failureEvents = events.filter((event) => event.type === "tool.call.failed");
   const completedEvents = events.filter((event) => event.type === "tool.call.completed");
   const policyEvents = events.filter((event) => event.type === "policy.decision");
@@ -1927,7 +2005,8 @@ function buildHealthPayload(runId: StableId, events: readonly CoreEvent[]): Json
       status,
       preflight: status,
       latencyMs: status === "healthy" ? 18 : status === "degraded" ? 94 : 0,
-      failureType: failureCard && "failureType" in failureCard ? failureCard.failureType : status === "healthy" ? "none" : "preflight_degraded",
+      failureType:
+        failureCard && "failureType" in failureCard ? failureCard.failureType : status === "healthy" ? "none" : "preflight_degraded",
       retryable: failureCard && "retryable" in failureCard ? failureCard.retryable : status !== "healthy",
       circuitState: circuitOpenEvents.some((event) => event.downstreamServerId === downstreamServerId) ? "open" : "closed",
       remediation: stringValue(
@@ -2038,32 +2117,34 @@ async function buildFailuresPayload(runId: StableId, events: readonly CoreEvent[
   const artifactEvents = events.filter((event) => event.type === "evidence.artifact.created");
   const artifacts = artifactEvents.flatMap((event) => (isEvidenceArtifact(event.data) ? [event.data] : []));
   const sanitizedEvents = events.filter((event) => event.type === "output.sanitized");
-  const failures = await Promise.all(events
-    .filter((event) => event.type === "tool.call.failed" && isFailureCard(event.data))
-    .map(async (event) => {
-      const card = event.data as FailureCard;
-      const linkedArtifactIds = new Set(card.evidenceLinks.map((link) => link.artifactId));
-      const cardArtifacts = await enrichArtifacts(
-        runDir,
-        artifacts.filter((artifact) => linkedArtifactIds.has(artifact.artifactId) || artifact.toolCallId === event.toolCallId),
-        events
-      );
-      return {
-        ...card,
-        evidenceLinks: card.evidenceLinks.map((link) => ({
-          ...link,
-          href: artifactFileUrl(baseUrl, runId, link.artifactId)
-        })),
-        eventId: event.eventId,
-        occurredAt: event.occurredAt,
-        summary: event.summary,
-        correlation: correlationFromCoreEvent(event),
-        rawStdout: cardArtifacts.filter((artifact) => artifact.kind === "raw-stdout"),
-        rawStderr: cardArtifacts.filter((artifact) => artifact.kind === "raw-stderr"),
-        rawArtifacts: cardArtifacts,
-        sanitizedEvents: sanitizedEvents.filter((sanitized) => sanitized.toolCallId === event.toolCallId)
-      };
-    }));
+  const failures = await Promise.all(
+    events
+      .filter((event) => event.type === "tool.call.failed" && isFailureCard(event.data))
+      .map(async (event) => {
+        const card = event.data as FailureCard;
+        const linkedArtifactIds = new Set(card.evidenceLinks.map((link) => link.artifactId));
+        const cardArtifacts = await enrichArtifacts(
+          runDir,
+          artifacts.filter((artifact) => linkedArtifactIds.has(artifact.artifactId) || artifact.toolCallId === event.toolCallId),
+          events
+        );
+        return {
+          ...card,
+          evidenceLinks: card.evidenceLinks.map((link) => ({
+            ...link,
+            href: artifactFileUrl(baseUrl, runId, link.artifactId)
+          })),
+          eventId: event.eventId,
+          occurredAt: event.occurredAt,
+          summary: event.summary,
+          correlation: correlationFromCoreEvent(event),
+          rawStdout: cardArtifacts.filter((artifact) => artifact.kind === "raw-stdout"),
+          rawStderr: cardArtifacts.filter((artifact) => artifact.kind === "raw-stderr"),
+          rawArtifacts: cardArtifacts,
+          sanitizedEvents: sanitizedEvents.filter((sanitized) => sanitized.toolCallId === event.toolCallId)
+        };
+      })
+  );
   return {
     runId,
     generatedAt: new Date().toISOString(),
@@ -2100,10 +2181,7 @@ function buildImpactPayload(runId: StableId, ledger: readonly SideEffectLedgerEn
           ...(entry.observedImpact.gitStatus ? { gitStatus: entry.observedImpact.gitStatus } : {}),
           fileChanges: entry.observedImpact.fileChanges,
           safeAffectedPaths: [
-            ...new Set([
-              ...entry.observedImpact.fileChanges.map((change) => change.path),
-              ...entry.observedImpact.tempArtifactWrites
-            ])
+            ...new Set([...entry.observedImpact.fileChanges.map((change) => change.path), ...entry.observedImpact.tempArtifactWrites])
           ],
           tempArtifactWrites: entry.observedImpact.tempArtifactWrites,
           ...(entry.observedImpact.processLifecycle ? { processLifecycle: entry.observedImpact.processLifecycle } : {}),
@@ -2120,7 +2198,12 @@ function buildImpactPayload(runId: StableId, ledger: readonly SideEffectLedgerEn
       entries: ledger.length,
       observedChanges: ledger.reduce((count, entry) => count + (entry.observedImpact?.fileChanges.length ?? 0), 0),
       safeAffectedPaths: ledger.reduce(
-        (count, entry) => count + new Set([...(entry.observedImpact?.fileChanges.map((change) => change.path) ?? []), ...(entry.observedImpact?.tempArtifactWrites ?? [])]).size,
+        (count, entry) =>
+          count +
+          new Set([
+            ...(entry.observedImpact?.fileChanges.map((change) => change.path) ?? []),
+            ...(entry.observedImpact?.tempArtifactWrites ?? [])
+          ]).size,
         0
       ),
       processChildren: ledger.filter((entry) => Boolean(entry.observedImpact?.processLifecycle)).length,
@@ -2132,7 +2215,12 @@ function buildImpactPayload(runId: StableId, ledger: readonly SideEffectLedgerEn
   };
 }
 
-async function buildTracePayload(runId: StableId, events: readonly CoreEvent[], requestedTraceId: string, runDir: string): Promise<JsonObject> {
+async function buildTracePayload(
+  runId: StableId,
+  events: readonly CoreEvent[],
+  requestedTraceId: string,
+  runDir: string
+): Promise<JsonObject> {
   const fallbackTraceId = events.find((event) => event.traceId)?.traceId ?? "trace:waiting";
   const traceId = requestedTraceId === "latest" ? fallbackTraceId : requestedTraceId;
   const traceEvents = events.filter((event) => event.traceId === traceId);
@@ -2140,9 +2228,7 @@ async function buildTracePayload(runId: StableId, events: readonly CoreEvent[], 
   const artifacts = baseEvents.flatMap((event) => (isEvidenceArtifact(event.data) ? [event.data] : []));
   const rawArtifacts = await enrichArtifacts(runDir, artifacts, events);
   const warnings =
-    traceEvents.length === 0 && events.length > 0
-      ? [`Trace ${traceId} was not found. Showing latest run events as partial context.`]
-      : [];
+    traceEvents.length === 0 && events.length > 0 ? [`Trace ${traceId} was not found. Showing latest run events as partial context.`] : [];
   return {
     runId,
     traceId,
@@ -2158,42 +2244,48 @@ async function buildTracePayload(runId: StableId, events: readonly CoreEvent[], 
   };
 }
 
-async function enrichArtifacts(runDir: string, artifacts: readonly EvidenceArtifact[], events: readonly CoreEvent[]): Promise<JsonObject[]> {
-  return await Promise.all(artifacts.map(async (artifact) => {
-    const outputLimit = outputLimitForArtifact(events, artifact.artifactId);
-    const artifactPath = path.resolve(runDir, artifact.relativePath);
-    const safeRunDir = path.resolve(runDir);
-    if (!artifactPath.startsWith(`${safeRunDir}${path.sep}`)) {
-      return {
-        ...artifact,
-        content: "",
-        truncated: Boolean(outputLimit),
-        ...(outputLimit ? { outputLimitBytes: outputLimit } : {}),
-        contentUnavailable: "Artifact path is outside the run directory."
-      };
-    }
-    try {
-      const rawContent = await readFile(artifactPath, "utf8");
-      const redacted = redactStringWithSummary(rawContent);
-      return {
-        ...artifact,
-        content: redacted.value,
-        truncated: Boolean(outputLimit),
-        redacted: artifact.redacted || redacted.count > 0,
-        redactionReasons: [...redacted.reasons],
-        redactionCount: redacted.count,
-        ...(outputLimit ? { outputLimitBytes: outputLimit } : {})
-      };
-    } catch (error) {
-      return {
-        ...artifact,
-        content: "",
-        truncated: Boolean(outputLimit),
-        ...(outputLimit ? { outputLimitBytes: outputLimit } : {}),
-        contentUnavailable: error instanceof Error ? error.message : "Artifact content could not be read."
-      };
-    }
-  }));
+async function enrichArtifacts(
+  runDir: string,
+  artifacts: readonly EvidenceArtifact[],
+  events: readonly CoreEvent[]
+): Promise<JsonObject[]> {
+  return await Promise.all(
+    artifacts.map(async (artifact) => {
+      const outputLimit = outputLimitForArtifact(events, artifact.artifactId);
+      const artifactPath = path.resolve(runDir, artifact.relativePath);
+      const safeRunDir = path.resolve(runDir);
+      if (!artifactPath.startsWith(`${safeRunDir}${path.sep}`)) {
+        return {
+          ...artifact,
+          content: "",
+          truncated: Boolean(outputLimit),
+          ...(outputLimit ? { outputLimitBytes: outputLimit } : {}),
+          contentUnavailable: "Artifact path is outside the run directory."
+        };
+      }
+      try {
+        const rawContent = await readFile(artifactPath, "utf8");
+        const redacted = redactStringWithSummary(rawContent);
+        return {
+          ...artifact,
+          content: redacted.value,
+          truncated: Boolean(outputLimit),
+          redacted: artifact.redacted || redacted.count > 0,
+          redactionReasons: [...redacted.reasons],
+          redactionCount: redacted.count,
+          ...(outputLimit ? { outputLimitBytes: outputLimit } : {})
+        };
+      } catch (error) {
+        return {
+          ...artifact,
+          content: "",
+          truncated: Boolean(outputLimit),
+          ...(outputLimit ? { outputLimitBytes: outputLimit } : {}),
+          contentUnavailable: error instanceof Error ? error.message : "Artifact content could not be read."
+        };
+      }
+    })
+  );
 }
 
 function outputLimitForArtifact(events: readonly CoreEvent[], artifactId: StableId): number | undefined {
@@ -2503,9 +2595,10 @@ function safeCoverageSummary(summary: string): string {
 }
 
 function coverageLimitationsForEvent(event: CoreEvent): string[] {
-  const explicit = isRecord(event.data) && Array.isArray(event.data.limitations)
-    ? event.data.limitations.filter((limitation): limitation is string => typeof limitation === "string")
-    : [];
+  const explicit =
+    isRecord(event.data) && Array.isArray(event.data.limitations)
+      ? event.data.limitations.filter((limitation): limitation is string => typeof limitation === "string")
+      : [];
   const fallback = limitationForRouteType(parseRouteType(event.visibility?.routeType));
   const limitations = explicit.length > 0 ? explicit : fallback ? [fallback] : [];
   return limitations.map((limitation) => redactStringWithSummary(limitation).value.slice(0, 1_000));
@@ -2532,9 +2625,7 @@ function integrationClaimFromPassport(
   passport: { readonly id: string; readonly supportedHostIds: readonly string[]; readonly hostFamily: string }
 ): { readonly claimLevel: string; readonly status: string } {
   if (!row) return { claimLevel: "not-yet-verified", status: "not-yet-verified" };
-  const exactReceipt = receipts
-    .filter(({ receipt }) => receiptMatchesMcpPassport(receipt, withConfigHashes(passport)))
-    .at(-1);
+  const exactReceipt = receipts.filter(({ receipt }) => receiptMatchesMcpPassport(receipt, withConfigHashes(passport))).at(-1);
   if (!exactReceipt) return { claimLevel: "not-yet-verified", status: "not-yet-verified" };
   return integrationClaimFromRoute({
     ...row,
@@ -2559,7 +2650,8 @@ function buildIntegrationCoverageMatrix(events: readonly CoreEvent[]): JsonObjec
       routeType: "cli-supervised",
       label: "CLI supervised process path",
       claim: "supervised",
-      limitation: "Covered at the process boundary through `toolguard run --`; native agent tool calls still need MCP, SDK wrapper, or API routing.",
+      limitation:
+        "Covered at the process boundary through `toolguard run --`; native agent tool calls still need MCP, SDK wrapper, or API routing.",
       receipts,
       visibilityEvents
     }),
@@ -2575,7 +2667,8 @@ function buildIntegrationCoverageMatrix(events: readonly CoreEvent[]): JsonObjec
       routeType: "js-ts-wrapper",
       label: "Local JS/TS wrapper path",
       claim: "mediated",
-      limitation: "Mediated only for explicit local wrapper calls; native provider or host tool calls that bypass the wrapper are not covered.",
+      limitation:
+        "Mediated only for explicit local wrapper calls; native provider or host tool calls that bypass the wrapper are not covered.",
       receipts,
       visibilityEvents
     }),
@@ -2616,7 +2709,9 @@ function buildIntegrationCoverageMatrix(events: readonly CoreEvent[]): JsonObjec
   ];
 }
 
-function integrationReceiptsFromEvents(events: readonly CoreEvent[]): readonly { readonly event: CoreEvent; readonly receipt: JsonObject }[] {
+function integrationReceiptsFromEvents(
+  events: readonly CoreEvent[]
+): readonly { readonly event: CoreEvent; readonly receipt: JsonObject }[] {
   return events
     .filter((event) => event.type === "integration.verified" && isRecord(event.data))
     .map((event) => ({ event, receipt: event.data as JsonObject }))
@@ -2673,13 +2768,13 @@ function buildRouteCoverageRow(input: {
                 evidence: `${latestVisibilityEvent.summary} (${latestVisibilityEvent.visibility?.evidenceScope ?? "route"} evidence).`
               }
             ]
-        : [
-            {
-              label: "Evidence receipt",
-              state: "not-verified",
-              evidence: "No integration.verified receipt is present in the active Core session."
-            }
-          ]
+          : [
+              {
+                label: "Evidence receipt",
+                state: "not-verified",
+                evidence: "No integration.verified receipt is present in the active Core session."
+              }
+            ]
   };
 }
 
@@ -2695,14 +2790,14 @@ function receiptProducesRouteEvidence(routeType: IntegrationRouteType, receipt: 
   );
 }
 
-function capabilityChecksFromReceipt(
-  receipt: JsonObject
-): Array<{ readonly capability: string; readonly status: string }> {
+function capabilityChecksFromReceipt(receipt: JsonObject): Array<{ readonly capability: string; readonly status: string }> {
   const checkedCapabilities = Array.isArray(receipt.checkedCapabilities) ? receipt.checkedCapabilities : [];
-  return checkedCapabilities.filter((entry): entry is JsonObject => isRecord(entry)).map((entry) => ({
-    capability: typeof entry.capability === "string" ? entry.capability : "",
-    status: typeof entry.status === "string" ? entry.status : "not-yet-verified"
-  }));
+  return checkedCapabilities
+    .filter((entry): entry is JsonObject => isRecord(entry))
+    .map((entry) => ({
+      capability: typeof entry.capability === "string" ? entry.capability : "",
+      status: typeof entry.status === "string" ? entry.status : "not-yet-verified"
+    }));
 }
 
 function checkProducesRouteEvidence(
@@ -2719,25 +2814,29 @@ function checkProducesRouteEvidence(
 function hasExplicitRouteEvidenceLink(routeType: IntegrationRouteType, receipt: JsonObject): boolean {
   const evidenceLinks = Array.isArray(receipt.evidenceLinks) ? receipt.evidenceLinks : [];
   return evidenceLinks.some(
-    (link) =>
-      isRecord(link) &&
-      typeof link.artifactId === "string" &&
-      link.routeType === routeType &&
-      link.evidenceScope === "route"
+    (link) => isRecord(link) && typeof link.artifactId === "string" && link.routeType === routeType && link.evidenceScope === "route"
   );
 }
 
 function receiptMatchesMcpPassport(
   receipt: JsonObject,
-  passport: { readonly id: string; readonly supportedHostIds: readonly string[]; readonly hostFamily: string; readonly configHashes: readonly string[] }
+  passport: {
+    readonly id: string;
+    readonly supportedHostIds: readonly string[];
+    readonly hostFamily: string;
+    readonly configHashes: readonly string[];
+  }
 ): boolean {
   if (receipt.routeType !== "mcp-routed") return false;
   if (receipt.integrationId === passport.id) return true;
   if (typeof receipt.hostId === "string" && passport.supportedHostIds.includes(receipt.hostId)) return true;
-  const receiptHosts = Array.isArray(receipt.supportedHostIds) ? receipt.supportedHostIds.filter((host): host is string => typeof host === "string") : [];
+  const receiptHosts = Array.isArray(receipt.supportedHostIds)
+    ? receipt.supportedHostIds.filter((host): host is string => typeof host === "string")
+    : [];
   if (receiptHosts.some((host) => passport.supportedHostIds.includes(host))) return true;
   if (typeof receipt.configHash === "string" && passport.configHashes.includes(receipt.configHash)) return true;
-  if (typeof receipt.hostFamily === "string" && receipt.hostFamily === passport.hostFamily && !hasExactMcpReceiptMetadata(receipt)) return true;
+  if (typeof receipt.hostFamily === "string" && receipt.hostFamily === passport.hostFamily && !hasExactMcpReceiptMetadata(receipt))
+    return true;
   const evidenceLinks = Array.isArray(receipt.evidenceLinks) ? receipt.evidenceLinks : [];
   return evidenceLinks.some(
     (link) =>
@@ -2800,10 +2899,7 @@ function evidenceFreshnessFor(occurredAt: string): "recent" | "stale" {
 }
 
 function parseScenarioId(value: unknown): RecordedPolicyScenarioId | undefined {
-  return value === "safe-success" ||
-    value === "blocked-destructive" ||
-    value === "retry-loop-failure" ||
-    value === "output-budget-flood"
+  return value === "safe-success" || value === "blocked-destructive" || value === "retry-loop-failure" || value === "output-budget-flood"
     ? value
     : undefined;
 }
@@ -2841,12 +2937,9 @@ function limitationForRouteType(routeType: IntegrationRouteType | undefined): st
   return undefined;
 }
 
-function optionalStringField<T extends string>(
-  source: Record<string, unknown>,
-  key: T
-): Record<T, string> | Record<string, never> {
+function optionalStringField<T extends string>(source: Record<string, unknown>, key: T): Record<T, string> | Record<string, never> {
   const value = source[key];
-  return typeof value === "string" && value.length > 0 ? { [key]: value } as Record<T, string> : {};
+  return typeof value === "string" && value.length > 0 ? ({ [key]: value } as Record<T, string>) : {};
 }
 
 function optionalStringArrayField<T extends string>(
@@ -2855,7 +2948,7 @@ function optionalStringArrayField<T extends string>(
 ): Record<T, readonly string[]> | Record<string, never> {
   const value = source[key];
   return Array.isArray(value) && value.every((entry) => typeof entry === "string")
-    ? { [key]: value } as unknown as Record<T, readonly string[]>
+    ? ({ [key]: value } as unknown as Record<T, readonly string[]>)
     : {};
 }
 

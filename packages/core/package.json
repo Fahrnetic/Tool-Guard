@@ -22,11 +22,13 @@
   "scripts": {
     "build": "tsc --build tsconfig.json",
     "demo:raw-failure": "pnpm build && node dist/demo.js raw-failure",
+    "demo:otel": "pnpm build && node dist/demo.js otel",
     "demo:toolplane": "pnpm build && node dist/demo.js toolplane",
     "doctor:integrations": "pnpm build && node dist/integration-doctor.js",
     "dev": "pnpm build && node dist/server.js",
     "lint": "pnpm typecheck",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage --coverage.reporter=text --coverage.reporter=json-summary",
     "typecheck": "tsc --noEmit --project tsconfig.json && tsc --noEmit --project tsconfig.test.json"
   },
   "devDependencies": {

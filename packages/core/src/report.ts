@@ -41,9 +41,7 @@ export async function exportStaticReport(input: { readonly runDir: string }): Pr
     byteLength: artifact.byteLength
   }));
   const narrative = failures.length
-    ? failures
-        .map((failure) => `${failure.toolName}: ${failure.failureType}. ${failure.likelyRootCause}`)
-        .join("\n")
+    ? failures.map((failure) => `${failure.toolName}: ${failure.failureType}. ${failure.likelyRootCause}`).join("\n")
     : "No failures were recorded for this run.";
   const remediationSteps = failures.flatMap((failure) => [...failure.safeRecoveryOptions, failure.humanFix ?? ""]);
   const safeNarrative = redactStringWithSummary(narrative);
@@ -273,10 +271,5 @@ function confidenceLabel(confidence: "high" | "medium" | "low"): string {
 }
 
 function escapeHtml(input: string): string {
-  return input
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
+  return input.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
 }

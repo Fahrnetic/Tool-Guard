@@ -16,11 +16,7 @@ import type {
   JsonValue
 } from "./types.js";
 
-export const INTEGRATION_DOCTOR_ROUTES: readonly IntegrationRouteType[] = [
-  "mcp-routed",
-  "cli-supervised",
-  "sdk-wrapped-python"
-];
+export const INTEGRATION_DOCTOR_ROUTES: readonly IntegrationRouteType[] = ["mcp-routed", "cli-supervised", "sdk-wrapped-python"];
 
 export interface IntegrationDoctorResult {
   readonly runId: string;
@@ -92,12 +88,14 @@ export interface IntegrationDoctorCliOptions {
   readonly probeTimeoutMs?: number;
 }
 
-export async function runIntegrationDoctor(input: {
-  readonly evidenceRoot?: string;
-  readonly workspaceRoot?: string;
-  readonly runId?: string;
-  readonly probeTimeoutMs?: number;
-} = {}): Promise<IntegrationDoctorResult> {
+export async function runIntegrationDoctor(
+  input: {
+    readonly evidenceRoot?: string;
+    readonly workspaceRoot?: string;
+    readonly runId?: string;
+    readonly probeTimeoutMs?: number;
+  } = {}
+): Promise<IntegrationDoctorResult> {
   const workspaceRoot = input.workspaceRoot ?? (await findWorkspaceRoot(process.env.INIT_CWD ?? process.cwd()));
   const evidenceRoot = input.evidenceRoot ?? path.join(workspaceRoot, "runs");
   const session = new CoreSession({
@@ -211,9 +209,7 @@ export function renderIntegrationDoctorHuman(result: IntegrationDoctorResult): s
     `bundleValid: ${String(result.bundleValid)}`
   ];
   for (const receipt of result.receipts) {
-    const capabilityStates = receipt.checkedCapabilities
-      .map((capability) => `${capability.capability}=${capability.status}`)
-      .join(", ");
+    const capabilityStates = receipt.checkedCapabilities.map((capability) => `${capability.capability}=${capability.status}`).join(", ");
     const coverageStates = receipt.routeCoverage.map((entry) => entry.state).join(", ");
     lines.push(`receipt: ${receipt.routeType}`);
     lines.push(`  receiptId: ${receipt.receiptId}`);
@@ -337,10 +333,7 @@ function receiptProducesRouteEvidence(receipt: IntegrationVerificationReceipt): 
   );
 }
 
-function routeSpecificEvidenceCapabilityPassed(
-  routeType: IntegrationRouteType,
-  check: IntegrationCapabilityCheck
-): boolean {
+function routeSpecificEvidenceCapabilityPassed(routeType: IntegrationRouteType, check: IntegrationCapabilityCheck): boolean {
   if (check.status !== "configured" && check.status !== "available") return false;
   const capability = check.capability.toLowerCase();
   if (routeType === "mcp-routed") return capability === "virtual routed tool evidence";

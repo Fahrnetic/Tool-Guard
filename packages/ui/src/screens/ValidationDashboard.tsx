@@ -33,13 +33,16 @@ export function ValidationDashboard({ payload, status, error }: ValidationDashbo
               Validation Dashboard
             </h2>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-text-muted">
-              One local screen for tests, typecheck, lint, demo readiness, evidence export, no-secret scan, and process hygiene.
-              Warnings mean the UI can see the check but still needs a fresh command transcript.
+              One local screen for tests, typecheck, lint, demo readiness, evidence export, no-secret scan, and process hygiene. Warnings
+              mean the UI can see the check but still needs a fresh command transcript.
             </p>
           </div>
           <div className="grid gap-2">
             <StatusChip label={`seed ${payload.deterministicSeed}`} tone="selected" />
-            <StatusChip label={`ports ${payload.approvedPorts[0]}-${payload.approvedPorts[payload.approvedPorts.length - 1]}`} tone="healthy" />
+            <StatusChip
+              label={`ports ${payload.approvedPorts[0]}-${payload.approvedPorts[payload.approvedPorts.length - 1]}`}
+              tone="healthy"
+            />
             <StatusChip label={`runId ${payload.runId}`} tone="neutral" />
           </div>
         </div>

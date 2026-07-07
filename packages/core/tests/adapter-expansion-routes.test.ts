@@ -115,8 +115,8 @@ describe("adapter expansion local visibility routes", () => {
     expect(JSON.stringify(imported.safeEvidence)).not.toContain("B".repeat(48));
 
     const persisted = await readFile(session.recorder.eventsPath, "utf8");
-    expect(persisted).toContain("\"visibilityLevel\":\"imported\"");
-    expect(persisted).toContain("\"routeType\":\"http-webhook-import\"");
+    expect(persisted).toContain('"visibilityLevel":"imported"');
+    expect(persisted).toContain('"routeType":"http-webhook-import"');
     expect(persisted).not.toContain("A".repeat(36));
     expect(persisted).not.toContain("B".repeat(48));
   });
@@ -277,9 +277,7 @@ describe("adapter expansion local visibility routes", () => {
     const safeEvidenceText = JSON.stringify(imported.safeEvidence);
     expect(safeEvidenceText.length).toBeLessThan(20_000);
     expect(safeEvidenceText).toContain("[TRUNCATED:");
-    expect(imported.safeEvidence.redaction).toEqual(
-      expect.objectContaining({ reasons: expect.arrayContaining(["sensitive-key"]) })
-    );
+    expect(imported.safeEvidence.redaction).toEqual(expect.objectContaining({ reasons: expect.arrayContaining(["sensitive-key"]) }));
     expect(safeEvidenceText).not.toContain(rawSecret);
     expect(safeEvidenceText).not.toContain("S".repeat(60));
     expect(safeEvidenceText).not.toContain("T".repeat(48));

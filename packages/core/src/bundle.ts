@@ -7,11 +7,7 @@ import { validateReportManifest, type ManifestValidationResult } from "./report.
 import { exportIssuePacket } from "./triage.js";
 import { redactJsonValue } from "./redaction.js";
 import { generateAndPersistNarrative, generateAndPersistTopology } from "./topology.js";
-import {
-  CANONICAL_VISIBILITY_SCHEMA_VERSION,
-  stableVisibilityJson,
-  visibilityLabels
-} from "./visibility.js";
+import { CANONICAL_VISIBILITY_SCHEMA_VERSION, stableVisibilityJson, visibilityLabels } from "./visibility.js";
 import type {
   EvidenceArtifact,
   FailureCard,
@@ -140,14 +136,14 @@ export async function exportEvidenceBundle(input: {
   const policies = extractEventData<PolicySimulationResult>(session.recorder.events, "policy.simulated");
   const receipts = extractEventData<IntegrationVerificationReceipt>(session.recorder.events, "integration.verified");
   await writeFile(path.join(bundleDir, "policy-simulator-result.json"), `${stableStringify({ results: policies })}\n`, "utf8");
-  await writeFile(
-    path.join(bundleDir, "integration-verification-receipts.json"),
-    `${stableStringify({ receipts })}\n`,
-    "utf8"
-  );
+  await writeFile(path.join(bundleDir, "integration-verification-receipts.json"), `${stableStringify({ receipts })}\n`, "utf8");
   await writeFile(path.join(bundleDir, "blast-radius.json"), `${stableStringify(buildBlastRadius(session.recorder.ledger))}\n`, "utf8");
   await writeFile(path.join(bundleDir, "retry-loops.json"), `${stableStringify(buildRetryLoops(session.recorder.ledger))}\n`, "utf8");
-  await writeFile(path.join(bundleDir, "context-metrics.json"), `${stableStringify(buildContextMetrics(session.recorder.events))}\n`, "utf8");
+  await writeFile(
+    path.join(bundleDir, "context-metrics.json"),
+    `${stableStringify(buildContextMetrics(session.recorder.events))}\n`,
+    "utf8"
+  );
   await writeFile(path.join(bundleDir, "diagnostics.json"), `${stableStringify(buildDiagnostics(session.recorder.events))}\n`, "utf8");
   const issuePacket = await exportIssuePacket({
     runId: session.runId,
@@ -182,7 +178,11 @@ export async function exportEvidenceBundle(input: {
     "utf8"
   );
   if (replay.safe) {
-    await writeFile(path.join(bundleDir, "replay-instructions.json"), `${stableStringify(buildReplayInstructions(session.runId, replay.reason))}\n`, "utf8");
+    await writeFile(
+      path.join(bundleDir, "replay-instructions.json"),
+      `${stableStringify(buildReplayInstructions(session.runId, replay.reason))}\n`,
+      "utf8"
+    );
   }
 
   await session.emitBundleExported({
@@ -311,11 +311,7 @@ export async function validateEvidenceBundleManifest(input: { readonly bundleDir
   }
 
   errors.push(...(await validateContainedLinks(input.bundleDir, requiredFiles)));
-  errors.push(...(await validateReproducibilityFile(
-    input.bundleDir,
-    manifest.files.reproducibilityJson,
-    manifest.files.ledgerJsonl
-  )));
+  errors.push(...(await validateReproducibilityFile(input.bundleDir, manifest.files.reproducibilityJson, manifest.files.ledgerJsonl)));
 
   const hashedPaths = new Set(manifest.artifactHashes.map((artifact) => artifact.relativePath));
   for (const relativePath of await listBundleFiles(input.bundleDir)) {
@@ -361,7 +357,12 @@ function isRawArtifact(artifact: EvidenceArtifact): boolean {
 }
 
 function buildBundleVisibility(
-  events: readonly { readonly visibility?: VisibilityMetadata; readonly occurredAt?: string; readonly eventId?: string; readonly runId?: string }[],
+  events: readonly {
+    readonly visibility?: VisibilityMetadata;
+    readonly occurredAt?: string;
+    readonly eventId?: string;
+    readonly runId?: string;
+  }[],
   receipts: readonly IntegrationVerificationReceipt[],
   hashes: readonly EvidenceBundleArtifactHash[]
 ): EvidenceBundleVisibilityMetadata {
@@ -447,9 +448,7 @@ function dedupeJsonObjects(values: readonly JsonObject[], key: string): readonly
 
 async function hashBundleFiles(bundleDir: string): Promise<readonly EvidenceBundleArtifactHash[]> {
   const relativePaths = (await listBundleFiles(bundleDir)).filter(
-    (relativePath) =>
-      relativePath !== "manifest.json" &&
-      relativePath !== "artifact-hashes.json"
+    (relativePath) => relativePath !== "manifest.json" && relativePath !== "artifact-hashes.json"
   );
   const hashes: EvidenceBundleArtifactHash[] = [];
   for (const relativePath of relativePaths) {
@@ -516,9 +515,7 @@ function buildBlastRadius(ledger: readonly SideEffectLedgerEntry[]): JsonObject 
 }
 
 function buildRetryLoops(ledger: readonly SideEffectLedgerEntry[]): JsonObject {
-  const findings = ledger
-    .map((entry) => entry.retryLoopFinding)
-    .filter((finding): finding is RetryLoopFinding => Boolean(finding));
+  const findings = ledger.map((entry) => entry.retryLoopFinding).filter((finding): finding is RetryLoopFinding => Boolean(finding));
   return { findings: findings.map((finding) => ({ ...finding })) };
 }
 
@@ -573,10 +570,7 @@ function buildDiagnostics(events: readonly { readonly type: string; readonly dat
   };
 }
 
-function buildReplayRecipes(
-  runId: string,
-  replay: { readonly safe: boolean; readonly reason: string }
-): JsonObject {
+function buildReplayRecipes(runId: string, replay: { readonly safe: boolean; readonly reason: string }): JsonObject {
   return {
     runId,
     generatedAt: new Date().toISOString(),
@@ -660,9 +654,7 @@ function replayDecision(
   ledger: readonly SideEffectLedgerEntry[],
   events: readonly { readonly type: string; readonly data?: unknown }[]
 ): { readonly safe: boolean; readonly reason: string } {
-  const hasRecordedEvidence = events.some(
-    (event) => event.type === "evidence.artifact.created" || event.type === "side_effect.recorded"
-  );
+  const hasRecordedEvidence = events.some((event) => event.type === "evidence.artifact.created" || event.type === "side_effect.recorded");
   if (!hasRecordedEvidence || ledger.length === 0) {
     return {
       safe: false,
@@ -704,10 +696,7 @@ function isReplaySafeLedgerEntry(entry: SideEffectLedgerEntry): boolean {
 }
 
 function isFixtureReplayEntry(entry: SideEffectLedgerEntry): boolean {
-  return entry.toolName.startsWith("fixture.") && (
-    entry.reversibility === "fixture-only" ||
-    entry.reversibility === "reversible"
-  );
+  return entry.toolName.startsWith("fixture.") && (entry.reversibility === "fixture-only" || entry.reversibility === "reversible");
 }
 
 function isLoopbackReplayEntry(entry: SideEffectLedgerEntry): boolean {
@@ -777,10 +766,7 @@ async function validateReproducibilityFile(
   }
 }
 
-async function readBundleLedger(
-  bundleDir: string,
-  relativePath: string | undefined
-): Promise<readonly SideEffectLedgerEntry[]> {
+async function readBundleLedger(bundleDir: string, relativePath: string | undefined): Promise<readonly SideEffectLedgerEntry[]> {
   if (!relativePath || !isContainedRelativePath(relativePath)) return [];
   try {
     return (await readFile(path.join(bundleDir, relativePath), "utf8"))
@@ -800,23 +786,22 @@ function expectedReproducibilityInputs(parsed: {
 }): ReproducibilityInputs {
   const fallback = new Map(
     (parsed.checks ?? [])
-      .filter((check): check is { readonly name: string; readonly expected: string } =>
-        typeof check.name === "string" && typeof check.expected === "string"
+      .filter(
+        (check): check is { readonly name: string; readonly expected: string } =>
+          typeof check.name === "string" && typeof check.expected === "string"
       )
       .map((check) => [check.name, check.expected])
   );
   const expected = parsed.expected ?? {};
   const stringOrFallback = (name: keyof ReproducibilityInputs): string => {
     const value = expected[name];
-    return typeof value === "string" ? value : fallback.get(name) ?? "";
+    return typeof value === "string" ? value : (fallback.get(name) ?? "");
   };
   return {
     cwd: stringOrFallback("cwd"),
     packageManager: stringOrFallback("packageManager"),
     routeConfigHash: stringOrFallback("routeConfigHash"),
-    recordedRouteConfigs: Array.isArray(expected.recordedRouteConfigs)
-      ? expected.recordedRouteConfigs.filter(isRecordedRouteConfig)
-      : [],
+    recordedRouteConfigs: Array.isArray(expected.recordedRouteConfigs) ? expected.recordedRouteConfigs.filter(isRecordedRouteConfig) : [],
     fixtureSeed: stringOrFallback("fixtureSeed")
   };
 }
@@ -855,9 +840,7 @@ function recordedRouteConfigsFromLedger(ledger: readonly SideEffectLedgerEntry[]
   for (const entry of ledger) {
     byFingerprint.set(stableStringify(entry.routeConfig as unknown as JsonObject), entry.routeConfig);
   }
-  return [...byFingerprint.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([, config]) => config);
+  return [...byFingerprint.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([, config]) => config);
 }
 
 function hashRecordedRouteConfigs(configs: readonly RecordedRouteConfig[]): string {
@@ -888,7 +871,10 @@ function isContainedLink(href: string): boolean {
 }
 
 function extractEventData<T>(events: readonly { readonly type: string; readonly data?: unknown }[], type: string): T[] {
-  return events.filter((event) => event.type === type).map((event) => event.data as T).filter(Boolean);
+  return events
+    .filter((event) => event.type === type)
+    .map((event) => event.data as T)
+    .filter(Boolean);
 }
 
 function isEvidenceArtifact(value: unknown): value is EvidenceArtifact {
@@ -927,7 +913,11 @@ function stableStringify(value: unknown): string {
 function sortJson(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortJson);
   if (value && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, val]) => [key, sortJson(val)]));
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, val]) => [key, sortJson(val)])
+    );
   }
   return value;
 }

@@ -1,0 +1,56 @@
+name: Backlog Health
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 10 * * 1"
+
+permissions:
+  issues: read
+  contents: read
+
+jobs:
+  backlog-health:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require("node:fs");
+            const config = JSON.parse(fs.readFileSync("backlog-health.config.json", "utf8"));
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100
+            });
+            const openIssues = issues.filter((issue) => !issue.pull_request);
+            const now = Date.now();
+            const labelsOf = (issue) => issue.labels.map((label) => typeof label === "string" ? label : label.name).filter(Boolean);
+            const ageDays = (issue) => Math.floor((now - Date.parse(issue.updated_at)) / 86_400_000);
+            const unlabeled = openIssues.filter((issue) => labelsOf(issue).length === 0);
+            const missingType = openIssues.filter((issue) => !labelsOf(issue).some((label) => config.typeLabels.includes(label)));
+            const staleCritical = openIssues.filter((issue) => {
+              const labels = labelsOf(issue);
+              const priority = config.priorityLabels.find((label) => labels.includes(label));
+              if (!priority || !config.criticalFailureLabels.includes(priority)) return false;
+              return ageDays(issue) > config.stalenessDays[priority];
+            });
+            const lines = [
+              "# Backlog Health",
+              "",
+              `Open issues: ${openIssues.length}`,
+              `Unlabeled issues: ${unlabeled.length}`,
+              `Issues missing type label: ${missingType.length}`,
+              `Stale critical/high issues: ${staleCritical.length}`,
+              "",
+              "## Stale critical/high issues",
+              ...staleCritical.map((issue) => `- #${issue.number} ${issue.title} (${ageDays(issue)} days since update)`)
+            ];
+            await core.summary.addRaw(lines.join("\n")).write();
+            const failures = [];
+            if (unlabeled.length > config.maxUnlabeledOpenIssues) failures.push(`${unlabeled.length} open issues are unlabeled`);
+            if (missingType.length > config.maxIssuesMissingType) failures.push(`${missingType.length} open issues are missing type labels`);
+            if (staleCritical.length > 0) failures.push(`${staleCritical.length} critical/high priority issues are stale`);
+            if (failures.length > 0) core.setFailed(failures.join("; "));

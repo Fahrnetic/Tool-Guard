@@ -1,0 +1,22 @@
+{
+  "workspaces": {
+    "packages/core": {
+      "entry": ["src/server.ts", "src/demo.ts", "src/integration-doctor.ts"],
+      "project": ["src/**/*.ts", "tests/**/*.ts"]
+    },
+    "packages/cli": {
+      "project": ["src/**/*.ts", "tests/**/*.ts"]
+    },
+    "packages/mcp-adapter": {
+      "entry": ["src/demo.ts", "src/portfolio-demo.ts", "src/story-serve.ts", "src/story-fixture-server.ts"],
+      "project": ["src/**/*.ts", "tests/**/*.ts"]
+    },
+    "packages/ui": {
+      "project": ["src/**/*.{ts,tsx}", "tests/**/*.{ts,tsx}"]
+    }
+  },
+  "ignoreDependencies": ["@toolplane/cli", "@toolplane/ui", "depcheck", "eslint-plugin-import", "husky"],
+  "ignoreBinaries": ["gitleaks", "python3"],
+  "ignoreExportsUsedInFile": true,
+  "ignore": ["**/dist/**", "**/runs/**", "**/coverage/**"]
+}

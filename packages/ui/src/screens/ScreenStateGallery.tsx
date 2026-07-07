@@ -79,24 +79,55 @@ export function ScreenStateGallery({ screen }: ScreenStateGalleryProps) {
         <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">{item.description}</p>
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
-        <StatePanel status="loading" title={`${item.title} loading`} message="Skeleton and progress affordances preserve layout while Core data is loading." />
-        <StatePanel status="empty" title={`${item.title} empty`} message="Empty states explain what normally appears here and how to generate data." />
-        <StatePanel status="degraded" title={`${item.title} degraded`} message="Partial data remains inspectable, with labels and correlation IDs still visible." />
-        <StatePanel status="error" title={`${item.title} error`} message="Actionable errors identify the unavailable Core endpoint and the next recovery step." />
+        <StatePanel
+          status="loading"
+          title={`${item.title} loading`}
+          message="Skeleton and progress affordances preserve layout while Core data is loading."
+        />
+        <StatePanel
+          status="empty"
+          title={`${item.title} empty`}
+          message="Empty states explain what normally appears here and how to generate data."
+        />
+        <StatePanel
+          status="degraded"
+          title={`${item.title} degraded`}
+          message="Partial data remains inspectable, with labels and correlation IDs still visible."
+        />
+        <StatePanel
+          status="error"
+          title={`${item.title} error`}
+          message="Actionable errors identify the unavailable Core endpoint and the next recovery step."
+        />
       </div>
       <div className="rounded-2xl border border-border bg-bg-panel/80 p-5">
         <h3 className="text-lg font-semibold text-text">Accessible primitive states</h3>
         <div className="mt-4 flex flex-wrap gap-3">
-          <button type="button" className="rounded-xl border border-primary/50 bg-primary/15 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20 active:scale-[0.98]">
+          <button
+            type="button"
+            className="rounded-xl border border-primary/50 bg-primary/15 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20 active:scale-[0.98]"
+          >
             Enabled action
           </button>
-          <button type="button" aria-pressed="true" className="rounded-xl border border-success/50 bg-success/15 px-4 py-2 text-sm font-medium text-success hover:bg-success/20 active:scale-[0.98]">
+          <button
+            type="button"
+            aria-pressed="true"
+            className="rounded-xl border border-success/50 bg-success/15 px-4 py-2 text-sm font-medium text-success hover:bg-success/20 active:scale-[0.98]"
+          >
             Selected action
           </button>
-          <button type="button" disabled className="rounded-xl border border-border bg-bg px-4 py-2 text-sm font-medium text-text-dim opacity-50">
+          <button
+            type="button"
+            disabled
+            className="rounded-xl border border-border bg-bg px-4 py-2 text-sm font-medium text-text-dim opacity-50"
+          >
             Disabled action
           </button>
-          <button type="button" aria-busy="true" className="inline-flex items-center gap-2 rounded-xl border border-border-strong bg-bg px-4 py-2 text-sm font-medium text-text-muted">
+          <button
+            type="button"
+            aria-busy="true"
+            className="inline-flex items-center gap-2 rounded-xl border border-border-strong bg-bg px-4 py-2 text-sm font-medium text-text-muted"
+          >
             <span className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             Loading action
           </button>

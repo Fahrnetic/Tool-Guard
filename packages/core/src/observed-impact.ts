@@ -34,10 +34,7 @@ export interface ObservedImpactRouteMetadata {
   readonly sandboxRoot?: string;
 }
 
-export function workspaceRootFromCall(
-  call: ToolCall,
-  routeMetadata?: ObservedImpactRouteMetadata | undefined
-): string | undefined {
+export function workspaceRootFromCall(call: ToolCall, routeMetadata?: ObservedImpactRouteMetadata | undefined): string | undefined {
   const candidate = firstNonEmptyString(
     call.arguments.cwd,
     call.routeMetadata?.workspaceRoot,
@@ -49,7 +46,9 @@ export function workspaceRootFromCall(
 }
 
 export function observedProcessLifecycleFromValue(value: unknown): ObservedProcessLifecycle | undefined {
-  const record = Array.isArray(value) ? Object.fromEntries(value.map((line) => String(line).split(/: /, 2)).filter((parts) => parts.length === 2)) : value;
+  const record = Array.isArray(value)
+    ? Object.fromEntries(value.map((line) => String(line).split(/: /, 2)).filter((parts) => parts.length === 2))
+    : value;
   if (!isRecord(record) || typeof record.startedAt !== "string" || typeof record.endedAt !== "string") return undefined;
   return {
     pid: typeof record.pid === "number" ? record.pid : numberOrNull(record.pid),
@@ -136,10 +135,7 @@ export async function finishObservedImpact(input: {
   return impact;
 }
 
-export function impactAttribution(input: {
-  readonly outcome: SideEffectState;
-  readonly impact?: ObservedLocalImpact | undefined;
-}): {
+export function impactAttribution(input: { readonly outcome: SideEffectState; readonly impact?: ObservedLocalImpact | undefined }): {
   readonly attributionLevel: ImpactAttributionLevel;
   readonly evidenceBasis: readonly ImpactEvidenceBasis[];
   readonly causalClaim: string;
@@ -171,7 +167,13 @@ export function impactAttribution(input: {
 
   const hasObservedMutation = Boolean(input.impact?.fileChanges.length || input.impact?.gitStatus?.changed);
   return {
-    attributionLevel: hasObservedMutation ? "observed-after" : input.impact ? "observed-caused" : input.outcome === "unknown" ? "unknown" : "inferred-risk",
+    attributionLevel: hasObservedMutation
+      ? "observed-after"
+      : input.impact
+        ? "observed-caused"
+        : input.outcome === "unknown"
+          ? "unknown"
+          : "inferred-risk",
     evidenceBasis: basis.length > 0 ? basis : ["policy-decision"],
     causalClaim: hasObservedMutation
       ? "Local changes were observed after the mediated call in the contained workspace."
@@ -201,7 +203,8 @@ function buildRollbackGuidance(changes: readonly ObservedFileChange[], workspace
   return changes.map((change) => {
     const safePath = containedRelativePath(workspaceRoot, path.join(workspaceRoot, change.path));
     if (change.changeType === "created") return `Remove created disposable-workspace path ${safePath}.`;
-    if (change.changeType === "deleted") return `Restore deleted disposable-workspace path ${safePath} from source control or fixture seed.`;
+    if (change.changeType === "deleted")
+      return `Restore deleted disposable-workspace path ${safePath} from source control or fixture seed.`;
     return `Review and revert modified disposable-workspace path ${safePath}.`;
   });
 }

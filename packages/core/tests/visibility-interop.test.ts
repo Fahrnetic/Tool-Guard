@@ -41,11 +41,9 @@ describe("visibility interoperability import/export", () => {
     const session = new CoreSession({ evidenceRoot: root, runId: call.runId });
 
     await session.mediateSuccessfulCall(call, { ok: true, token: `Bearer ${"A".repeat(32)}` });
-    await session.failToolCall(
-      { ...makeToolCall(call.runId), toolName: "fixture.fail", traceId: call.traceId },
-      "non_zero_exit",
-      [`failure with sk-${"B".repeat(48)}`]
-    );
+    await session.failToolCall({ ...makeToolCall(call.runId), toolName: "fixture.fail", traceId: call.traceId }, "non_zero_exit", [
+      `failure with sk-${"B".repeat(48)}`
+    ]);
 
     const outputPath = path.join(session.recorder.runDir, "visibility-otel.json");
     const exported = await exportVisibilityOtel({
@@ -64,22 +62,18 @@ describe("visibility interoperability import/export", () => {
       ])
     );
 
-    const spans = exported.resourceSpans.flatMap((resourceSpan) =>
-      resourceSpan.scopeSpans.flatMap((scopeSpan) => scopeSpan.spans)
-    );
-    expect(spans.map((span) => {
-      const value = span.attributes.find((attribute) => attribute.key === "toolguard.event.type")?.value;
-      return value && "stringValue" in value ? value.stringValue : undefined;
-    })).toEqual(
-      expect.arrayContaining(["run.started", "tool.call.started", "tool.call.failed", "evidence.artifact.created"])
-    );
+    const spans = exported.resourceSpans.flatMap((resourceSpan) => resourceSpan.scopeSpans.flatMap((scopeSpan) => scopeSpan.spans));
+    expect(
+      spans.map((span) => {
+        const value = span.attributes.find((attribute) => attribute.key === "toolguard.event.type")?.value;
+        return value && "stringValue" in value ? value.stringValue : undefined;
+      })
+    ).toEqual(expect.arrayContaining(["run.started", "tool.call.started", "tool.call.failed", "evidence.artifact.created"]));
     expect(spans).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           status: { code: 2, message: "non_zero_exit" },
-          attributes: expect.arrayContaining([
-            { key: "toolguard.failure.type", value: { stringValue: "non_zero_exit" } }
-          ])
+          attributes: expect.arrayContaining([{ key: "toolguard.failure.type", value: { stringValue: "non_zero_exit" } }])
         })
       ])
     );
@@ -145,7 +139,7 @@ describe("visibility interoperability import/export", () => {
     });
 
     const persisted = await readFile(target.recorder.eventsPath, "utf8");
-    expect(persisted).toContain("\"visibilityLevel\":\"imported\"");
+    expect(persisted).toContain('"visibilityLevel":"imported"');
     expect(persisted).not.toContain("C".repeat(48));
   });
 

@@ -17,7 +17,8 @@ export function DemoStoryMode({ payload, status, error }: DemoStoryModeProps) {
   const selectedScenario = payload?.scenarios.find((scenario) => scenario.id === selectedScenarioId) ?? payload?.scenarios[0];
   const activeStage = payload?.stageOrder.find((stage) => stage.id === activeStageId) ?? payload?.stageOrder[0];
   const activeStageIndex = payload?.stageOrder.findIndex((stage) => stage.id === activeStage?.id) ?? 0;
-  const progressPercent = payload && payload.stageOrder.length > 1 ? Math.round((activeStageIndex / (payload.stageOrder.length - 1)) * 100) : 0;
+  const progressPercent =
+    payload && payload.stageOrder.length > 1 ? Math.round((activeStageIndex / (payload.stageOrder.length - 1)) * 100) : 0;
   const scenarioMetrics = useMemo(() => {
     const raw = selectedScenario?.comparison.raw;
     const mediated = selectedScenario?.comparison.mediated;
@@ -35,7 +36,10 @@ export function DemoStoryMode({ payload, status, error }: DemoStoryModeProps) {
       },
       {
         label: "Retry posture",
-        value: mediated.retryBehavior.toLowerCase().includes("do not") || mediated.retryBehavior.toLowerCase().includes("suppressed") ? "contained" : "guided",
+        value:
+          mediated.retryBehavior.toLowerCase().includes("do not") || mediated.retryBehavior.toLowerCase().includes("suppressed")
+            ? "contained"
+            : "guided",
         detail: mediated.retryBehavior
       }
     ];
@@ -51,7 +55,9 @@ export function DemoStoryMode({ payload, status, error }: DemoStoryModeProps) {
     return <StorySkeleton />;
   }
   if (status === "error" || !payload) {
-    return <StatePanel status="error" title="Story mode unavailable" message={error ?? "Start Core with pnpm demo:serve to load story mode."} />;
+    return (
+      <StatePanel status="error" title="Story mode unavailable" message={error ?? "Start Core with pnpm demo:serve to load story mode."} />
+    );
   }
   if (payload.scenarios.length === 0 || payload.stageOrder.length === 0) {
     return (
@@ -85,11 +91,14 @@ export function DemoStoryMode({ payload, status, error }: DemoStoryModeProps) {
               The failure story, staged like a live incident review
             </h2>
             <p className="mt-4 text-sm leading-6 text-text-muted">
-              Launch with <code className="rounded bg-bg-panel px-2 py-1 text-primary">{payload.serveCommand}</code>. The flow is fixture-only or loopback-only, uses stable labels, and keeps Core plus UI running for human viewing until you stop it.
+              Launch with <code className="rounded bg-bg-panel px-2 py-1 text-primary">{payload.serveCommand}</code>. The flow is
+              fixture-only or loopback-only, uses stable labels, and keeps Core plus UI running for human viewing until you stop it.
             </p>
             {activeStage ? (
               <div className="mt-5 rounded-2xl border border-primary/25 bg-bg/45 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-text-dim">Now showing stage {activeStageIndex + 1} of {payload.stageOrder.length}</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-text-dim">
+                  Now showing stage {activeStageIndex + 1} of {payload.stageOrder.length}
+                </p>
                 <p className="mt-2 text-xl font-bold text-text">{activeStage.label}</p>
                 <p className="mt-1 text-sm leading-6 text-text-muted">{activeStage.narrative}</p>
               </div>
@@ -102,7 +111,11 @@ export function DemoStoryMode({ payload, status, error }: DemoStoryModeProps) {
           </div>
         </div>
         <div className="relative mt-6 h-2 overflow-hidden rounded-full bg-bg-panel">
-          <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${progressPercent}%` }} aria-hidden="true" />
+          <div
+            className="h-full rounded-full bg-primary transition-all duration-500"
+            style={{ width: `${progressPercent}%` }}
+            aria-hidden="true"
+          />
         </div>
       </div>
 
@@ -152,7 +165,9 @@ export function DemoStoryMode({ payload, status, error }: DemoStoryModeProps) {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h3 className="text-lg font-semibold text-text">Step-by-step narrative navigation</h3>
-                <p className="text-sm text-text-muted">Use the stages like a demo script, with visible selected, hover, and focus states.</p>
+                <p className="text-sm text-text-muted">
+                  Use the stages like a demo script, with visible selected, hover, and focus states.
+                </p>
               </div>
               <StatusChip label={`${activeStageIndex + 1}/${payload.stageOrder.length}`} tone="selected" />
             </div>
@@ -221,8 +236,12 @@ export function DemoStoryMode({ payload, status, error }: DemoStoryModeProps) {
             <ComparisonCard title="ToolGuard result" side={selectedScenario.comparison.mediated} tone="guarded" />
           </div>
           <div className="mt-4 rounded-xl border border-border bg-bg/45 p-4 text-sm text-text-muted">
-            <p><span className="font-semibold text-text">Scenario cleanup:</span> {selectedScenario.cleanup.afterScenario}</p>
-            <p className="mt-2"><span className="font-semibold text-text">Exit cleanup:</span> {selectedScenario.cleanup.onExit}</p>
+            <p>
+              <span className="font-semibold text-text">Scenario cleanup:</span> {selectedScenario.cleanup.afterScenario}
+            </p>
+            <p className="mt-2">
+              <span className="font-semibold text-text">Exit cleanup:</span> {selectedScenario.cleanup.onExit}
+            </p>
           </div>
         </div>
       ) : null}
@@ -230,7 +249,15 @@ export function DemoStoryMode({ payload, status, error }: DemoStoryModeProps) {
   );
 }
 
-function ComparisonCard({ title, side, tone }: { readonly title: string; readonly side: StoryModePayload["scenarios"][number]["comparison"]["raw"]; readonly tone: "raw" | "guarded" }) {
+function ComparisonCard({
+  title,
+  side,
+  tone
+}: {
+  readonly title: string;
+  readonly side: StoryModePayload["scenarios"][number]["comparison"]["raw"];
+  readonly tone: "raw" | "guarded";
+}) {
   const fields = [
     ["Failure type", side.failureType],
     ["Safe summary", side.safeSummary],
@@ -241,7 +268,9 @@ function ComparisonCard({ title, side, tone }: { readonly title: string; readonl
     ["Recovery", side.recoveryGuidance]
   ] as const;
   return (
-    <article className={`rounded-2xl border p-4 ${tone === "guarded" ? "border-success/35 bg-success/10" : "border-danger/30 bg-danger/10"}`}>
+    <article
+      className={`rounded-2xl border p-4 ${tone === "guarded" ? "border-success/35 bg-success/10" : "border-danger/30 bg-danger/10"}`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <h4 className="text-lg font-black tracking-tight text-text">{title}</h4>

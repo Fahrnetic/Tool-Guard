@@ -66,9 +66,7 @@ const ROUTE_LABELS: Record<IntegrationRouteType, string> = {
   "browser-evidence-import": "Browser evidence import path"
 };
 
-export async function verifyIntegrationRoute(
-  input: IntegrationVerificationInput
-): Promise<IntegrationVerificationReceipt> {
+export async function verifyIntegrationRoute(input: IntegrationVerificationInput): Promise<IntegrationVerificationReceipt> {
   const receiptId = createId("receipt");
   const timestamp = new Date().toISOString();
   const checkedCapabilities = await buildCapabilityChecks(input);
@@ -168,14 +166,7 @@ function buildPlatformPassportMetadata(
   const osPlatform = input.platform ?? process.platform;
   const supportedHostIds = input.supportedHostIds ?? base.supportedHostIds;
   const configHashValue = input.configHash ?? base.configHash ?? routeConfigHash(routeType, hostId, transport);
-  const evidenceFields = [
-    "receiptId",
-    "routeType",
-    "checkedCapabilities",
-    "routeCoverage",
-    "evidenceLinks",
-    "platformPassport"
-  ];
+  const evidenceFields = ["receiptId", "routeType", "checkedCapabilities", "routeCoverage", "evidenceLinks", "platformPassport"];
   const platformPassport: HostPlatformPassport = {
     passportId: `passport_${hostId}_${routeType.replace(/[^a-z0-9]+/gi, "_")}`,
     hostId,
@@ -192,9 +183,9 @@ function buildPlatformPassportMetadata(
     lastVerifiedAt: timestamp
   };
   return {
-    ...(input.integrationId ?? base.integrationId ? { integrationId: input.integrationId ?? base.integrationId } : {}),
+    ...((input.integrationId ?? base.integrationId) ? { integrationId: input.integrationId ?? base.integrationId } : {}),
     hostId,
-    ...(input.hostFamily ?? base.hostFamily ? { hostFamily: input.hostFamily ?? base.hostFamily } : {}),
+    ...((input.hostFamily ?? base.hostFamily) ? { hostFamily: input.hostFamily ?? base.hostFamily } : {}),
     ...(supportedHostIds ? { supportedHostIds } : {}),
     configHash: configHashValue,
     osPlatform: platformPassport.osPlatform,
@@ -260,7 +251,10 @@ function routePassportBase(routeType: IntegrationRouteType): {
       hostName: "Browser evidence import",
       transport: "browser-summary-import",
       visibilityLevel: "observed",
-      limitations: [LIMITATIONS[routeType], "Screenshots, console summaries, and network summaries are safe evidence, not native interception."]
+      limitations: [
+        LIMITATIONS[routeType],
+        "Screenshots, console summaries, and network summaries are safe evidence, not native interception."
+      ]
     };
   }
   return {
@@ -389,18 +383,14 @@ function buildRouteCoverage(
   ];
 }
 
-function routeProducesEvidence(
-  routeType: IntegrationRouteType,
-  checkedCapabilities: readonly IntegrationCapabilityCheck[]
-): boolean {
-  return smokeStatusFromCapabilities(checkedCapabilities) === "passed" &&
-    checkedCapabilities.some((check) => routeSpecificEvidenceCapabilityPassed(routeType, check));
+function routeProducesEvidence(routeType: IntegrationRouteType, checkedCapabilities: readonly IntegrationCapabilityCheck[]): boolean {
+  return (
+    smokeStatusFromCapabilities(checkedCapabilities) === "passed" &&
+    checkedCapabilities.some((check) => routeSpecificEvidenceCapabilityPassed(routeType, check))
+  );
 }
 
-function routeSpecificEvidenceCapabilityPassed(
-  routeType: IntegrationRouteType,
-  check: IntegrationCapabilityCheck
-): boolean {
+function routeSpecificEvidenceCapabilityPassed(routeType: IntegrationRouteType, check: IntegrationCapabilityCheck): boolean {
   if (check.status !== "configured" && check.status !== "available") return false;
   const capability = check.capability.toLowerCase();
   if (routeType === "mcp-routed") return capability === "virtual routed tool evidence";
@@ -435,7 +425,13 @@ async function buildCapabilityChecks(input: IntegrationVerificationInput): Promi
     return [capability("bounded local import", "configured", "HTTP/webhook import route accepts bounded redacted local payloads.")];
   }
   if (input.routeType === "browser-evidence-import") {
-    return [capability("safe browser summaries", "configured", "Browser evidence import accepts screenshot metadata, console summaries, and network summaries.")];
+    return [
+      capability(
+        "safe browser summaries",
+        "configured",
+        "Browser evidence import accepts screenshot metadata, console summaries, and network summaries."
+      )
+    ];
   }
   return await Promise.all([
     probeCapability("process probe", "available", async () => probeCliProcess(workspaceRoot, timeoutMs)),
@@ -456,11 +452,7 @@ async function probeCapability(
   }
 }
 
-function capability(
-  capabilityName: string,
-  status: IntegrationCapabilityCheck["status"],
-  evidence: string
-): IntegrationCapabilityCheck {
+function capability(capabilityName: string, status: IntegrationCapabilityCheck["status"], evidence: string): IntegrationCapabilityCheck {
   return { capability: capabilityName, status, localOnly: true, evidence };
 }
 
@@ -687,7 +679,11 @@ print(json.dumps(result))
 }
 
 async function probeCliProcess(workspaceRoot: string, timeoutMs: number): Promise<string> {
-  const result = await runCliProbe(workspaceRoot, ["run", "--json", "--", "node", "-e", "process.stdout.write('toolguard-process-ok')"], timeoutMs);
+  const result = await runCliProbe(
+    workspaceRoot,
+    ["run", "--json", "--", "node", "-e", "process.stdout.write('toolguard-process-ok')"],
+    timeoutMs
+  );
   if (result.exitCode !== 0 || result.process?.stdout !== "toolguard-process-ok") {
     throw new Error("CLI process probe did not return expected stdout");
   }

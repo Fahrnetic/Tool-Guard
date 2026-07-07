@@ -265,15 +265,7 @@ export type DiagnosticFailureCause =
   | "unknown";
 
 export type DiagnosticFailureBoundary =
-  | "caller"
-  | "adapter"
-  | "core"
-  | "policy"
-  | "environment"
-  | "downstream"
-  | "protocol"
-  | "safety"
-  | "unknown";
+  "caller" | "adapter" | "core" | "policy" | "environment" | "downstream" | "protocol" | "safety" | "unknown";
 
 export type RootCauseConfidence = "high" | "medium" | "low";
 
@@ -509,22 +501,12 @@ export interface ContextWasteDelta {
 }
 
 export type IntegrationRouteType =
-  | "mcp-routed"
-  | "sdk-wrapped-python"
-  | "cli-supervised"
-  | "js-ts-wrapper"
-  | "http-webhook-import"
-  | "browser-evidence-import";
+  "mcp-routed" | "sdk-wrapped-python" | "cli-supervised" | "js-ts-wrapper" | "http-webhook-import" | "browser-evidence-import";
 export type IntegrationProbeStatus = "configured" | "available" | "unsupported" | "not-yet-verified";
 export type VisibilityLevel = "mediated" | "supervised" | "observed" | "imported" | "not-covered" | "unknown";
 export type SmokeTestStatus = "passed" | "failed" | "not-run" | "not-applicable";
 export type OsFamily = "linux" | "macos" | "windows" | "wsl" | "container" | "ci" | "unknown";
-export type IntegrationRouteCoverageState =
-  | "configured"
-  | "available"
-  | "unsupported"
-  | "not-verified"
-  | "producing-evidence";
+export type IntegrationRouteCoverageState = "configured" | "available" | "unsupported" | "not-verified" | "producing-evidence";
 
 export interface IntegrationCapabilityCheck {
   readonly capability: string;
@@ -593,21 +575,9 @@ export interface IntegrationVerificationReceipt {
 export type SideEffectState = "none" | "planned" | "blocked" | "simulated" | "completed" | "partial" | "unknown";
 export type SideEffectReversibility = "reversible" | "fixture-only" | "manual-review" | "irreversible-risk";
 export type SideEffectTargetType =
-  | "filesystem"
-  | "process"
-  | "git"
-  | "network-loopback"
-  | "mcp-tool"
-  | "python-framework-tool"
-  | "report-artifact"
-  | "ui-action";
+  "filesystem" | "process" | "git" | "network-loopback" | "mcp-tool" | "python-framework-tool" | "report-artifact" | "ui-action";
 
-export type ImpactAttributionLevel =
-  | "observed-caused"
-  | "observed-after"
-  | "inferred-risk"
-  | "blocked-before-execution"
-  | "unknown";
+export type ImpactAttributionLevel = "observed-caused" | "observed-after" | "inferred-risk" | "blocked-before-execution" | "unknown";
 export type ImpactEvidenceBasis =
   | "filesystem-diff"
   | "git-status-diff"

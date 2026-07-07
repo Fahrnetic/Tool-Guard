@@ -192,9 +192,7 @@ export function createChaosFixtures(options: ChaosFixtureOptions): readonly Regi
       description: "Repeatedly crashes so the circuit breaker can fast-fail later attempts.",
       preflight: () => ({ status: "degraded", summary: "Circuit fixture always crashes until the circuit opens." }),
       execute: () => {
-        throw new ClassifiedToolError("process_crash", "Circuit fixture controlled crash", [
-          "controlled circuit-open qualifying failure"
-        ]);
+        throw new ClassifiedToolError("process_crash", "Circuit fixture controlled crash", ["controlled circuit-open qualifying failure"]);
       }
     }
   ];

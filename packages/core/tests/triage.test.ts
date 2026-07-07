@@ -80,9 +80,7 @@ describe("failure triage workflow and issue export", () => {
     const root = await mkdtemp(path.join(tmpdir(), "toolguard-triage-export-"));
     const runId = createId("run");
     const session = new CoreSession({ evidenceRoot: root, runId });
-    await session.failToolCall(makeCall({ runId, toolName: "fixture.secret-risk" }), "secret_leak_risk", [
-      `Bearer ${"A".repeat(32)}`
-    ]);
+    await session.failToolCall(makeCall({ runId, toolName: "fixture.secret-risk" }), "secret_leak_risk", [`Bearer ${"A".repeat(32)}`]);
 
     const exported = await exportIssuePacket({
       runId,

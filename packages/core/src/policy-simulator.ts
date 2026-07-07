@@ -83,8 +83,7 @@ export const RECORDED_POLICY_SCENARIOS: readonly RecordedScenario[] = [
     scenarioId: "retry-loop-failure",
     scenarioName: "Retry-loop failure",
     baselineDecisions: ["retry", "retry", "open circuit"],
-    proposedDecisions: (policy) =>
-      (policy.retryLimit ?? 1) <= 0 ? ["fail-fast", "open circuit"] : ["retry", "fail-fast", "open circuit"],
+    proposedDecisions: (policy) => ((policy.retryLimit ?? 1) <= 0 ? ["fail-fast", "open circuit"] : ["retry", "fail-fast", "open circuit"]),
     before: scoreBlastRadius({
       targetType: "process",
       effectState: "unknown",
@@ -193,11 +192,7 @@ export async function simulatePolicy(input: PolicySimulationInput): Promise<Poli
   return result;
 }
 
-function scenarioContextSummary(
-  scenario: RecordedScenario,
-  policy: ProposedPolicy,
-  phase: "before" | "after"
-): string {
+function scenarioContextSummary(scenario: RecordedScenario, policy: ProposedPolicy, phase: "before" | "after"): string {
   const decisions = phase === "before" ? scenario.baselineDecisions : scenario.proposedDecisions(policy);
   const repeat = scenario.scenarioId === "retry-loop-failure" && phase === "before" ? 3 : decisions.length;
   if (scenario.scenarioId === "output-budget-flood") {
@@ -211,12 +206,7 @@ function scenarioContextSummary(
 }
 
 function normalizeProposedPolicy(policy: ProposedPolicy | undefined): ProposedPolicy {
-  const outputLimitBytes = clampInteger(
-    policy?.outputLimitBytes ?? policy?.outputBudgetBytes,
-    4096,
-    1,
-    1024 * 1024
-  );
+  const outputLimitBytes = clampInteger(policy?.outputLimitBytes ?? policy?.outputBudgetBytes, 4096, 1, 1024 * 1024);
   return {
     retryLimit: clampInteger(policy?.retryLimit, 1, 0, 5),
     circuitFailureThreshold: clampInteger(policy?.circuitFailureThreshold, 2, 1, 10),

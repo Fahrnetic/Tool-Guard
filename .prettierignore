@@ -1,0 +1,7 @@
+dist
+node_modules
+runs
+coverage
+*.tsbuildinfo
+pnpm-lock.yaml
+packages/python-adapters/**/__pycache__

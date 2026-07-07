@@ -373,11 +373,7 @@ function commandResolutionAnchor(call: ToolCall, rawText: string): DiagnosticEvi
   );
 }
 
-function timeoutEvidenceAnchor(
-  call: ToolCall,
-  failureType: FailureType,
-  rawText: string
-): DiagnosticEvidenceAnchor | undefined {
+function timeoutEvidenceAnchor(call: ToolCall, failureType: FailureType, rawText: string): DiagnosticEvidenceAnchor | undefined {
   if (failureType !== "timeout" && !/deadline|timeout|timed out/i.test(rawText)) return undefined;
   return anchor(
     "timeout-source",

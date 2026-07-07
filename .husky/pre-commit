@@ -1,0 +1,4 @@
+pnpm lint-staged
+pnpm typecheck
+pnpm --filter @toolplane/python-adapters lint
+pnpm --filter @toolplane/python-adapters typecheck

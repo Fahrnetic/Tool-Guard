@@ -6,8 +6,11 @@
   "type": "module",
   "scripts": {
     "build": "python3 -m compileall -q toolguard_adapters tests",
-    "lint": "python3 -m compileall -q toolguard_adapters tests",
+    "complexity": "python3 -m radon cc toolguard_adapters -n B",
+    "deadcode": "python3 -m vulture toolguard_adapters --min-confidence 90",
+    "lint": "python3 -m ruff check toolguard_adapters tests && python3 -m black --check toolguard_adapters tests",
     "test": "python3 -m unittest discover -s tests -p 'test_*.py'",
-    "typecheck": "python3 -m compileall -q toolguard_adapters tests"
+    "test:coverage": "python3 -m coverage run -m unittest discover -s tests -p 'test_*.py' && python3 -m coverage report --fail-under=80",
+    "typecheck": "python3 -m mypy toolguard_adapters"
   }
 }

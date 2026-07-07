@@ -17,9 +17,7 @@ describe("Live Run Timeline", () => {
     } as CoreEvent;
     const outOfOrderEvents = [events[3]!, events[0]!, duplicatedAdapter, ...events.slice(1)];
 
-    const html = renderToStaticMarkup(
-      <Timeline events={outOfOrderEvents} status="ready" streamState="connected" />
-    );
+    const html = renderToStaticMarkup(<Timeline events={outOfOrderEvents} status="ready" streamState="connected" />);
 
     for (const type of requiredCoreEventTypes) {
       expect(html).toContain(`${type} observed`);

@@ -1,0 +1,45 @@
+name: Error Insights
+
+on:
+  workflow_run:
+    workflows: ["CI", "Security"]
+    types: [completed]
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+jobs:
+  create-issue:
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const title = `Workflow failure: ${run.name} #${run.run_number}`;
+            const body = [
+              `Workflow **${run.name}** failed on branch **${run.head_branch}**.`,
+              ``,
+              `Run: ${run.html_url}`,
+              `Commit: ${run.head_sha}`,
+              ``,
+              `Please attach logs, root cause, and recovery notes before closing.`
+            ].join("\n");
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: "type: bug,area: infra"
+            });
+            if (!issues.some((issue) => issue.title === title)) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ["type: bug", "area: infra", "priority: p1"]
+              });
+            }

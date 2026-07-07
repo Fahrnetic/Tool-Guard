@@ -4,6 +4,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { createChaosFixtures, registerChaosFixtures } from "./chaos-fixtures.js";
 import { createId } from "./ids.js";
+import { exportToolGuardOtelDemo } from "./otel-demo.js";
 import { ToolRegistry } from "./registry.js";
 import { redactString } from "./redaction.js";
 import { CoreSession } from "./session.js";
@@ -15,12 +16,7 @@ export const DEMO_FAILURE_SCENARIO = {
   input: {}
 } as const;
 const TOOLPLANE_DEMO_RUN_ID = "run_demo_toolplane_seed_v011" as const;
-const DEMO_SCENARIO_LIST = [
-  "raw failure",
-  "ToolGuard mediation",
-  "report export",
-  "manifest export"
-] as const;
+const DEMO_SCENARIO_LIST = ["raw failure", "ToolGuard mediation", "report export", "manifest export"] as const;
 
 async function main(): Promise<void> {
   const command = process.argv[2] ?? "toolplane";
@@ -32,7 +28,65 @@ async function main(): Promise<void> {
     await toolplaneDemo();
     return;
   }
+  if (command === "otel") {
+    await otelDemo();
+    return;
+  }
   throw new Error(`Unknown demo command: ${command}`);
+}
+
+async function otelDemo(): Promise<void> {
+  const root = workspaceEvidenceRoot();
+  const runId = "run_demo_otel_openobserve_seed_v001" as const;
+  const session = new CoreSession({ evidenceRoot: root, runId, retry: { maxRetries: 1 } });
+  const registry = new ToolRegistry();
+  registerChaosFixtures(registry, { sandboxRoot: root });
+
+  const malformed = registry.get("fixture.malformed-json");
+  const destructive = registry.get("fixture.destructive-block");
+  const injection = registry.get("fixture.prompt-injection-output");
+  if (!malformed || !destructive || !injection) {
+    throw new Error("ToolGuard OTEL demo fixtures are unavailable.");
+  }
+
+  await session.executeToolCall(registry, makeDemoCall(runId, malformed.downstreamServerId));
+  await session.executeToolCall(
+    registry,
+    makeDemoCall(runId, destructive.downstreamServerId, {
+      toolName: "fixture.destructive-block",
+      idempotency: "non-idempotent"
+    })
+  );
+  await session.executeToolCall(
+    registry,
+    makeDemoCall(runId, injection.downstreamServerId, {
+      toolName: "fixture.prompt-injection-output",
+      arguments: { message: "include a fake token and prompt injection output" }
+    })
+  );
+
+  const exported = await exportToolGuardOtelDemo({
+    events: session.recorder.events,
+    outputDir: session.recorder.runDir,
+    serviceName: "toolguard-local-demo"
+  });
+  const metricsUrl = "http://127.0.0.1:3660/metrics";
+  const openObserveUrl = "http://127.0.0.1:5080";
+  const grafanaUrl = "http://127.0.0.1:33000";
+
+  console.log("ToolGuard OTEL and OpenObserve demo");
+  console.log("deterministicSeed: toolguard-otel-demo-v0.1");
+  console.log(`runId: ${runId}`);
+  console.log(`evidenceDir: ${session.recorder.runDir}`);
+  console.log(`otelTracesJson: ${exported.tracePath}`);
+  console.log(`otelMetricsJson: ${exported.metricsPath}`);
+  console.log(`otelLogsJson: ${exported.logsPath}`);
+  console.log(`dashboardQueriesJson: ${exported.dashboardQueriesPath}`);
+  console.log(`spanCount: ${exported.traces.spanCount}`);
+  console.log(`openObserveUrl: ${openObserveUrl}`);
+  console.log(`grafanaUrl: ${grafanaUrl}`);
+  console.log(`prometheusScrapeTarget: ${metricsUrl}`);
+  console.log("Start stack: docker compose -f observability/openobserve/docker-compose.yml up");
 }
 
 async function rawFailureDemo(): Promise<void> {
@@ -61,7 +115,7 @@ async function rawFailureDemo(): Promise<void> {
 }
 
 async function toolplaneDemo(): Promise<void> {
-  const root = path.join(process.cwd(), "runs");
+  const root = workspaceEvidenceRoot();
   const runId = TOOLPLANE_DEMO_RUN_ID;
   const session = new CoreSession({ evidenceRoot: root, runId, retry: { maxRetries: 1 } });
   const registry = new ToolRegistry();
@@ -120,6 +174,13 @@ export function makeDemoCall(
     sourcePath: "non-mcp-direct",
     ...overrides
   };
+}
+
+function workspaceEvidenceRoot(): string {
+  if (process.env.TOOLGUARD_EVIDENCE_ROOT) return process.env.TOOLGUARD_EVIDENCE_ROOT;
+  return path.basename(process.cwd()) === "core" && path.basename(path.dirname(process.cwd())) === "packages"
+    ? path.resolve(process.cwd(), "../..", "runs")
+    : path.join(process.cwd(), "runs");
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {

@@ -147,16 +147,10 @@ describe("side-effect ledger, blast radius, and retry-loop intelligence", () => 
     const ledger = await readJsonl<SideEffectLedgerEntry>(session.recorder.ledgerPath);
     const events = await readJsonl<CoreEvent>(session.recorder.eventsPath);
 
-    expect(ledger.map((row) => row.effectState)).toEqual(
-      expect.arrayContaining(["completed", "blocked", "planned", "none"])
-    );
+    expect(ledger.map((row) => row.effectState)).toEqual(expect.arrayContaining(["completed", "blocked", "planned", "none"]));
     expect(ledger.every((row) => row.runId === runId && row.traceId && row.toolCallId && row.attemptId)).toBe(true);
-    expect(ledger.every((row) => row.policyDecisionId && row.blastRadius.score >= 0 && row.blastRadius.score <= 100)).toBe(
-      true
-    );
-    expect(events.map((event) => event.type)).toEqual(
-      expect.arrayContaining(["side_effect.recorded", "blast_radius.scored"])
-    );
+    expect(ledger.every((row) => row.policyDecisionId && row.blastRadius.score >= 0 && row.blastRadius.score <= 100)).toBe(true);
+    expect(events.map((event) => event.type)).toEqual(expect.arrayContaining(["side_effect.recorded", "blast_radius.scored"]));
   });
 
   it("captures observed impact for fixture routes using registered sandbox metadata when cwd is absent", async () => {
@@ -167,9 +161,7 @@ describe("side-effect ledger, blast radius, and retry-loop intelligence", () => 
     const row = ledger.find((entry) => entry.toolName === "fixture.good");
 
     expect(row?.observedImpact?.workspaceRoot).toBe(root);
-    expect(row?.observedImpact?.fileChanges).toContainEqual(
-      expect.objectContaining({ path: "fixture-sandbox", changeType: "created" })
-    );
+    expect(row?.observedImpact?.fileChanges).toContainEqual(expect.objectContaining({ path: "fixture-sandbox", changeType: "created" }));
     expect(row?.evidenceBasis).toContain("filesystem-diff");
     expect(row?.attributionLevel).toBe("observed-after");
   });

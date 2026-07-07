@@ -140,8 +140,7 @@ export class RunIndexStore {
           continue;
         }
         if (typeof parsed.runId === "string" && typeof parsed.startedAt === "string") {
-          const runIndexRecordId =
-            typeof parsed.runIndexRecordId === "string" ? parsed.runIndexRecordId : legacyRunIndexRecordId(parsed);
+          const runIndexRecordId = typeof parsed.runIndexRecordId === "string" ? parsed.runIndexRecordId : legacyRunIndexRecordId(parsed);
           this.#records.set(runIndexRecordId, { ...parsed, runIndexRecordId });
         }
       }

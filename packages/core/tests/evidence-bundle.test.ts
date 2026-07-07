@@ -81,36 +81,28 @@ describe("evidence bundle export", () => {
     });
 
     expect(bundle.bundleDir).toBe(path.join(session.recorder.runDir, "bundle"));
-    await expect(readFile(path.join(bundle.bundleDir, "report.html"), "utf8")).resolves.toContain(
-      "ToolGuard Evidence Report"
-    );
+    await expect(readFile(path.join(bundle.bundleDir, "report.html"), "utf8")).resolves.toContain("ToolGuard Evidence Report");
     await expect(readFile(path.join(bundle.bundleDir, "events.jsonl"), "utf8")).resolves.toContain("policy.simulated");
-    await expect(readFile(path.join(bundle.bundleDir, "topology.json"), "utf8")).resolves.toContain("\"nodes\"");
+    await expect(readFile(path.join(bundle.bundleDir, "topology.json"), "utf8")).resolves.toContain('"nodes"');
     await expect(readFile(path.join(bundle.bundleDir, "ledger.jsonl"), "utf8")).resolves.toBeDefined();
-    await expect(readFile(path.join(bundle.bundleDir, "blast-radius.json"), "utf8")).resolves.toContain(
-      "explanations"
-    );
+    await expect(readFile(path.join(bundle.bundleDir, "blast-radius.json"), "utf8")).resolves.toContain("explanations");
     await expect(readFile(path.join(bundle.bundleDir, "retry-loops.json"), "utf8")).resolves.toContain("findings");
-    await expect(readFile(path.join(bundle.bundleDir, "policy-simulator-result.json"), "utf8")).resolves.toContain(
-      "blocked-destructive"
-    );
+    await expect(readFile(path.join(bundle.bundleDir, "policy-simulator-result.json"), "utf8")).resolves.toContain("blocked-destructive");
     await expect(readFile(path.join(bundle.bundleDir, "integration-verification-receipts.json"), "utf8")).resolves.toContain(
       "cli-supervised"
     );
     await expect(readFile(path.join(bundle.bundleDir, "artifact-hashes.json"), "utf8")).resolves.toContain("sha256");
     await expect(readFile(path.join(bundle.bundleDir, "artifact-hashes.json"), "utf8")).resolves.toContain("manifest-validation.json");
-    await expect(readFile(path.join(bundle.bundleDir, "redaction-summary.json"), "utf8")).resolves.toContain(
-      "redactionCount"
-    );
-    await expect(readFile(path.join(bundle.bundleDir, "replay-instructions.json"), "utf8")).resolves.toContain(
-      "fixture-only"
-    );
+    await expect(readFile(path.join(bundle.bundleDir, "redaction-summary.json"), "utf8")).resolves.toContain("redactionCount");
+    await expect(readFile(path.join(bundle.bundleDir, "replay-instructions.json"), "utf8")).resolves.toContain("fixture-only");
 
     const rawReadme = await readFile(path.join(bundle.bundleDir, "evidence", "raw-untrusted", "README.txt"), "utf8");
     expect(rawReadme).toMatch(/raw\/untrusted/i);
     expect(bundle.manifest.manifestValidation.valid).toBe(true);
     expect(bundle.validation.valid).toBe(true);
-    const manifest = await readJson<{ files: { manifestValidationJson?: string }; artifactHashes: Array<{ relativePath: string }> }>(bundle.manifestPath);
+    const manifest = await readJson<{ files: { manifestValidationJson?: string }; artifactHashes: Array<{ relativePath: string }> }>(
+      bundle.manifestPath
+    );
     expect(manifest.files.manifestValidationJson).toBe("manifest-validation.json");
     expect(manifest.artifactHashes).toEqual(
       expect.arrayContaining([expect.objectContaining({ relativePath: "manifest-validation.json" })])
@@ -174,18 +166,14 @@ describe("evidence bundle export", () => {
       routePassports: expect.arrayContaining([
         expect.objectContaining({ passportId: "passport_local_cli", visibilityLevel: "supervised" })
       ]),
-      coverageReceipts: expect.arrayContaining([
-        expect.objectContaining({ routeType: "cli-supervised", visibilityLevel: "supervised" })
-      ]),
+      coverageReceipts: expect.arrayContaining([expect.objectContaining({ routeType: "cli-supervised", visibilityLevel: "supervised" })]),
       traceContexts: expect.arrayContaining([expect.objectContaining({ traceparent })])
     });
     expect(manifest.visibility.hashes).toEqual(
       expect.arrayContaining([expect.objectContaining({ relativePath: "events.jsonl", sha256: expect.any(String) })])
     );
     expect(JSON.stringify(manifest)).not.toContain("D".repeat(32));
-    await expect(readFile(path.join(bundle.bundleDir, "visibility-metadata.json"), "utf8")).resolves.toContain(
-      "toolguard.visibility.v1"
-    );
+    await expect(readFile(path.join(bundle.bundleDir, "visibility-metadata.json"), "utf8")).resolves.toContain("toolguard.visibility.v1");
   });
 
   it("exports direct ToolGuard failure bundle visibility as mediated", async () => {
@@ -222,7 +210,7 @@ describe("evidence bundle export", () => {
       replaySafety: { fixtureOnly: true, safeLoopback: false }
     });
 
-    await writeFile(path.join(bundle.bundleDir, "events.jsonl"), "{\"tampered\":true}\n", "utf8");
+    await writeFile(path.join(bundle.bundleDir, "events.jsonl"), '{"tampered":true}\n', "utf8");
     await expect(validateEvidenceBundleManifest({ bundleDir: bundle.bundleDir })).resolves.toMatchObject({
       valid: false,
       errors: expect.arrayContaining([expect.stringMatching(/Hash mismatch for events\.jsonl/)])
@@ -240,10 +228,7 @@ describe("evidence bundle export", () => {
 
   it("covers diagnostic workbench trust files, replay recipes, and reproducibility checks in bundle integrity", async () => {
     const { session } = await makeSeededSession("toolguard-bundle-trust-");
-    await session.failToolCall(makeToolCall(session.runId), "non_zero_exit", [
-      "safe failing command output",
-      `Bearer ${"C".repeat(32)}`
-    ]);
+    await session.failToolCall(makeToolCall(session.runId), "non_zero_exit", ["safe failing command output", `Bearer ${"C".repeat(32)}`]);
 
     const bundle = await exportEvidenceBundle({
       session,
@@ -335,11 +320,7 @@ describe("evidence bundle export", () => {
       session,
       replaySafety: { fixtureOnly: true }
     });
-    await writeFile(
-      path.join(fresh.bundleDir, "issue-packet.md"),
-      "# unsafe\n\n[escape](file:///tmp/outside)\n",
-      "utf8"
-    );
+    await writeFile(path.join(fresh.bundleDir, "issue-packet.md"), "# unsafe\n\n[escape](file:///tmp/outside)\n", "utf8");
     await expect(validateEvidenceBundleManifest({ bundleDir: fresh.bundleDir })).resolves.toMatchObject({
       valid: false,
       errors: expect.arrayContaining([expect.stringMatching(/unsafe link/i)])
@@ -486,9 +467,7 @@ describe("evidence bundle export", () => {
     const changedBundle = await exportEvidenceBundle({ session: changedSession });
     const changedReproducibility = await readJson<{
       expected: { routeConfigHash: string; recordedRouteConfigs: Array<Record<string, unknown>> };
-    }>(
-      path.join(changedBundle.bundleDir, "reproducibility-checks.json")
-    );
+    }>(path.join(changedBundle.bundleDir, "reproducibility-checks.json"));
     expect(changedReproducibility.expected.routeConfigHash).not.toBe(reproducibility.expected.routeConfigHash);
 
     const drifted = {
@@ -574,10 +553,7 @@ describe("evidence bundle export", () => {
     expect(verifiedBundle.manifest.replay.reason).toMatch(/safe loopback/i);
     expect(verifiedBundle.manifest.replay.instructionsFile).toBe("replay-instructions.json");
 
-    const exportLoopbackBundle = async (
-      prefix: string,
-      loopbackEndpoint: LoopbackEndpointMetadata
-    ) => {
+    const exportLoopbackBundle = async (prefix: string, loopbackEndpoint: LoopbackEndpointMetadata) => {
       const { session } = await makeSeededSession(prefix);
       const registry = new ToolRegistry();
       registry.register({
@@ -672,7 +648,13 @@ describe("evidence bundle export", () => {
       body: JSON.stringify({ replaySafety: { safeLoopback: true } })
     });
     expect(response.ok).toBe(true);
-    const payload = (await response.json()) as { bundleDir: string; manifestValid: boolean; manifestUrl: string; replayInstructions?: string; replayInstructionsUrl?: string };
+    const payload = (await response.json()) as {
+      bundleDir: string;
+      manifestValid: boolean;
+      manifestUrl: string;
+      replayInstructions?: string;
+      replayInstructionsUrl?: string;
+    };
     expect(payload.bundleDir).toBe(path.join(session.recorder.runDir, "bundle"));
     expect(payload.manifestValid).toBe(true);
     expect(payload.manifestUrl).toBe(`${baseUrl}/api/bundles/${handle.session.runId}/files/manifest.json`);
@@ -694,7 +676,9 @@ describe("evidence bundle export", () => {
     expect(bundlePayload.bundle.artifactHashStatus.label).toMatch(/hashed bundle files/);
     expect(bundlePayload.bundle.redactionStatus.label).toMatch(/redactions recorded/);
     expect(bundlePayload.bundle.replaySafetyStatus.label).toBe("Replay withheld");
-    expect(bundlePayload.bundle.files.every((file) => file.url.startsWith(`${baseUrl}/api/bundles/${handle.session.runId}/files/`))).toBe(true);
+    expect(bundlePayload.bundle.files.every((file) => file.url.startsWith(`${baseUrl}/api/bundles/${handle.session.runId}/files/`))).toBe(
+      true
+    );
     expect(bundlePayload.bundle.files).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

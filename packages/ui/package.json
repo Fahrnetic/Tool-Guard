@@ -9,6 +9,7 @@
     "dev": "vite",
     "lint": "pnpm typecheck",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage --coverage.reporter=text --coverage.reporter=json-summary",
     "typecheck": "tsc --noEmit --project tsconfig.json && tsc --noEmit --project tsconfig.test.json"
   },
   "dependencies": {

@@ -146,9 +146,7 @@ describe("policy, redaction, reports, and demos", () => {
     expect(calls).toBe(3);
     const events = await readEvents(session);
     expect(events.filter((event) => event.type === "tool.retry.scheduled")).toHaveLength(2);
-    expect(new Set(events.filter((event) => event.type === "tool.call.started").map((event) => event.attemptId)).size).toBe(
-      3
-    );
+    expect(new Set(events.filter((event) => event.type === "tool.call.started").map((event) => event.attemptId)).size).toBe(3);
   });
 
   it("suppresses automatic retries for non-idempotent unsafe calls and explains it", async () => {
@@ -255,10 +253,7 @@ describe("policy, redaction, reports, and demos", () => {
       execute: () => ({ token: placeholderBearer, apiKey: placeholderApiKey })
     });
 
-    const result = await session.executeToolCall(
-      registry,
-      makeCall({ runId, toolName: "fixture.secret", arguments: {} })
-    );
+    const result = await session.executeToolCall(registry, makeCall({ runId, toolName: "fixture.secret", arguments: {} }));
     expect("failureType" in result ? result.failureType : undefined).toBe("secret_leak_risk");
     expect(JSON.stringify(result)).not.toMatch(/Bearer|sk-/);
     expect(redactString(placeholderAssignedKey)).toContain("[REDACTED:");
@@ -277,10 +272,7 @@ describe("policy, redaction, reports, and demos", () => {
     const registry = new ToolRegistry();
     registerChaosFixtures(registry, { sandboxRoot: root });
 
-    await session.executeToolCall(
-      registry,
-      makeCall({ runId, toolName: "fixture.prompt-injection-output", arguments: {} })
-    );
+    await session.executeToolCall(registry, makeCall({ runId, toolName: "fixture.prompt-injection-output", arguments: {} }));
     const report = await session.exportReport();
     const validation = await validateReportManifest({ runDir: session.recorder.runDir });
 

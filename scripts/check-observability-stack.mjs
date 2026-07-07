@@ -92,6 +92,26 @@ requireIncludes(contents.prometheus, "/etc/prometheus/rules/*.yml", "Prometheus 
 for (const rule of ["toolguard:failure_rate5m", "toolguard:open_circuits_rate5m", "ToolGuardCoreUnavailable"]) {
   requireIncludes(contents.prometheusRules, rule, `Prometheus rule ${rule}`);
 }
+requireIncludes(
+  contents.prometheusRules,
+  "record: toolguard:tool_call_avg_duration_ms5m",
+  "Prometheus average tool-call duration recording rule"
+);
+requireIncludes(
+  contents.prometheusRules,
+  "toolguard_tool_call_duration_ms_total / toolguard_tool_call_duration_observations_total",
+  "Prometheus average tool-call duration numerator and denominator"
+);
+requireIncludes(
+  contents.prometheusRules,
+  "unless toolguard_tool_call_duration_observations_total == 0",
+  "Prometheus average tool-call duration zero-observation guard"
+);
+requireExcludes(
+  contents.prometheusRules,
+  "clamp_min(rate(toolguard_tool_call_duration_observations_total[5m]), 1)",
+  "Prometheus average duration observation-rate clamp"
+);
 
 requireIncludes(contents.promtail, "__path__: /workspace/runs/**/otel-logs.ndjson", "Promtail NDJSON path");
 for (const label of ["event_type:", "level:", "service_name:"]) {

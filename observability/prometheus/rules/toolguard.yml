@@ -13,7 +13,7 @@ groups:
       - record: toolguard:policy_blocks_rate5m
         expr: rate(toolguard_policy_blocks_total[5m])
       - record: toolguard:tool_call_avg_duration_ms5m
-        expr: rate(toolguard_tool_call_duration_ms_total[5m]) / clamp_min(rate(toolguard_tool_call_duration_observations_total[5m]), 1)
+        expr: (toolguard_tool_call_duration_ms_total / toolguard_tool_call_duration_observations_total) unless toolguard_tool_call_duration_observations_total == 0
       - alert: ToolGuardCoreUnavailable
         expr: up{job="toolguard-core"} == 0
         for: 30s

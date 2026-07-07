@@ -87,10 +87,13 @@ requireIncludes(contents.promtail, "__path__: /workspace/runs/**/otel-logs.ndjso
 for (const label of ["event_type:", "level:", "service_name:"]) {
   requireIncludes(contents.promtail, label, `Promtail label ${label}`);
 }
-const promtailLabels = contents.promtail.match(/- labels:\n(?<labels>[\s\S]*?)\n\s+- output:/)?.groups?.labels ?? "";
-requireExcludes(promtailLabels, "run_id:", "Promtail high-cardinality run_id label");
-requireExcludes(promtailLabels, "trace_id:", "Promtail high-cardinality trace_id label");
-requireExcludes(promtailLabels, "tool_call_id:", "Promtail high-cardinality tool_call_id label");
+const promtailLabelsBlock = contents.promtail.match(/- labels:\n(?<labels>[\s\S]*?)(?:\n\s+- [a-z_]+:|\n\S|$)/)?.groups?.labels ?? "";
+requireExcludes(promtailLabelsBlock, "run_id:", "Promtail high-cardinality run_id label");
+requireExcludes(promtailLabelsBlock, "trace_id:", "Promtail high-cardinality trace_id label");
+requireExcludes(promtailLabelsBlock, "tool_call_id:", "Promtail high-cardinality tool_call_id label");
+requireIncludes(contents.collector, "transform/loki_body:", "Collector Loki structured body transform");
+requireIncludes(contents.collector, "attributes/loki_low_cardinality:", "Collector Loki low-cardinality attributes processor");
+requireIncludes(contents.collector, "action: delete", "Collector Loki high-cardinality attribute deletion");
 
 requireIncludes(contents.datasources, "uid: Prometheus", "Grafana Prometheus UID");
 requireIncludes(contents.datasources, "uid: Loki", "Grafana Loki UID");

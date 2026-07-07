@@ -102,12 +102,15 @@ describe("observability helpers", () => {
     });
 
     expect(
-      discoverDockerBridgeMetricsBindings({
-        docker0: [bridgeAddress("172.17.0.1")],
-        "br-demo": [bridgeAddress("172.24.0.1"), bridgeAddress("203.0.113.10")],
-        eth0: [bridgeAddress("192.168.1.20")],
-        lo: [bridgeAddress("127.0.0.1", true)]
-      }, "")
+      discoverDockerBridgeMetricsBindings(
+        {
+          docker0: [bridgeAddress("172.17.0.1")],
+          "br-demo": [bridgeAddress("172.24.0.1"), bridgeAddress("203.0.113.10")],
+          eth0: [bridgeAddress("192.168.1.20")],
+          lo: [bridgeAddress("127.0.0.1", true)]
+        },
+        ""
+      )
     ).toEqual([
       { host: "172.17.0.1", interfaceName: "docker0" },
       { host: "172.24.0.1", interfaceName: "br-demo" }

@@ -30,5 +30,3 @@ scrape_configs:
           service_name:
           event_type:
           level:
-      - output:
-          source: message

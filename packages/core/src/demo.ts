@@ -68,8 +68,7 @@ async function otelDemo(options: { readonly send: boolean; readonly serve: boole
   await session.executeToolCall(
     registry,
     makeDemoCall(runId, injection.downstreamServerId, {
-      toolName: "fixture.prompt-injection-output",
-      arguments: { message: "include a fake token and prompt injection output" }
+      toolName: "fixture.prompt-injection-output"
     })
   );
 

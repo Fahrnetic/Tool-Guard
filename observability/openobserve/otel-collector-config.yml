@@ -29,6 +29,20 @@ processors:
       - key: service.namespace
         value: toolguard
         action: upsert
+  transform/loki_body:
+    log_statements:
+      - context: log
+        statements:
+          - set(attributes["message"], body)
+          - set(body, attributes)
+  attributes/loki_low_cardinality:
+    actions:
+      - key: run_id
+        action: delete
+      - key: trace_id
+        action: delete
+      - key: tool_call_id
+        action: delete
 
 exporters:
   otlphttp/openobserve:
@@ -64,5 +78,5 @@ service:
       exporters: [otlphttp/openobserve, prometheus, debug]
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, resource, batch]
+      processors: [memory_limiter, resource, transform/loki_body, attributes/loki_low_cardinality, batch]
       exporters: [otlphttp/openobserve, otlphttp/loki, debug]

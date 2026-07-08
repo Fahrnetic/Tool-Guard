@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit --project tsconfig.json && tsc --noEmit --project tsconfig.test.json"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.1.18",
+    "@tailwindcss/vite": "^4.3.2",
     "@tanstack/react-table": "^8.21.3",
     "@toolplane/core": "workspace:*",
     "@vitejs/plugin-react": "^5.1.2",

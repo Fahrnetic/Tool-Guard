@@ -9,6 +9,7 @@ export default tseslint.config(
       "**/dist/**",
       "**/node_modules/**",
       "**/runs/**",
+      "**/.tmp/**",
       "**/coverage/**",
       "**/*.tsbuildinfo",
       "packages/python-adapters/**/__pycache__/**"

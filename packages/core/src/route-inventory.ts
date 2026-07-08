@@ -47,52 +47,52 @@ export const README_ROUTE_CLAIM_MAPPINGS: readonly ReadmeRouteClaimMapping[] = [
   },
   {
     claimId: "what-it-does-direct-core",
-    readmeText: "**Mediates routed execution** across direct core calls, MCP routes, CLI wrapper, and Python sidecar adapters.",
+    readmeText: "direct calls into `@toolplane/core`",
     inventoryId: "direct-core-api"
   },
   {
     claimId: "what-it-does-mcp",
-    readmeText: "**Mediates routed execution** across direct core calls, MCP routes, CLI wrapper, and Python sidecar adapters.",
+    readmeText: "MCP-routed calls through `@toolplane/mcp-adapter`",
     inventoryId: "mcp-routed"
   },
   {
     claimId: "what-it-does-cli",
-    readmeText: "**Mediates routed execution** across direct core calls, MCP routes, CLI wrapper, and Python sidecar adapters.",
+    readmeText: "process supervision through the `toolguard` / `toolplane` CLI wrapper",
     inventoryId: "cli-supervised"
   },
   {
     claimId: "what-it-does-python",
-    readmeText: "**Mediates routed execution** across direct core calls, MCP routes, CLI wrapper, and Python sidecar adapters.",
+    readmeText: "thin Python adapter calls for LangGraph and CrewAI-style flows",
     inventoryId: "sdk-wrapped-python"
   },
   {
     claimId: "compatibility-js-wrapper",
-    readmeText: "Explicit wrappers or imports report useful facts with less control than mediated execution.",
+    readmeText: "explicit JS/TS wrappers",
     inventoryId: "js-ts-wrapper"
   },
   {
     claimId: "interop-http-webhook",
-    readmeText: "accept bounded HTTP/webhook imports",
+    readmeText: "bounded HTTP/webhook imports",
     inventoryId: "http-webhook-import"
   },
   {
     claimId: "interop-browser-evidence",
-    readmeText: "import browser evidence summaries for screenshots, console, and network",
+    readmeText: "browser evidence summaries",
     inventoryId: "browser-evidence-import"
   },
   {
     claimId: "interop-otel",
-    readmeText: "export local OpenTelemetry-compatible spans without credentials",
+    readmeText: "local OpenTelemetry-compatible evidence exports",
     inventoryId: "otel-evidence-transport"
   },
   {
     claimId: "interop-visibility-jsonl",
-    readmeText: "events, run indexes, receipts, and bundles use `toolguard.visibility.v1` metadata",
+    readmeText: "Visibility JSONL imports",
     inventoryId: "visibility-jsonl-import"
   },
   {
     claimId: "native-bypass-non-claim",
-    readmeText: "ToolGuard does **not** natively intercept arbitrary host tools that bypass it.",
+    readmeText: "It does **not** natively intercept arbitrary host tools that bypass ToolGuard.",
     inventoryId: "native-host-tools"
   }
 ];

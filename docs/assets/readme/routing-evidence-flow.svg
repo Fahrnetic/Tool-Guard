@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="560" viewBox="0 0 1000 560" role="img" aria-labelledby="title desc">
+  <title id="title">ToolGuard routing and evidence flow</title>
+  <desc id="desc">A left to right diagram showing explicit routes into ToolGuard Core, policy and redaction, downstream tools, and local evidence outputs.</desc>
+  <style>
+    .bg { fill: #f8fafc; }
+    .box { fill: #ffffff; stroke: #cbd5e1; stroke-width: 2.5; }
+    .core { fill: #e0f2fe; stroke: #0284c7; stroke-width: 2.5; }
+    .evidence { fill: #ecfdf5; stroke: #16a34a; stroke-width: 2.5; }
+    .route { fill: #f1f5f9; stroke: #94a3b8; stroke-width: 2.5; }
+    .arrow { stroke: #334155; stroke-width: 3; fill: none; marker-end: url(#arrowhead); }
+    .soft { stroke: #64748b; stroke-width: 2.5; fill: none; marker-end: url(#arrowheadSoft); }
+    .title { fill: #0f172a; font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 32px; font-weight: 700; }
+    .label { fill: #1e293b; font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 21px; font-weight: 700; }
+    .body { fill: #475569; font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 19px; }
+  </style>
+  <defs>
+    <marker id="arrowhead" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#334155" />
+    </marker>
+    <marker id="arrowheadSoft" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#64748b" />
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1000" height="560" rx="28" />
+  <text class="title" x="60" y="70">Routing and evidence flow</text>
+  <text class="body" x="60" y="105">ToolGuard works at explicit boundaries, then writes local evidence.</text>
+
+  <rect class="box" x="45" y="155" width="220" height="250" rx="20" />
+  <text class="label" x="155" y="202" text-anchor="middle">Agent or harness</text>
+  <text class="body" x="155" y="242" text-anchor="middle">Eval runner</text>
+  <text class="body" x="155" y="274" text-anchor="middle">MCP client</text>
+  <text class="body" x="155" y="306" text-anchor="middle">CLI workflow</text>
+  <text class="body" x="155" y="338" text-anchor="middle">Python adapter</text>
+
+  <rect class="route" x="300" y="135" width="205" height="290" rx="20" />
+  <text class="label" x="402.5" y="184" text-anchor="middle">Route boundary</text>
+  <text class="body" x="402.5" y="224" text-anchor="middle">Direct core call</text>
+  <text class="body" x="402.5" y="256" text-anchor="middle">MCP route</text>
+  <text class="body" x="402.5" y="288" text-anchor="middle">CLI wrapper</text>
+  <text class="body" x="402.5" y="320" text-anchor="middle">Sidecar adapter</text>
+  <text class="body" x="402.5" y="352" text-anchor="middle">Bounded import</text>
+
+  <rect class="core" x="545" y="135" width="200" height="290" rx="20" />
+  <text class="label" x="645" y="184" text-anchor="middle">ToolGuard Core</text>
+  <text class="body" x="645" y="224" text-anchor="middle">Policy gates</text>
+  <text class="body" x="645" y="256" text-anchor="middle">Correlation</text>
+  <text class="body" x="645" y="288" text-anchor="middle">Redaction</text>
+  <text class="body" x="645" y="320" text-anchor="middle">Failure Cards</text>
+  <text class="body" x="645" y="352" text-anchor="middle">Output budgets</text>
+
+  <rect class="box" x="825" y="145" width="145" height="125" rx="18" />
+  <text class="label" x="897.5" y="187" text-anchor="middle">Tool</text>
+  <text class="body" x="897.5" y="224" text-anchor="middle">Process</text>
+  <text class="body" x="897.5" y="252" text-anchor="middle">Server</text>
+
+  <rect class="evidence" x="825" y="320" width="145" height="120" rx="18" />
+  <text class="label" x="897.5" y="362" text-anchor="middle">Evidence</text>
+  <text class="body" x="897.5" y="398" text-anchor="middle">Events</text>
+  <text class="body" x="897.5" y="424" text-anchor="middle">Hashes</text>
+
+  <path class="arrow" d="M275 280 H290" />
+  <path class="arrow" d="M515 280 H532" />
+  <path class="arrow" d="M755 208 H812" />
+  <path class="soft" d="M897.5 282 V307" />
+  <path class="soft" d="M755 380 H812" />
+</svg>

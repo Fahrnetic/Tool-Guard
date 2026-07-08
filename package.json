@@ -24,7 +24,8 @@
     "format:check": "prettier --check .",
     "format:write": "prettier --write .",
     "lint": "eslint . && pnpm -r lint",
-    "quality": "node scripts/check-feature-flags.mjs && node scripts/check-todos.mjs && node scripts/check-branch-protection.mjs && node scripts/check-backlog-health-config.mjs && node scripts/check-observability-stack.mjs && pnpm --filter @toolplane/python-adapters complexity && pnpm --filter @toolplane/python-adapters deadcode && knip --no-progress --include dependencies,unlisted,binaries && syncpack lint --dependency-types prod,dev,peer && depcruise --config .dependency-cruiser.cjs packages --output-type err && jscpd --silent",
+    "proof:integrations": "pnpm --silent doctor:integrations -- --json && pnpm --filter @toolplane/core test -- integration-doctor.test.ts api-openapi-drift.test.ts api-runtime-contract.test.ts",
+    "quality": "node scripts/check-feature-flags.mjs && node scripts/check-todos.mjs && node scripts/check-branch-protection.mjs && node scripts/check-backlog-health-config.mjs && node scripts/check-observability-stack.mjs && node scripts/check-validation-gate.mjs && pnpm --filter @toolplane/python-adapters complexity && pnpm --filter @toolplane/python-adapters deadcode && knip --no-progress --include dependencies,unlisted,binaries && syncpack lint --dependency-types prod,dev,peer && depcruise --config .dependency-cruiser.cjs packages --output-type err && jscpd --silent",
     "observability:config": "node scripts/openobserve-stack.mjs config",
     "observability:down": "node scripts/openobserve-stack.mjs down",
     "observability:up": "node scripts/openobserve-stack.mjs up",
@@ -35,7 +36,7 @@
     "test": "pnpm -r test",
     "test:coverage": "pnpm -r test:coverage",
     "typecheck": "pnpm -r typecheck",
-    "verify": "pnpm docs:check && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm quality && pnpm build"
+    "verify": "pnpm docs:check && pnpm proof:integrations && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm quality && pnpm build"
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx,json,md,css,yml,yaml}": "prettier --check",

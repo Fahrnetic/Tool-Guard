@@ -126,6 +126,15 @@ export {
 export { RECORDED_POLICY_SCENARIOS, simulatePolicy, type PolicySimulationInput } from "./policy-simulator.js";
 export { verifyIntegrationRoute, type IntegrationVerificationInput } from "./integration-verification.js";
 export {
+  CANONICAL_ROUTE_INVENTORY,
+  README_ROUTE_CLAIM_MAPPINGS,
+  getCanonicalRouteInventoryEntry,
+  type CanonicalRouteInventoryEntry,
+  type CanonicalRouteInventoryId,
+  type ReadmeRouteClaimMapping,
+  type RouteInventoryCategory
+} from "./route-inventory.js";
+export {
   importBrowserEvidence,
   importHttpWebhookEvidence,
   normalizeProviderToolCall,

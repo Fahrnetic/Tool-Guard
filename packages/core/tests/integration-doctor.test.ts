@@ -17,7 +17,8 @@ import {
   type HostPlatformPassport,
   type IntegrationVerificationReceipt,
   type IntegrationRouteCoverageState,
-  type StableId
+  type StableId,
+  type ToolCall
 } from "../src/index.js";
 
 async function readJson<T>(filePath: string): Promise<T> {
@@ -345,6 +346,53 @@ describe("integration doctor route coverage", () => {
     }
   });
 
+  it("represents direct CoreSession and loopback API proof as one canonical Direct Core/API route", async () => {
+    const evidenceRoot = await mkdtemp(path.join(tmpdir(), "toolguard-direct-core-api-"));
+    const session = new CoreSession({ evidenceRoot, runId: "run_direct_core_api_seed" as StableId });
+    const call = makeDirectCoreApiCall(session.runId);
+
+    await session.mediateSuccessfulCall(call, { ok: true });
+    const handle = createCoreApiServer({ host: "127.0.0.1", port: 0, evidenceRoot, session, seedDirectRun: false });
+    await handle.ready;
+    const address = handle.server.address();
+    expect(typeof address).toBe("object");
+    const baseUrl = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
+    try {
+      const response = await fetch(`${baseUrl}/api/integrations`);
+      expect(response.status).toBe(200);
+      const payload = (await response.json()) as {
+        routeInventory: Array<{ id: string; setupSnippetRoutes?: string[] }>;
+        routeCoverage: Array<Record<string, unknown>>;
+        integrations: Array<Record<string, unknown>>;
+        setupMetadata: { snippets: Array<{ route: string; canonicalInventoryId: string }> };
+      };
+      expect(payload.routeInventory.filter((entry) => entry.id === "direct-core-api")).toHaveLength(1);
+      expect(payload.routeCoverage.filter((entry) => entry.routeType === "direct-core-api")).toHaveLength(1);
+      expect(payload.routeCoverage.find((entry) => entry.routeType === "direct-core-api")).toMatchObject({
+        inventoryId: "direct-core-api",
+        claim: "mediated",
+        visibilityLevel: "mediated",
+        coverageClaim: "mediated",
+        evidenceScope: "route",
+        configured: true,
+        available: true,
+        producingEvidence: true,
+        setupSnippetRoutes: ["shell-api"],
+        transports: ["in-process-core", "http-loopback-api"]
+      });
+      expect(payload.integrations.find((entry) => entry.id === "direct-core-api")).toMatchObject({
+        claimLevel: "available",
+        status: "available",
+        setupSnippetRoutes: ["shell-api"]
+      });
+      expect(payload.setupMetadata.snippets.filter((snippet) => snippet.route === "shell-api")).toEqual([
+        expect.objectContaining({ canonicalInventoryId: "direct-core-api" })
+      ]);
+    } finally {
+      await handle.close();
+    }
+  });
+
   it("emits MCP, CLI, and Python route receipts with real routed probe evidence and hashed bundle entries", async () => {
     const evidenceRoot = await mkdtemp(path.join(tmpdir(), "toolguard-integration-doctor-"));
     const result = await runIntegrationDoctor({
@@ -482,6 +530,44 @@ function makeDoctorReceipt(input: {
     })),
     limitation: "Local-only verification checks routed ToolGuard evidence only.",
     evidenceLinks: [evidenceLink]
+  };
+}
+
+function makeDirectCoreApiCall(runId: StableId): ToolCall {
+  return {
+    runId,
+    traceId: createId("trace"),
+    harnessId: createId("harness"),
+    harnessName: "Direct Core/API proof",
+    adapterId: createId("adapter"),
+    adapterName: "CoreSession",
+    downstreamServerId: createId("server"),
+    toolCallId: createId("toolcall"),
+    attemptId: createId("attempt"),
+    policyDecisionId: createId("policy"),
+    toolName: "fixture.direct-core-api",
+    arguments: { message: "direct-core-api-ok" },
+    idempotency: "idempotent",
+    sourcePath: "non-mcp-direct",
+    routeMetadata: {
+      routeType: "direct-core-api",
+      routeId: "direct-core-api",
+      downstreamTargetIdentity: "CoreSession",
+      endpoint: {
+        protocol: "http",
+        host: "127.0.0.1",
+        port: 0,
+        path: "/api/integrations"
+      },
+      transport: {
+        kind: "in-process-core"
+      },
+      coverage: {
+        claim: "mediated",
+        evidenceScope: "route",
+        producingEvidence: true
+      }
+    }
   };
 }
 

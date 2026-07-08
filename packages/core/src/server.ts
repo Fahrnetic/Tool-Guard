@@ -14,7 +14,8 @@ import { simulatePolicy } from "./policy-simulator.js";
 import { verifyIntegrationRoute } from "./integration-verification.js";
 import { importBrowserEvidence, importHttpWebhookEvidence } from "./local-routes.js";
 import { buildTriagePayload, exportIssuePacket } from "./triage.js";
-import { generateHostConfigSnippets } from "./setup-snippets.js";
+import { generateHostConfigSnippets, generatePlatformCommandSnippets } from "./setup-snippets.js";
+import { CANONICAL_ROUTE_INVENTORY, getCanonicalRouteInventoryEntry } from "./route-inventory.js";
 import { collectToolGuardMetrics, renderPrometheusMetrics } from "./metrics.js";
 import {
   buildDemoStoryModePayload,
@@ -2436,9 +2437,34 @@ async function buildIntegrationsPayload(
   return {
     runId,
     generatedAt: new Date().toISOString(),
+    routeInventory: CANONICAL_ROUTE_INVENTORY.map((entry) => ({
+      id: entry.id,
+      label: entry.label,
+      category: entry.category,
+      visibilityLevel: entry.visibilityLevel,
+      coverageClaim: entry.coverageClaim,
+      evidenceScope: entry.evidenceScope,
+      producesRouteEvidence: entry.producesRouteEvidence,
+      setupSnippetRoutes: [...entry.setupSnippetRoutes],
+      setupPlatforms: [...entry.setupPlatforms],
+      mcpHostIds: [...entry.mcpHostIds],
+      transports: [...entry.transports],
+      limitations: [...entry.limitations]
+    })),
+    setupMetadata: buildSetupMetadata(),
     coverageHistory: buildCoverageHistory(coverageEvents),
     routeCoverage,
     integrations: [
+      {
+        id: "direct-core-api",
+        name: "Direct Core/API",
+        route: "Direct Core/API",
+        ...integrationClaimFromRoute(routeRows.get("direct-core-api")),
+        setupSnippetRoutes: ["shell-api"],
+        setupPlatforms: ["posix"],
+        transports: ["in-process-core", "http-loopback-api"],
+        limitation: "Explicit CoreSession execution and local loopback Core API surfaces only; no native host interception is implied."
+      },
       {
         id: "cline",
         name: "Cline",
@@ -2517,6 +2543,33 @@ async function buildIntegrationsPayload(
   };
 }
 
+function buildSetupMetadata(): JsonObject {
+  const snippets = generatePlatformCommandSnippets();
+  return {
+    platforms: [...new Set(snippets.map((snippet) => snippet.platform))],
+    routes: [...new Set(snippets.map((snippet) => snippet.route))],
+    snippets: snippets.map((snippet) => ({
+      id: snippet.id,
+      route: snippet.route,
+      canonicalInventoryId: snippet.route === "shell-api" ? "direct-core-api" : snippet.route,
+      platform: snippet.platform,
+      language: snippet.language,
+      title: snippet.title,
+      staticOnly: snippet.platform === "container",
+      limitations: [...snippet.limitations]
+    })),
+    mcpHosts: generateHostConfigSnippets().map((host) => ({
+      hostId: host.hostId,
+      hostName: host.hostName,
+      hostFamily: host.hostFamily,
+      transport: host.transport,
+      claimLevel: host.claimLevel,
+      routeType: "mcp-routed",
+      limitations: [...host.limitations]
+    }))
+  };
+}
+
 function mergeCoverageEvents(events: readonly CoreEvent[], historicalEvents: readonly CoreEvent[]): readonly CoreEvent[] {
   const byEventId = new Map<string, CoreEvent>();
   for (const event of historicalEvents) {
@@ -2529,7 +2582,7 @@ function mergeCoverageEvents(events: readonly CoreEvent[], historicalEvents: rea
 }
 
 function isCoverageEvent(event: CoreEvent): boolean {
-  return event.type === "integration.verified" || parseRouteType(event.visibility?.routeType) !== undefined;
+  return event.type === "integration.verified" || parseCoverageRouteId(event.visibility?.routeType) !== undefined;
 }
 
 function buildCoverageHistory(events: readonly CoreEvent[]): JsonObject[] {
@@ -2555,7 +2608,7 @@ function buildCoverageHistory(events: readonly CoreEvent[]): JsonObject[] {
   });
 
   const routeEventHistory = events.filter(isCoverageHistoryRouteEvent).map((event) => {
-    const routeType = parseRouteType(event.visibility?.routeType);
+    const routeType = parseCoverageRouteId(event.visibility?.routeType);
     const evidenceFreshness = evidenceFreshnessFor(event.occurredAt);
     return {
       receiptId: event.eventId,
@@ -2585,7 +2638,7 @@ function buildCoverageHistory(events: readonly CoreEvent[]): JsonObject[] {
 }
 
 function isCoverageHistoryRouteEvent(event: CoreEvent): boolean {
-  if (parseRouteType(event.visibility?.routeType) === undefined) return false;
+  if (parseCoverageRouteId(event.visibility?.routeType) === undefined) return false;
   if (event.visibility?.producingEvidence !== true) return false;
   return event.type === "visibility.imported" || event.type === "tool.call.completed" || event.type === "tool.call.failed";
 }
@@ -2638,6 +2691,7 @@ function buildIntegrationCoverageMatrix(events: readonly CoreEvent[]): JsonObjec
   const receipts = integrationReceiptsFromEvents(events);
   const visibilityEvents = routeVisibilityEventsFromEvents(events);
   return [
+    buildDirectCoreApiCoverageRow(visibilityEvents),
     buildRouteCoverageRow({
       routeType: "mcp-routed",
       label: "MCP routed adapter path",
@@ -2688,10 +2742,21 @@ function buildIntegrationCoverageMatrix(events: readonly CoreEvent[]): JsonObjec
       receipts,
       visibilityEvents
     }),
+    buildTransportCoverageRow("visibility-jsonl-import"),
+    buildTransportCoverageRow("otel-evidence-transport"),
     {
       routeType: "native-host-tools",
       label: "Native host tools without a ToolGuard route",
+      inventoryId: "native-host-tools",
+      inventoryCategory: "non-claim",
       claim: "not-covered",
+      visibilityLevel: "not-covered",
+      coverageClaim: "not-covered",
+      evidenceScope: "none",
+      transports: [],
+      setupSnippetRoutes: [],
+      setupPlatforms: [],
+      proofSurfaces: [],
       configured: false,
       available: false,
       producingEvidence: false,
@@ -2707,6 +2772,86 @@ function buildIntegrationCoverageMatrix(events: readonly CoreEvent[]): JsonObjec
       ]
     }
   ];
+}
+
+function buildDirectCoreApiCoverageRow(visibilityEvents: readonly CoreEvent[]): JsonObject {
+  const inventory = getCanonicalRouteInventoryEntry("direct-core-api");
+  const matchingVisibilityEvents = visibilityEvents.filter((event) => event.visibility?.routeType === "direct-core-api");
+  const latestVisibilityEvent = matchingVisibilityEvents.at(-1);
+  const producingEvidence = matchingVisibilityEvents.some((event) => event.visibility?.producingEvidence === true);
+  const lastEvidenceAt = latestVisibilityEvent?.occurredAt;
+  const evidenceFreshness = lastEvidenceAt ? evidenceFreshnessFor(lastEvidenceAt) : "missing";
+  return {
+    routeType: inventory.id,
+    inventoryId: inventory.id,
+    inventoryCategory: inventory.category,
+    label: inventory.label,
+    claim: inventory.coverageClaim,
+    visibilityLevel: inventory.visibilityLevel,
+    coverageClaim: inventory.coverageClaim,
+    evidenceScope: inventory.evidenceScope,
+    transports: [...inventory.transports],
+    setupSnippetRoutes: [...inventory.setupSnippetRoutes],
+    setupPlatforms: [...inventory.setupPlatforms],
+    proofSurfaces: [...inventory.proofSurfaces],
+    configured: true,
+    available: producingEvidence,
+    producingEvidence,
+    evidenceFreshness,
+    ...(lastEvidenceAt ? { lastEvidenceAt } : {}),
+    ...(evidenceFreshness === "recent"
+      ? {}
+      : {
+          warning:
+            evidenceFreshness === "missing"
+              ? "No direct Core/API proof event has been recorded in the active Core session."
+              : "Direct Core/API evidence is older than the recent-evidence window. Re-run a local proof before claiming freshness."
+        }),
+    limitation: inventory.limitations.join(" "),
+    checks: [
+      latestVisibilityEvent
+        ? {
+            label: "Direct Core/API event",
+            state: producingEvidence ? "producing-evidence" : "not-verified",
+            evidence: `${latestVisibilityEvent.summary} (${latestVisibilityEvent.visibility?.evidenceScope ?? "route"} evidence).`
+          }
+        : {
+            label: "Direct Core/API event",
+            state: "not-verified",
+            evidence: "No direct CoreSession or local loopback API proof event is present in the active Core session."
+          }
+    ]
+  };
+}
+
+function buildTransportCoverageRow(routeType: "visibility-jsonl-import" | "otel-evidence-transport"): JsonObject {
+  const inventory = getCanonicalRouteInventoryEntry(routeType);
+  return {
+    routeType: inventory.id,
+    inventoryId: inventory.id,
+    inventoryCategory: inventory.category,
+    label: inventory.label,
+    claim: inventory.coverageClaim,
+    visibilityLevel: inventory.visibilityLevel,
+    coverageClaim: inventory.coverageClaim,
+    evidenceScope: inventory.evidenceScope,
+    transports: [...inventory.transports],
+    setupSnippetRoutes: [...inventory.setupSnippetRoutes],
+    setupPlatforms: [...inventory.setupPlatforms],
+    proofSurfaces: [...inventory.proofSurfaces],
+    configured: true,
+    available: true,
+    producingEvidence: false,
+    evidenceFreshness: "not-applicable",
+    limitation: inventory.limitations.join(" "),
+    checks: [
+      {
+        label: "Transport classification",
+        state: "configured",
+        evidence: "Classified as local evidence transport/import metadata, not mediated route coverage."
+      }
+    ]
+  };
 }
 
 function integrationReceiptsFromEvents(
@@ -2726,6 +2871,7 @@ function buildRouteCoverageRow(input: {
   readonly receipts: readonly { readonly event: CoreEvent; readonly receipt: JsonObject }[];
   readonly visibilityEvents: readonly CoreEvent[];
 }): JsonObject {
+  const inventory = getCanonicalRouteInventoryEntry(input.routeType);
   const matchingReceipts = input.receipts.filter(({ receipt }) => receipt.routeType === input.routeType);
   const latestReceipt = matchingReceipts.at(-1);
   const matchingVisibilityEvents = input.visibilityEvents.filter((event) => event.visibility?.routeType === input.routeType);
@@ -2741,8 +2887,18 @@ function buildRouteCoverageRow(input: {
   const evidenceFreshness = lastEvidenceAt ? evidenceFreshnessFor(lastEvidenceAt) : "missing";
   return {
     routeType: input.routeType,
+    inventoryId: inventory.id,
+    inventoryCategory: inventory.category,
     label: input.label,
     claim: input.claim,
+    visibilityLevel: inventory.visibilityLevel,
+    coverageClaim: inventory.coverageClaim,
+    evidenceScope: inventory.evidenceScope,
+    routePassportRequired: inventory.routePassportRequired,
+    transports: [...inventory.transports],
+    setupSnippetRoutes: [...inventory.setupSnippetRoutes],
+    setupPlatforms: [...inventory.setupPlatforms],
+    proofSurfaces: [...inventory.proofSurfaces],
     configured,
     available,
     producingEvidence,
@@ -2779,7 +2935,7 @@ function buildRouteCoverageRow(input: {
 }
 
 function routeVisibilityEventsFromEvents(events: readonly CoreEvent[]): readonly CoreEvent[] {
-  return events.filter((event) => parseRouteType(event.visibility?.routeType) !== undefined);
+  return events.filter((event) => parseCoverageRouteId(event.visibility?.routeType) !== undefined);
 }
 
 function receiptProducesRouteEvidence(routeType: IntegrationRouteType, receipt: JsonObject): boolean {
@@ -2913,6 +3069,18 @@ function parseRouteType(value: unknown): IntegrationRouteType | undefined {
     value === "browser-evidence-import"
     ? value
     : undefined;
+}
+
+function parseCoverageRouteId(value: unknown): string | undefined {
+  if (
+    value === "direct-core-api" ||
+    value === "visibility-jsonl-import" ||
+    value === "otel-evidence-transport" ||
+    value === "native-host-tools"
+  ) {
+    return value;
+  }
+  return parseRouteType(value);
 }
 
 function limitationForRouteType(routeType: IntegrationRouteType | undefined): string | undefined {

@@ -114,6 +114,7 @@ ToolGuard treats "any platform and any harness" as route coverage, not universal
 
 - **Route-first onboarding:** the Harness Integrations workbench lets users choose a harness and platform, copy shared POSIX shell, PowerShell, CMD, WSL, container, or CI setup snippets, and see exact harness passport coverage.
 - **Receipts and doctor output:** `pnpm doctor:integrations` emits human output or stable JSON with route passports, checked capabilities, limitations, route-specific evidence links, no-secret status, and CI receipt artifact paths.
+- **CI proof gate:** `pnpm proof:integrations` runs the doctor JSON receipt plus Core API/OpenAPI contract checks without Docker or browser dependencies. It backs these route claims with route receipts, API/OpenAPI drift checks, and local proof artifacts.
 - **Canonical visibility:** events, run indexes, receipts, and bundles use `toolguard.visibility.v1` metadata with visibility level, coverage claim, route passport ID, harness/platform fields, W3C trace context, redaction, and stable hashes.
 - **Interop and import paths:** Core can export local OpenTelemetry-compatible spans without credentials, import visibility JSONL, wrap explicit JS/TS functions, accept bounded HTTP/webhook imports, and import browser evidence summaries for screenshots, console, and network.
 - **Route comparison and first proof:** the UI compares mediated, supervised, observed, imported, unverified, and unsupported routes by evidence depth, freshness, and blind spots. The first-proof flow goes from setup snippet to safe smoke test, matching receipt/passport, diagnostic record, and evidence bundle export.
@@ -301,11 +302,15 @@ pnpm --filter @toolplane/cli exec toolguard run -- git status --short
 Run the full local validation suite:
 
 ```bash
+pnpm proof:integrations
 pnpm test
 pnpm typecheck
 pnpm lint
 pnpm build
+pnpm verify
 ```
+
+`pnpm verify` includes `pnpm proof:integrations`, so the full local gate checks the integration proof gate before the broader format, lint, typecheck, test, quality, and build steps.
 
 The repository test suite covers the public claims above:
 

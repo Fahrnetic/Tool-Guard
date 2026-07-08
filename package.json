@@ -53,7 +53,7 @@
     "@size-limit/preset-app": "^12.1.0",
     "@toolplane/cli": "workspace:*",
     "@toolplane/ui": "workspace:*",
-    "@types/node": "^24.10.0",
+    "@types/node": "^26.1.0",
     "@vitest/coverage-v8": "^4.0.15",
     "clinic": "^13.0.0",
     "depcheck": "^1.4.7",

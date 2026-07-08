@@ -167,6 +167,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IntegrationsPayload"
+        "405":
+          $ref: "#/components/responses/JsonError"
   /api/integrations/verify:
     post:
       summary: Verify a ToolGuard integration route and emit a route receipt.
@@ -195,6 +197,10 @@ paths:
       responses:
         "202":
           $ref: "#/components/responses/JsonObject"
+        "400":
+          $ref: "#/components/responses/JsonError"
+        "405":
+          $ref: "#/components/responses/JsonError"
         "413":
           $ref: "#/components/responses/JsonError"
   /api/visibility/import/browser:
@@ -205,6 +211,10 @@ paths:
       responses:
         "202":
           $ref: "#/components/responses/JsonObject"
+        "400":
+          $ref: "#/components/responses/JsonError"
+        "405":
+          $ref: "#/components/responses/JsonError"
         "413":
           $ref: "#/components/responses/JsonError"
   /api/story:
@@ -375,6 +385,10 @@ paths:
           $ref: "#/components/responses/JsonObject"
         "400":
           $ref: "#/components/responses/JsonError"
+        "405":
+          $ref: "#/components/responses/JsonError"
+        "413":
+          $ref: "#/components/responses/JsonError"
   /api/sidecar/v1/tool-calls:
     post:
       summary: Python sidecar adapter tool-call ingestion endpoint.
@@ -389,6 +403,8 @@ paths:
         "200":
           $ref: "#/components/responses/JsonObject"
         "400":
+          $ref: "#/components/responses/JsonError"
+        "405":
           $ref: "#/components/responses/JsonError"
         "413":
           $ref: "#/components/responses/JsonError"
@@ -464,6 +480,375 @@ components:
           items:
             type: object
             additionalProperties: true
+      additionalProperties: true
+    LatestRunPayload:
+      type: object
+      required: [runId, eventsPath, evidenceDir, eventCount, events]
+      properties:
+        runId:
+          type: string
+        eventsPath:
+          type: string
+        evidenceDir:
+          type: string
+        eventCount:
+          type: number
+        events:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      additionalProperties: true
+    RunIndexPayload:
+      type: object
+      required: [indexPath, count, records]
+      properties:
+        indexPath:
+          type: string
+        count:
+          type: number
+        records:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      additionalProperties: true
+    HealthPayload:
+      type: object
+      required: [runId, generatedAt, summary, rows]
+      properties:
+        runId:
+          type: string
+        generatedAt:
+          type: string
+        summary:
+          type: object
+          additionalProperties: true
+        rows:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      additionalProperties: true
+    FailureInboxPayload:
+      type: object
+      required: [runId, generatedAt, failures]
+      properties:
+        runId:
+          type: string
+        generatedAt:
+          type: string
+        failures:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      additionalProperties: true
+    ImpactPayload:
+      type: object
+      required: [runId, generatedAt, summary, entries]
+      properties:
+        runId:
+          type: string
+        generatedAt:
+          type: string
+        summary:
+          type: object
+          additionalProperties: true
+        entries:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      additionalProperties: true
+    TriagePayload:
+      type: object
+      required: [runId, generatedAt, summary]
+      properties:
+        runId:
+          type: string
+        generatedAt:
+          type: string
+        summary:
+          type: object
+          additionalProperties: true
+      additionalProperties: true
+    TracePayload:
+      type: object
+      required: [runId, traceId, generatedAt, status, events, nodes, correlation]
+      properties:
+        runId:
+          type: string
+        traceId:
+          type: string
+        generatedAt:
+          type: string
+        status:
+          type: string
+        events:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        nodes:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        correlation:
+          type: object
+          additionalProperties: true
+      additionalProperties: true
+    PolicyPayload:
+      type: object
+      required: [runId, generatedAt, decisions, rules, preview]
+      properties:
+        runId:
+          type: string
+        generatedAt:
+          type: string
+        decisions:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        rules:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        preview:
+          type: object
+          additionalProperties: true
+      additionalProperties: true
+    ReplayPayload:
+      type: object
+      required: [runId, generatedAt, replayCategories, replayableRuns, fixtures, latestReplayEvents]
+      properties:
+        runId:
+          type: string
+        generatedAt:
+          type: string
+        replayCategories:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        replayableRuns:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        fixtures:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        latestReplayEvents:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        freshCorrelation:
+          type: object
+          additionalProperties: true
+      additionalProperties: true
+    ReportsPayload:
+      type: object
+      required: [runId, generatedAt, reports]
+      properties:
+        runId:
+          type: string
+        generatedAt:
+          type: string
+        reports:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReportView"
+      additionalProperties: true
+    ReportView:
+      type: object
+      required: [runId, reportUrl, manifestUrl, artifactHashUrl, redactionSummaryUrl, manifestValid, validationErrors]
+      properties:
+        runId:
+          type: string
+        generatedAt:
+          type: string
+        reportHtml:
+          type: string
+        reportUrl:
+          type: string
+        manifestJson:
+          type: string
+        manifestUrl:
+          type: string
+        artifactHashList:
+          type: string
+        artifactHashUrl:
+          type: string
+        redactionSummaryPath:
+          type: string
+        redactionSummaryUrl:
+          type: string
+        manifestValid:
+          type: boolean
+        validationErrors:
+          type: array
+          items:
+            type: string
+        redactionSummary:
+          type: object
+          additionalProperties: true
+      additionalProperties: true
+    ReportExportResponse:
+      type: object
+      required: [runId, reportHtml, reportUrl, manifestJson, manifestUrl, artifactHashList, artifactHashUrl, redactionSummary, redactionSummaryUrl, manifestValid, validationErrors]
+      properties:
+        runId:
+          type: string
+        reportHtml:
+          type: string
+        reportUrl:
+          type: string
+        manifestJson:
+          type: string
+        manifestUrl:
+          type: string
+        artifactHashList:
+          type: string
+        artifactHashUrl:
+          type: string
+        redactionSummary:
+          type: string
+        redactionSummaryUrl:
+          type: string
+        manifestValid:
+          type: boolean
+        validationErrors:
+          type: array
+          items:
+            type: string
+      additionalProperties: true
+    BundlePayload:
+      type: object
+      required: [runId, generatedAt, bundle]
+      properties:
+        runId:
+          type: string
+        generatedAt:
+          type: string
+        bundle:
+          type: object
+          properties:
+            exists:
+              type: boolean
+            manifestValid:
+              type: boolean
+            validationErrors:
+              type: array
+              items:
+                type: string
+            manifestValidationUrl:
+              type: string
+            files:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            redactionSummary:
+              type: object
+              additionalProperties: true
+          additionalProperties: true
+      additionalProperties: true
+    BundleExportResponse:
+      type: object
+      required: [runId, bundleDir, manifestJson, manifestUrl, manifestValidation, manifestValidationUrl, manifestValid, validationErrors, files]
+      properties:
+        runId:
+          type: string
+        bundleDir:
+          type: string
+        manifestJson:
+          type: string
+        manifestUrl:
+          type: string
+        manifestValidation:
+          type: string
+        manifestValidationUrl:
+          type: string
+        manifestValid:
+          type: boolean
+        validationErrors:
+          type: array
+          items:
+            type: string
+        files:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      additionalProperties: true
+    ValidationDashboardPayload:
+      type: object
+      required: [runId, generatedAt, deterministicSeed, approvedPorts, artifactCoverage, checks]
+      properties:
+        runId:
+          type: string
+        generatedAt:
+          type: string
+        deterministicSeed:
+          type: string
+        approvedPorts:
+          type: array
+          items:
+            type: number
+        artifactCoverage:
+          type: object
+          additionalProperties: true
+        checks:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      additionalProperties: true
+    TopologyPayload:
+      type: object
+      required: [runId, generatedFrom, summary, nodes, edges]
+      properties:
+        runId:
+          type: string
+        generatedFrom:
+          type: object
+          additionalProperties: true
+        summary:
+          type: object
+          additionalProperties: true
+        nodes:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        edges:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      additionalProperties: true
+    NarrativePayload:
+      type: object
+      required: [runId, generatedFrom, text, sections]
+      properties:
+        runId:
+          type: string
+        generatedFrom:
+          type: object
+          additionalProperties: true
+        text:
+          type: string
+        sections:
+          type: object
+          additionalProperties:
+            type: string
       additionalProperties: true
     IntegrationVerificationRequest:
       type: object

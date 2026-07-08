@@ -59,6 +59,38 @@ export interface CoreApiServerHandle {
   close(): Promise<void>;
 }
 
+const PUBLIC_API_ALLOWED_METHODS = new Map<string, readonly string[]>([
+  ["/health", ["GET"]],
+  ["/metrics", ["GET"]],
+  ["/events", ["GET"]],
+  ["/api/runs/latest", ["GET"]],
+  ["/api/run-index", ["GET"]],
+  ["/api/runs", ["GET"]],
+  ["/api/health", ["GET"]],
+  ["/api/validation-dashboard", ["GET"]],
+  ["/api/failures", ["GET"]],
+  ["/api/impact", ["GET"]],
+  ["/api/triage", ["GET"]],
+  ["/api/triage/export", ["POST"]],
+  ["/api/triage/issue-packet", ["GET"]],
+  ["/api/policies", ["GET", "PUT"]],
+  ["/api/policy/simulate", ["POST"]],
+  ["/api/integrations", ["GET"]],
+  ["/api/integrations/verify", ["POST"]],
+  ["/api/visibility/import/http", ["POST"]],
+  ["/api/visibility/import/browser", ["POST"]],
+  ["/api/story", ["GET"]],
+  ["/api/story/reset", ["POST"]],
+  ["/api/replay", ["GET", "POST"]],
+  ["/api/evidence", ["GET"]],
+  ["/api/reports/export", ["GET"]],
+  ["/api/bundle/export", ["POST"]],
+  ["/api/bundle", ["GET"]],
+  ["/api/reports", ["GET"]],
+  ["/api/events/ingest", ["POST"]],
+  ["/api/sidecar/v1/tool-calls", ["POST"]]
+]);
+
 export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApiServerHandle {
   const host = options.host ?? "127.0.0.1";
   const port = options.port ?? Number(process.env.TOOLGUARD_CORE_PORT ?? 3660);
@@ -104,6 +136,11 @@ export function createCoreApiServer(options: CoreApiServerOptions = {}): CoreApi
         return;
       }
       const url = new URL(request.url ?? "/", `http://${host}:${port}`);
+      const allowedMethods = allowedMethodsForPublicApiPath(url.pathname);
+      if (allowedMethods && !allowedMethods.includes(request.method ?? "GET")) {
+        sendJson(response, 405, { error: "method_not_allowed", allowedMethods });
+        return;
+      }
       if (url.pathname === "/health") {
         sendJson(response, 200, { ok: true, service: "ToolGuard Core", runId, events: session.recorder.events.length });
         return;
@@ -1126,6 +1163,20 @@ function isRecord(value: unknown): value is Record<string, JsonValue | unknown> 
 function sendJson(response: http.ServerResponse, statusCode: number, body: unknown): void {
   response.writeHead(statusCode, { "content-type": "application/json" });
   response.end(`${JSON.stringify(body, null, 2)}\n`);
+}
+
+function allowedMethodsForPublicApiPath(pathname: string): readonly string[] | undefined {
+  const exactMethods = PUBLIC_API_ALLOWED_METHODS.get(pathname);
+  if (exactMethods) return exactMethods;
+  if (pathname.startsWith("/api/topology/")) return ["GET"];
+  if (pathname.startsWith("/api/narrative/")) return ["GET"];
+  if (pathname.startsWith("/api/traces/")) return ["GET"];
+  if (/^\/api\/bundles\/[^/]+\/files\/.+$/.test(pathname)) return ["GET"];
+  if (/^\/api\/reports\/[^/]+\/files\/[^/]+$/.test(pathname)) return ["GET"];
+  if (/^\/api\/reports\/[^/]+\/artifacts\/[^/]+$/.test(pathname)) return ["GET"];
+  if (/^\/api\/reports\/[^/]+$/.test(pathname)) return ["GET"];
+  if (/^\/api\/runs\/[^/]+\/evidence$/.test(pathname)) return ["GET"];
+  return undefined;
 }
 
 function delay(ms: number): Promise<void> {

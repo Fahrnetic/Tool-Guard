@@ -11,6 +11,7 @@ import type { CoreSession } from "./session.js";
 import { generateHostConfigSnippets } from "./setup-snippets.js";
 import { SIDECAR_PROTOCOL_VERSION } from "./sidecar-protocol.js";
 import { CANONICAL_VISIBILITY_SCHEMA_VERSION } from "./visibility.js";
+import { importBrowserEvidence, importHttpWebhookEvidence, wrapLocalToolFunction } from "./local-routes.js";
 import type {
   EvidenceLink,
   IntegrationCapabilityCheck,
@@ -419,19 +420,13 @@ async function buildCapabilityChecks(input: IntegrationVerificationInput): Promi
     ]);
   }
   if (input.routeType === "js-ts-wrapper") {
-    return [capability("explicit wrapper route", "configured", "JS/TS wrapper route is available through wrapLocalToolFunction.")];
+    return [capability("explicit wrapper route", "configured", await probeJsTsWrapperRouteEvidence(input.session))];
   }
   if (input.routeType === "http-webhook-import") {
-    return [capability("bounded local import", "configured", "HTTP/webhook import route accepts bounded redacted local payloads.")];
+    return [capability("bounded local import", "configured", await probeHttpWebhookImportRouteEvidence(input.session))];
   }
   if (input.routeType === "browser-evidence-import") {
-    return [
-      capability(
-        "safe browser summaries",
-        "configured",
-        "Browser evidence import accepts screenshot metadata, console summaries, and network summaries."
-      )
-    ];
+    return [capability("safe browser summaries", "configured", await probeBrowserEvidenceImportRouteEvidence(input.session))];
   }
   return await Promise.all([
     probeCapability("process probe", "available", async () => probeCliProcess(workspaceRoot, timeoutMs)),
@@ -713,6 +708,70 @@ async function probeCliDestructiveGuard(workspaceRoot: string, timeoutMs: number
     throw new Error("destructive command was not blocked by CLI guard");
   }
   return `Executed CLI destructive guard probe and observed ${String(result.failureCard.failureType)} before process execution.`;
+}
+
+async function probeJsTsWrapperRouteEvidence(session: CoreSession): Promise<string> {
+  const wrapped = wrapLocalToolFunction({
+    session,
+    name: "doctor.smoke.js-ts-wrapper",
+    description: "Deterministic local JS/TS wrapper smoke proof.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        value: { type: "number" }
+      }
+    },
+    execute: (args) => ({ doubled: Number(args.value ?? 0) * 2 }),
+    route: {
+      routeId: "route_doctor_js_ts_wrapper"
+    }
+  });
+  const result = await wrapped({ value: 21 });
+  if ((result.output as { doubled?: unknown }).doubled !== 42) {
+    throw new Error("JS/TS wrapper smoke proof returned an unexpected result");
+  }
+  const artifactCount = session.recorder.events.filter((event) => event.type === "evidence.artifact.created").length;
+  return `Executed JS/TS wrapLocalToolFunction smoke proof and observed ${String(artifactCount)} correlated evidence artifact(s).`;
+}
+
+async function probeHttpWebhookImportRouteEvidence(session: CoreSession): Promise<string> {
+  const imported = await importHttpWebhookEvidence(session, {
+    source: "doctor-local-webhook",
+    method: "POST",
+    path: "/doctor/visibility",
+    headers: {
+      authorization: `Bearer ${"A".repeat(36)}`,
+      "content-type": "application/json"
+    },
+    body: {
+      message: "toolguard-http-import-ok",
+      apiKey: `sk-${"B".repeat(48)}`
+    }
+  });
+  const safeText = JSON.stringify(imported.safeEvidence);
+  if (safeText.includes("A".repeat(36)) || safeText.includes("B".repeat(48))) {
+    throw new Error("HTTP/webhook import smoke proof exposed unsafe fixture text");
+  }
+  return `Executed bounded HTTP/webhook import smoke proof and recorded redacted artifact ${imported.artifactId}.`;
+}
+
+async function probeBrowserEvidenceImportRouteEvidence(session: CoreSession): Promise<string> {
+  const imported = await importBrowserEvidence(session, {
+    pageUrl: "http://127.0.0.1:3661/harness-integrations?token=doctorsecretdoctorsecret",
+    screenshot: {
+      label: "Synthetic browser evidence import smoke proof",
+      mimeType: "image/png",
+      byteLength: 4096,
+      sha256: "a".repeat(64)
+    },
+    console: [{ level: "warning", message: `unsafe api_key=${"C".repeat(32)}`, count: 1 }],
+    network: [{ method: "GET", url: "http://127.0.0.1:3660/api/integrations?authorization=Bearer doctorsecret", status: 200 }]
+  });
+  const safeText = JSON.stringify(imported.safeEvidence);
+  if (safeText.includes("doctorsecret") || safeText.includes("C".repeat(32))) {
+    throw new Error("Browser evidence import smoke proof exposed unsafe fixture text");
+  }
+  return `Executed synthetic no-browser evidence import smoke proof and recorded redacted artifact ${imported.artifactId}.`;
 }
 
 async function runCliProbe(workspaceRoot: string, args: readonly string[], timeoutMs: number): Promise<Record<string, any>> {

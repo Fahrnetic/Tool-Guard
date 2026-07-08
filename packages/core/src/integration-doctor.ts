@@ -6,6 +6,7 @@ import { createId } from "./ids.js";
 import { exportEvidenceBundle } from "./bundle.js";
 import { verifyIntegrationRoute } from "./integration-verification.js";
 import { redactJsonValueWithSummary } from "./redaction.js";
+import { CANONICAL_ROUTE_INVENTORY, type CanonicalRouteInventoryId, type RouteInventoryCategory } from "./route-inventory.js";
 import type {
   EvidenceLink,
   HostPlatformPassport,
@@ -16,7 +17,14 @@ import type {
   JsonValue
 } from "./types.js";
 
-export const INTEGRATION_DOCTOR_ROUTES: readonly IntegrationRouteType[] = ["mcp-routed", "cli-supervised", "sdk-wrapped-python"];
+export const INTEGRATION_DOCTOR_ROUTES: readonly IntegrationRouteType[] = [
+  "mcp-routed",
+  "cli-supervised",
+  "sdk-wrapped-python",
+  "js-ts-wrapper",
+  "http-webhook-import",
+  "browser-evidence-import"
+];
 
 export interface IntegrationDoctorResult {
   readonly runId: string;
@@ -44,6 +52,7 @@ export interface IntegrationDoctorJson {
   };
   readonly routes: readonly IntegrationDoctorRouteJson[];
   readonly receipts: readonly IntegrationDoctorReceiptJson[];
+  readonly routeInventory: readonly IntegrationDoctorInventoryJson[];
   readonly artifactBundle: {
     readonly manifestPath: string;
     readonly valid: boolean;
@@ -58,6 +67,24 @@ export interface IntegrationDoctorJson {
     readonly artifactPaths: readonly string[];
     readonly workflowSnippet: readonly string[];
   };
+}
+
+export interface IntegrationDoctorInventoryJson {
+  readonly inventoryId: CanonicalRouteInventoryId;
+  readonly label: string;
+  readonly category: RouteInventoryCategory;
+  readonly routeType: IntegrationRouteType | null;
+  readonly visibilityLevel: string;
+  readonly coverageClaim: string;
+  readonly evidenceScope: string;
+  readonly producesRouteEvidence: boolean;
+  readonly doctorProofStatus: "receipt" | "represented" | "non-claim";
+  readonly proofSurfaces: readonly string[];
+  readonly limitations: readonly string[];
+  readonly evidenceLinks: readonly EvidenceLink[];
+  readonly localOnly: true;
+  readonly requiresDocker: false;
+  readonly requiresBrowser: false;
 }
 
 export interface IntegrationDoctorRouteJson {
@@ -145,6 +172,7 @@ export function buildIntegrationDoctorJson(result: IntegrationDoctorResult, gene
     },
     routes: result.receipts.map((receipt) => routeJson(receipt)),
     receipts: result.receipts.map((receipt) => receiptJson(receipt)),
+    routeInventory: inventoryJson(result.receipts),
     artifactBundle: {
       manifestPath: result.bundleManifest,
       valid: result.bundleValid,
@@ -338,7 +366,37 @@ function routeSpecificEvidenceCapabilityPassed(routeType: IntegrationRouteType, 
   const capability = check.capability.toLowerCase();
   if (routeType === "mcp-routed") return capability === "virtual routed tool evidence";
   if (routeType === "sdk-wrapped-python") return capability === "wrapper sidecar evidence";
+  if (routeType === "js-ts-wrapper") return capability === "explicit wrapper route";
+  if (routeType === "http-webhook-import") return capability === "bounded local import";
+  if (routeType === "browser-evidence-import") return capability === "safe browser summaries";
   return capability === "process probe";
+}
+
+function inventoryJson(receipts: readonly IntegrationVerificationReceipt[]): IntegrationDoctorInventoryJson[] {
+  const receiptsByRouteType = new Map<IntegrationRouteType, IntegrationVerificationReceipt>();
+  for (const receipt of receipts) {
+    receiptsByRouteType.set(receipt.routeType, receipt);
+  }
+  return CANONICAL_ROUTE_INVENTORY.map((entry) => {
+    const receipt = entry.routeType ? receiptsByRouteType.get(entry.routeType) : undefined;
+    return {
+      inventoryId: entry.id,
+      label: entry.label,
+      category: entry.category,
+      routeType: entry.routeType ?? null,
+      visibilityLevel: entry.visibilityLevel,
+      coverageClaim: entry.coverageClaim,
+      evidenceScope: entry.evidenceScope,
+      producesRouteEvidence: entry.producesRouteEvidence,
+      doctorProofStatus: receipt ? "receipt" : entry.category === "non-claim" ? "non-claim" : "represented",
+      proofSurfaces: [...entry.proofSurfaces],
+      limitations: [...entry.limitations],
+      evidenceLinks: receipt ? receipt.evidenceLinks : [],
+      localOnly: true,
+      requiresDocker: false,
+      requiresBrowser: false
+    };
+  });
 }
 
 function requireCliValue(argv: readonly string[], index: number, option: string): string {

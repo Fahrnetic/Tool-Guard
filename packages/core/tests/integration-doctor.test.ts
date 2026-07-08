@@ -120,7 +120,7 @@ describe("integration doctor route coverage", () => {
         passportId: "passport_local_cli_supervised",
         visibilityLevel: "supervised"
       }),
-      checkedCapabilities: expect.arrayContaining([expect.objectContaining({ capability: "pass probe", status: "available" })]),
+      checkedCapabilities: expect.arrayContaining([expect.objectContaining({ capability: "process probe", status: "available" })]),
       routeCoverage: expect.arrayContaining([
         expect.objectContaining({ state: "unsupported" }),
         expect.objectContaining({ state: "not-verified" }),
@@ -275,7 +275,7 @@ describe("integration doctor route coverage", () => {
         transport: expect.any(String),
         routeType: expect.any(String),
         configHash: expect.stringMatching(/^(fnv1a|route)-[a-f0-9]{8,64}$/),
-        visibilityLevel: expect.stringMatching(/^(mediated|supervised|observed)$/),
+        visibilityLevel: expect.stringMatching(/^(mediated|supervised|observed|imported)$/),
         limitations: expect.arrayContaining([expect.stringMatching(/not|only|direct|native|process/i)]),
         evidenceFields: expect.arrayContaining(["receiptId", "routeType", "checkedCapabilities", "evidenceLinks"]),
         smokeTestStatus: expect.stringMatching(/^(passed|failed)$/),
@@ -425,7 +425,7 @@ describe("integration doctor route coverage", () => {
     }
   });
 
-  it("emits MCP, CLI, and Python route receipts with real routed probe evidence and hashed bundle entries", async () => {
+  it("emits default route receipts for every proofable README route area with hashed bundle entries", async () => {
     const evidenceRoot = await mkdtemp(path.join(tmpdir(), "toolguard-integration-doctor-"));
     const result = await runIntegrationDoctor({
       evidenceRoot,
@@ -435,6 +435,14 @@ describe("integration doctor route coverage", () => {
     });
 
     expect(result.receipts.map((receipt) => receipt.routeType)).toEqual(INTEGRATION_DOCTOR_ROUTES);
+    expect(result.receipts.map((receipt) => receipt.routeType)).toEqual([
+      "mcp-routed",
+      "cli-supervised",
+      "sdk-wrapped-python",
+      "js-ts-wrapper",
+      "http-webhook-import",
+      "browser-evidence-import"
+    ]);
     expect(result.bundleValid).toBe(true);
     for (const receipt of result.receipts) {
       const states = receipt.routeCoverage.map((entry) => entry.state);
@@ -453,7 +461,13 @@ describe("integration doctor route coverage", () => {
     }
 
     const events = await readJsonl<CoreEvent>(result.eventsPath);
-    expect(events.filter((event) => event.type === "integration.verified")).toHaveLength(3);
+    expect(events.filter((event) => event.type === "integration.verified")).toHaveLength(INTEGRATION_DOCTOR_ROUTES.length);
+    expect(events.filter((event) => event.type === "visibility.imported").map((event) => event.visibility?.routeType)).toEqual(
+      expect.arrayContaining(["http-webhook-import", "browser-evidence-import"])
+    );
+    expect(events.filter((event) => event.type === "tool.call.completed").map((event) => event.visibility?.routeType)).toEqual(
+      expect.arrayContaining(["js-ts-wrapper"])
+    );
     expect(events.filter((event) => event.type === "tool.call.failed").map((event) => event.summary)).not.toEqual(
       expect.arrayContaining([expect.stringContaining("doctor.smoke.")])
     );
@@ -461,7 +475,10 @@ describe("integration doctor route coverage", () => {
       expect.arrayContaining([
         expect.stringMatching(/^Executed MCP virtual routed tool probe/),
         expect.stringMatching(/^Executed Python wrapper sidecar route/),
-        expect.stringMatching(/^Executed CLI process probe/)
+        expect.stringMatching(/^Executed CLI process probe/),
+        expect.stringMatching(/^Executed JS\/TS wrapLocalToolFunction smoke proof/),
+        expect.stringMatching(/^Executed bounded HTTP\/webhook import smoke proof/),
+        expect.stringMatching(/^Executed synthetic no-browser evidence import smoke proof/)
       ])
     );
 
@@ -488,6 +505,68 @@ describe("integration doctor route coverage", () => {
       /^[a-f0-9]{64}$/
     );
   }, 40_000);
+
+  it("represents proofed routes, imported categories, transports, and native non-claims in default doctor JSON", async () => {
+    const receipts = INTEGRATION_DOCTOR_ROUTES.map((routeType) =>
+      makeDoctorReceipt({
+        runId: "run_doctor_inventory_seed" as StableId,
+        routeType,
+        capabilityStatus: "available",
+        coverageStates: ["configured", "available", "unsupported", "not-verified", "producing-evidence"]
+      })
+    );
+    const output = buildIntegrationDoctorJson(
+      {
+        runId: "run_doctor_inventory_seed" as StableId,
+        evidenceDir: "/tmp/toolguard-doctor/run_doctor_inventory_seed",
+        eventsPath: "/tmp/toolguard-doctor/run_doctor_inventory_seed/events.jsonl",
+        receipts,
+        bundleManifest: "/tmp/toolguard-doctor/run_doctor_inventory_seed/bundle/manifest.json",
+        bundleValid: true,
+        validationErrors: []
+      },
+      "2026-07-01T00:00:00.000Z"
+    );
+
+    expect(output.routes.map((route) => route.routeType)).toEqual(INTEGRATION_DOCTOR_ROUTES);
+    expect(output.receipts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ routeType: "js-ts-wrapper", producingEvidence: true }),
+        expect.objectContaining({ routeType: "http-webhook-import", producingEvidence: true }),
+        expect.objectContaining({ routeType: "browser-evidence-import", producingEvidence: true })
+      ])
+    );
+    expect(output.routeInventory.map((entry) => entry.inventoryId)).toEqual(
+      expect.arrayContaining([
+        "direct-core-api",
+        "mcp-routed",
+        "cli-supervised",
+        "sdk-wrapped-python",
+        "js-ts-wrapper",
+        "http-webhook-import",
+        "browser-evidence-import",
+        "visibility-jsonl-import",
+        "otel-evidence-transport",
+        "native-host-tools"
+      ])
+    );
+    expect(output.routeInventory.find((entry) => entry.inventoryId === "native-host-tools")).toMatchObject({
+      category: "non-claim",
+      routeType: null,
+      coverageClaim: "not-covered",
+      producesRouteEvidence: false,
+      doctorProofStatus: "non-claim",
+      requiresBrowser: false,
+      requiresDocker: false,
+      limitations: expect.arrayContaining([expect.stringMatching(/does not natively intercept/i)])
+    });
+    expect(output.routeInventory.find((entry) => entry.inventoryId === "browser-evidence-import")).toMatchObject({
+      doctorProofStatus: "receipt",
+      requiresBrowser: false,
+      limitations: expect.arrayContaining([expect.stringMatching(/does not launch a browser/i)])
+    });
+    expect(JSON.stringify(output)).not.toMatch(/sk-[A-Za-z0-9]|Bearer\s+|BEGIN PRIVATE KEY|api_key=|doctorsecret/);
+  });
 });
 
 function makeDoctorReceipt(input: {
@@ -545,7 +624,7 @@ function makeDoctorReceipt(input: {
     ],
     checkedCapabilities: [
       {
-        capability: input.capabilityStatus === "not-yet-verified" ? "failure probe" : "pass probe",
+        capability: input.capabilityStatus === "not-yet-verified" ? "failure probe" : capabilityNameForRoute(input.routeType),
         status: input.capabilityStatus,
         localOnly: true,
         evidence:
@@ -563,6 +642,15 @@ function makeDoctorReceipt(input: {
     limitation: "Local-only verification checks routed ToolGuard evidence only.",
     evidenceLinks: [evidenceLink]
   };
+}
+
+function capabilityNameForRoute(routeType: IntegrationVerificationReceipt["routeType"]): string {
+  if (routeType === "mcp-routed") return "virtual routed tool evidence";
+  if (routeType === "sdk-wrapped-python") return "wrapper sidecar evidence";
+  if (routeType === "js-ts-wrapper") return "explicit wrapper route";
+  if (routeType === "http-webhook-import") return "bounded local import";
+  if (routeType === "browser-evidence-import") return "safe browser summaries";
+  return "process probe";
 }
 
 function makeDirectCoreApiCall(runId: StableId): ToolCall {

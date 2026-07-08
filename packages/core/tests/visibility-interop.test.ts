@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   CANONICAL_VISIBILITY_SCHEMA_VERSION,
   CoreSession,
+  createCoreApiServer,
   createId,
   exportVisibilityOtel,
   importVisibilityEventsJsonl,
@@ -108,7 +109,8 @@ describe("visibility interoperability import/export", () => {
       JSON.stringify({ ...validEvent, eventId: createId("event"), summary: `leaked sk-${"C".repeat(48)}` })
     ].join("\n");
 
-    const target = new CoreSession({ evidenceRoot: root, runId: validEvent.runId });
+    const targetRoot = await mkdtemp(path.join(tmpdir(), "toolguard-jsonl-import-target-"));
+    const target = new CoreSession({ evidenceRoot: targetRoot, runId: validEvent.runId });
     const imported = await importVisibilityEventsJsonl({
       jsonl,
       recorder: target.recorder,
@@ -131,16 +133,49 @@ describe("visibility interoperability import/export", () => {
         schemaVersion: CANONICAL_VISIBILITY_SCHEMA_VERSION,
         visibilityLevel: "imported",
         coverageClaim: "imported",
-        producingEvidence: true
+        routeType: "visibility-jsonl-import",
+        routeId: "visibility-jsonl-import",
+        evidenceScope: "transport",
+        producingEvidence: false
       },
       data: expect.objectContaining({
-        import: expect.objectContaining({ sourceLabel: "external-jsonl" })
+        import: expect.objectContaining({
+          sourceLabel: "external-jsonl",
+          originalRouteType: "cli-supervised",
+          evidenceScope: "transport",
+          producingEvidence: false
+        })
       })
     });
 
     const persisted = await readFile(target.recorder.eventsPath, "utf8");
     expect(persisted).toContain('"visibilityLevel":"imported"');
+    expect(persisted).toContain('"routeType":"visibility-jsonl-import"');
+    expect(persisted).toContain('"producingEvidence":false');
     expect(persisted).not.toContain("C".repeat(48));
+
+    const handle = createCoreApiServer({ host: "127.0.0.1", port: 0, evidenceRoot: targetRoot, session: target, seedDirectRun: false });
+    await handle.ready;
+    const address = handle.server.address();
+    expect(typeof address).toBe("object");
+    const baseUrl = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
+    try {
+      const response = await fetch(`${baseUrl}/api/integrations`);
+      expect(response.status).toBe(200);
+      const payload = (await response.json()) as {
+        routeCoverage: Array<{ routeType: string; producingEvidence: boolean; evidenceScope?: string; available?: boolean }>;
+      };
+      expect(payload.routeCoverage.find((row) => row.routeType === "visibility-jsonl-import")).toMatchObject({
+        evidenceScope: "transport",
+        producingEvidence: false
+      });
+      expect(payload.routeCoverage.find((row) => row.routeType === "cli-supervised")).toMatchObject({
+        producingEvidence: false
+      });
+      expect(payload.routeCoverage.find((row) => row.routeType === "cli-supervised")?.available).not.toBe(true);
+    } finally {
+      await handle.close();
+    }
   });
 
   it("imports JSONL from a local file path with schema-version validation", async () => {
@@ -157,5 +192,10 @@ describe("visibility interoperability import/export", () => {
     expect(imported.accepted).toBe(1);
     expect(imported.events[0]?.schemaVersion).toBe(CANONICAL_VISIBILITY_SCHEMA_VERSION);
     expect(imported.events[0]?.visibility?.visibilityLevel).toBe("imported");
+    expect(imported.events[0]?.visibility).toMatchObject({
+      routeType: "visibility-jsonl-import",
+      evidenceScope: "transport",
+      producingEvidence: false
+    });
   });
 });

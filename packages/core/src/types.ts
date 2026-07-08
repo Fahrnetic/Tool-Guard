@@ -44,7 +44,7 @@ export interface VisibilityMetadata {
   readonly routePassportId?: string;
   readonly routeType?: string;
   readonly routeId?: string;
-  readonly evidenceScope?: "route" | "harness" | "host-config";
+  readonly evidenceScope?: "route" | "harness" | "host-config" | "transport";
   readonly producingEvidence: boolean;
   readonly harness: VisibilityHarnessMetadata;
   readonly platform: VisibilityPlatformMetadata;
@@ -89,7 +89,7 @@ export interface ToolRouteMetadata {
   };
   readonly coverage?: {
     readonly claim?: VisibilityLevel;
-    readonly evidenceScope?: "route" | "harness" | "host-config";
+    readonly evidenceScope?: "route" | "harness" | "host-config" | "transport";
     readonly producingEvidence?: boolean;
   };
 }
@@ -335,7 +335,7 @@ export interface EvidenceLink {
   readonly href: string;
   readonly label: string;
   readonly routeType?: IntegrationRouteType;
-  readonly evidenceScope?: "route" | "harness" | "host-config";
+  readonly evidenceScope?: "route" | "harness" | "host-config" | "transport";
   readonly integrationId?: string;
   readonly hostId?: string;
   readonly hostFamily?: string;

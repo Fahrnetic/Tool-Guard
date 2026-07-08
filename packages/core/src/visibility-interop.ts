@@ -320,7 +320,10 @@ function normalizeImportedEvent(event: JsonObject, line: number, sourceLabel: st
         sourceLabel,
         importedAt: new Date(0).toISOString(),
         originalEventId: redactString(String(event.eventId)),
-        originalVisibilityLevel: importedVisibility(event)?.visibilityLevel ?? "unknown"
+        originalVisibilityLevel: importedVisibility(event)?.visibilityLevel ?? "unknown",
+        originalRouteType: importedVisibility(event)?.routeType ? redactString(importedVisibility(event)?.routeType ?? "") : "unknown",
+        evidenceScope: "transport",
+        producingEvidence: false
       }
     }
   };
@@ -336,11 +339,10 @@ function normalizeVisibility(event: JsonObject): VisibilityMetadata {
     schemaVersion: CANONICAL_VISIBILITY_SCHEMA_VERSION,
     visibilityLevel: "imported",
     coverageClaim: "imported",
-    ...(existing?.routePassportId ? { routePassportId: redactString(existing.routePassportId) } : {}),
-    ...(existing?.routeType ? { routeType: redactString(existing.routeType) } : {}),
-    ...(existing?.routeId ? { routeId: redactString(existing.routeId) } : {}),
-    ...(existing?.evidenceScope ? { evidenceScope: existing.evidenceScope } : {}),
-    producingEvidence: true,
+    routeType: "visibility-jsonl-import",
+    routeId: "visibility-jsonl-import",
+    evidenceScope: "transport",
+    producingEvidence: false,
     harness: {
       ...(existing?.harness?.harnessId ? { harnessId: redactString(existing.harness.harnessId) } : {}),
       ...(existing?.harness?.name ? { name: redactString(existing.harness.name) } : {}),

@@ -800,7 +800,9 @@ function makeApiToolCall(runId: StableId, downstreamServerId: StableId): ToolCal
     traceId: createId("trace"),
     parentId: createId("parent"),
     harnessId: createId("harness"),
+    harnessName: "Direct Core/API proof",
     adapterId: createId("adapter"),
+    adapterName: "Core API",
     downstreamServerId,
     toolCallId: createId("toolcall"),
     attemptId: createId("attempt"),
@@ -809,7 +811,26 @@ function makeApiToolCall(runId: StableId, downstreamServerId: StableId): ToolCal
     arguments: { message: "hello from core api" },
     deadlineMs: 1_000,
     idempotency: "idempotent",
-    sourcePath: "non-mcp-direct"
+    sourcePath: "non-mcp-direct",
+    routeMetadata: {
+      routeType: "direct-core-api",
+      routeId: "direct-core-api",
+      downstreamTargetIdentity: "CoreSession",
+      endpoint: {
+        protocol: "http",
+        host: "127.0.0.1",
+        port: 0,
+        path: "/api/integrations"
+      },
+      transport: {
+        kind: "in-process-core"
+      },
+      coverage: {
+        claim: "mediated",
+        evidenceScope: "route",
+        producingEvidence: true
+      }
+    }
   };
 }
 
@@ -2781,22 +2802,57 @@ function buildDirectCoreApiCoverageRow(visibilityEvents: readonly CoreEvent[]): 
   const producingEvidence = matchingVisibilityEvents.some((event) => event.visibility?.producingEvidence === true);
   const lastEvidenceAt = latestVisibilityEvent?.occurredAt;
   const evidenceFreshness = lastEvidenceAt ? evidenceFreshnessFor(lastEvidenceAt) : "missing";
+  const evidenceLinks = evidenceLinksFromVisibilityEvents("direct-core-api", matchingVisibilityEvents);
+  const smokeTestStatus = producingEvidence ? "passed" : "failed";
   return {
     routeType: inventory.id,
     inventoryId: inventory.id,
     inventoryCategory: inventory.category,
+    routeIdentity: {
+      inventoryId: inventory.id,
+      routeId: inventory.id,
+      routeType: inventory.id,
+      label: inventory.label,
+      visibilityLevel: inventory.visibilityLevel,
+      coverageClaim: inventory.coverageClaim
+    },
     label: inventory.label,
     claim: inventory.coverageClaim,
     visibilityLevel: inventory.visibilityLevel,
     coverageClaim: inventory.coverageClaim,
     evidenceScope: inventory.evidenceScope,
+    routePassportRequired: inventory.routePassportRequired,
+    platformPassport: null,
     transports: [...inventory.transports],
     setupSnippetRoutes: [...inventory.setupSnippetRoutes],
     setupPlatforms: [...inventory.setupPlatforms],
     proofSurfaces: [...inventory.proofSurfaces],
+    setupMetadata: {
+      routes: [...inventory.setupSnippetRoutes],
+      platforms: [...inventory.setupPlatforms],
+      transports: [...inventory.transports]
+    },
     configured: true,
     available: producingEvidence,
     producingEvidence,
+    smokeTestStatus,
+    checkedCapabilities: [
+      {
+        capability: "direct CoreSession evidence",
+        status: producingEvidence ? "available" : "not-yet-verified",
+        localOnly: true,
+        evidence: latestVisibilityEvent
+          ? `${latestVisibilityEvent.summary} (${latestVisibilityEvent.visibility?.evidenceScope ?? "route"} evidence).`
+          : "No direct CoreSession proof event is present in the active Core session."
+      },
+      {
+        capability: "loopback Core API surface",
+        status: "configured",
+        localOnly: true,
+        evidence: "Local Core API exposes /api/integrations for Direct Core/API route coverage."
+      }
+    ],
+    evidenceLinks,
     evidenceFreshness,
     ...(lastEvidenceAt ? { lastEvidenceAt } : {}),
     ...(evidenceFreshness === "recent"
@@ -2822,6 +2878,28 @@ function buildDirectCoreApiCoverageRow(visibilityEvents: readonly CoreEvent[]): 
           }
     ]
   };
+}
+
+function evidenceLinksFromVisibilityEvents(
+  routeType: IntegrationRouteType | "direct-core-api",
+  events: readonly CoreEvent[]
+): JsonObject[] {
+  return events
+    .filter((event) => event.visibility?.producingEvidence === true)
+    .flatMap((event) => {
+      const artifactIds =
+        isRecord(event.data) && Array.isArray(event.data.artifactIds)
+          ? event.data.artifactIds.filter((artifactId): artifactId is string => typeof artifactId === "string")
+          : [];
+      const linkedArtifactIds = event.artifactId ? [event.artifactId, ...artifactIds] : artifactIds;
+      return [...new Set(linkedArtifactIds)].map((artifactId) => ({
+        artifactId,
+        href: `artifacts/${artifactId}`,
+        label: `${routeType} route evidence from ${event.type}`,
+        routeType,
+        evidenceScope: event.visibility?.evidenceScope ?? "route"
+      }));
+    });
 }
 
 function buildTransportCoverageRow(routeType: "visibility-jsonl-import" | "otel-evidence-transport"): JsonObject {

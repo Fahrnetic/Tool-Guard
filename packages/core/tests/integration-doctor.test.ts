@@ -370,15 +370,47 @@ describe("integration doctor route coverage", () => {
       expect(payload.routeCoverage.filter((entry) => entry.routeType === "direct-core-api")).toHaveLength(1);
       expect(payload.routeCoverage.find((entry) => entry.routeType === "direct-core-api")).toMatchObject({
         inventoryId: "direct-core-api",
+        routeIdentity: {
+          inventoryId: "direct-core-api",
+          routeId: "direct-core-api",
+          routeType: "direct-core-api",
+          visibilityLevel: "mediated",
+          coverageClaim: "mediated"
+        },
         claim: "mediated",
         visibilityLevel: "mediated",
         coverageClaim: "mediated",
         evidenceScope: "route",
+        routePassportRequired: false,
+        platformPassport: null,
         configured: true,
         available: true,
         producingEvidence: true,
+        smokeTestStatus: "passed",
         setupSnippetRoutes: ["shell-api"],
-        transports: ["in-process-core", "http-loopback-api"]
+        transports: ["in-process-core", "http-loopback-api"],
+        setupMetadata: {
+          routes: ["shell-api"],
+          platforms: ["posix"],
+          transports: ["in-process-core", "http-loopback-api"]
+        },
+        proofSurfaces: ["CoreSession", "createCoreApiServer", "/api/integrations"],
+        checkedCapabilities: expect.arrayContaining([
+          expect.objectContaining({
+            capability: "direct CoreSession evidence",
+            status: "available"
+          }),
+          expect.objectContaining({
+            capability: "loopback Core API surface",
+            status: "configured"
+          })
+        ]),
+        evidenceLinks: expect.arrayContaining([
+          expect.objectContaining({
+            routeType: "direct-core-api",
+            evidenceScope: "route"
+          })
+        ])
       });
       expect(payload.integrations.find((entry) => entry.id === "direct-core-api")).toMatchObject({
         claimLevel: "available",

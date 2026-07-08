@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: ToolGuard Local Core API
   version: 0.0.0
-  description: Local-first API for ToolGuard health, events, evidence, policies, and route diagnostics.
+  description: Local-first API for ToolGuard health, events, evidence, policies, replay, reports, bundles, visibility imports, and route diagnostics.
 servers:
   - url: http://127.0.0.1:3660
 paths:
@@ -11,22 +11,7 @@ paths:
       summary: Lightweight Core API health check.
       responses:
         "200":
-          description: Core API is reachable.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HealthStatus"
-  /api/health:
-    get:
-      summary: Detailed ToolGuard run health payload.
-      responses:
-        "200":
-          description: Health details for the current run.
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: true
+          $ref: "#/components/responses/JsonObject"
   /metrics:
     get:
       summary: Prometheus-compatible local metrics.
@@ -49,22 +34,347 @@ paths:
                 type: string
   /api/runs/latest:
     get:
-      summary: Latest run metadata and evidence paths.
+      summary: Latest run metadata, Core events, and evidence paths.
       responses:
         "200":
-          description: Latest run metadata.
+          $ref: "#/components/responses/JsonObject"
+  /api/run-index:
+    get:
+      summary: Run index records from the local evidence store.
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /api/runs:
+    get:
+      summary: Alias for the run index records.
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /api/health:
+    get:
+      summary: Detailed ToolGuard run health payload.
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /api/validation-dashboard:
+    get:
+      summary: Local validation dashboard payload for proof readiness.
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /api/topology/{runId}:
+    get:
+      summary: Run topology for a run ID or latest.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        "404":
+          $ref: "#/components/responses/JsonError"
+  /api/narrative/{runId}:
+    get:
+      summary: Run health narrative for a run ID or latest.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        "404":
+          $ref: "#/components/responses/JsonError"
+  /api/failures:
+    get:
+      summary: Failure inbox payload with redacted evidence links.
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /api/impact:
+    get:
+      summary: Side-effect impact summary for the active run.
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /api/triage:
+    get:
+      summary: Failure triage payload for the active run.
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /api/triage/export:
+    post:
+      summary: Export a markdown issue packet for the active run.
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        "405":
+          $ref: "#/components/responses/JsonError"
+  /api/triage/issue-packet:
+    get:
+      summary: Serve the exported issue packet markdown.
+      responses:
+        "200":
+          description: Markdown issue packet.
+          content:
+            text/markdown:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/JsonError"
+  /api/traces/{traceId}:
+    get:
+      summary: Trace explorer payload for a trace ID or latest.
+      parameters:
+        - name: traceId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /api/policies:
+    get:
+      summary: Current policy decisions and preview payload.
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+    put:
+      summary: Preview policy settings for the current run.
+      requestBody:
+        $ref: "#/components/requestBodies/JsonObject"
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /api/policy/simulate:
+    post:
+      summary: Simulate a recorded policy scenario.
+      requestBody:
+        $ref: "#/components/requestBodies/JsonObject"
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        "400":
+          $ref: "#/components/responses/JsonError"
+        "405":
+          $ref: "#/components/responses/JsonError"
+  /api/integrations:
+    get:
+      summary: Integration inventory, route coverage, setup metadata, and proof history.
+      responses:
+        "200":
+          description: Integration route summary payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationsPayload"
+  /api/integrations/verify:
+    post:
+      summary: Verify a ToolGuard integration route and emit a route receipt.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntegrationVerificationRequest"
+      responses:
+        "200":
+          description: Route verification receipt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationVerificationReceipt"
+        "400":
+          $ref: "#/components/responses/JsonError"
+        "405":
+          $ref: "#/components/responses/JsonError"
+  /api/visibility/import/http:
+    post:
+      summary: Import bounded HTTP or webhook evidence without claiming mediation.
+      requestBody:
+        $ref: "#/components/requestBodies/JsonObject"
+      responses:
+        "202":
+          $ref: "#/components/responses/JsonObject"
+        "413":
+          $ref: "#/components/responses/JsonError"
+  /api/visibility/import/browser:
+    post:
+      summary: Import synthetic browser evidence summaries without launching a browser.
+      requestBody:
+        $ref: "#/components/requestBodies/JsonObject"
+      responses:
+        "202":
+          $ref: "#/components/responses/JsonObject"
+        "413":
+          $ref: "#/components/responses/JsonError"
+  /api/story:
+    get:
+      summary: Demo story mode payload.
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /api/story/reset:
+    post:
+      summary: Reset a story mode scenario.
+      requestBody:
+        $ref: "#/components/requestBodies/JsonObject"
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        "404":
+          $ref: "#/components/responses/JsonError"
+  /api/replay:
+    get:
+      summary: Replay lab fixtures and safe replay categories.
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+    post:
+      summary: Request a safe replay, dry-run preview, or blocked replay decision.
+      requestBody:
+        $ref: "#/components/requestBodies/JsonObject"
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        "201":
+          $ref: "#/components/responses/JsonObject"
+        "409":
+          $ref: "#/components/responses/JsonError"
+  /api/evidence:
+    get:
+      summary: Evidence metadata for the active run.
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /api/runs/{runId}/evidence:
+    get:
+      summary: Evidence metadata for the active run using a run-scoped alias.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /api/reports/export:
+    get:
+      summary: Export a static report and validate its manifest.
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /api/bundle/export:
+    post:
+      summary: Export an evidence bundle with manifest validation and replay instructions.
+      requestBody:
+        $ref: "#/components/requestBodies/JsonObject"
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        "405":
+          $ref: "#/components/responses/JsonError"
+  /api/bundle:
+    get:
+      summary: Current evidence bundle summary for UI consumers.
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /api/bundles/{runId}/files/{relativePath}:
+    get:
+      summary: Serve a constrained evidence bundle file.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - $ref: "#/components/parameters/RelativePath"
+      responses:
+        "200":
+          description: Bundle file content.
           content:
             application/json:
               schema:
                 type: object
-                required: [runId, eventsPath, evidenceDir]
-                properties:
-                  runId:
-                    type: string
-                  eventsPath:
-                    type: string
-                  evidenceDir:
-                    type: string
+                additionalProperties: true
+            text/plain:
+              schema:
+                type: string
+            text/html:
+              schema:
+                type: string
+        "403":
+          $ref: "#/components/responses/JsonError"
+        "404":
+          $ref: "#/components/responses/JsonError"
+  /api/reports:
+    get:
+      summary: Report summaries for the active run.
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+  /api/reports/{runId}/files/{fileName}:
+    get:
+      summary: Serve a constrained generated report file.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - name: fileName
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [report.html, manifest.json, artifact-hashes.json, redaction-summary.json]
+      responses:
+        "200":
+          description: Report file content.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+            text/html:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/JsonError"
+  /api/reports/{runId}/artifacts/{artifactId}:
+    get:
+      summary: Serve a constrained, redacted report artifact.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - name: artifactId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Redacted artifact content.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+            text/plain:
+              schema:
+                type: string
+        "403":
+          $ref: "#/components/responses/JsonError"
+        "404":
+          $ref: "#/components/responses/JsonError"
+  /api/reports/{runId}:
+    get:
+      summary: Report detail for a run ID or latest.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonObject"
+        "404":
+          $ref: "#/components/responses/JsonError"
+  /api/events/ingest:
+    post:
+      summary: Ingest a Core event into the active run.
+      requestBody:
+        $ref: "#/components/requestBodies/JsonObject"
+      responses:
+        "202":
+          $ref: "#/components/responses/JsonObject"
+        "400":
+          $ref: "#/components/responses/JsonError"
   /api/sidecar/v1/tool-calls:
     post:
       summary: Python sidecar adapter tool-call ingestion endpoint.
@@ -77,24 +387,158 @@ paths:
               additionalProperties: true
       responses:
         "200":
-          description: Tool call result or fail-closed Failure Card.
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: true
+          $ref: "#/components/responses/JsonObject"
+        "400":
+          $ref: "#/components/responses/JsonError"
+        "413":
+          $ref: "#/components/responses/JsonError"
+        "426":
+          $ref: "#/components/responses/JsonError"
 components:
+  parameters:
+    RunId:
+      name: runId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Concrete run ID or the alias latest where supported.
+    RelativePath:
+      name: relativePath
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Slash-delimited bundle-relative path constrained to the active bundle directory.
+  requestBodies:
+    JsonObject:
+      required: false
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+  responses:
+    JsonObject:
+      description: JSON object response.
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    JsonError:
+      description: Stable JSON error response.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
   schemas:
-    HealthStatus:
+    ErrorResponse:
       type: object
-      required: [ok, service, runId, events]
+      required: [error]
       properties:
-        ok:
-          type: boolean
-        service:
+        error:
+          type: string
+      additionalProperties: true
+    IntegrationsPayload:
+      type: object
+      required: [runId, generatedAt, integrations]
+      properties:
+        runId:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+        integrations:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        routeCoverage:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        coverageHistory:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      additionalProperties: true
+    IntegrationVerificationRequest:
+      type: object
+      required: [routeType]
+      properties:
+        routeType:
+          type: string
+          enum:
+            - mcp-routed
+            - cli-supervised
+            - sdk-wrapped-python
+            - js-ts-wrapper
+            - http-webhook-import
+            - browser-evidence-import
+        integrationId:
+          type: string
+        hostId:
+          type: string
+        hostName:
+          type: string
+        hostFamily:
+          type: string
+        supportedHostIds:
+          type: array
+          items:
+            type: string
+        platform:
+          type: string
+        transport:
+          type: string
+        configHash:
+          type: string
+      additionalProperties: false
+    IntegrationVerificationReceipt:
+      type: object
+      required:
+        - receiptId
+        - runId
+        - timestamp
+        - routeType
+        - checkedCapabilities
+        - routeCoverage
+        - limitations
+        - evidenceLinks
+      properties:
+        receiptId:
           type: string
         runId:
           type: string
-        events:
-          type: integer
-          minimum: 0
+        timestamp:
+          type: string
+          format: date-time
+        routeType:
+          type: string
+        visibilityLevel:
+          type: string
+        smokeTestStatus:
+          type: string
+        checkedCapabilities:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        routeCoverage:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        limitations:
+          type: array
+          items:
+            type: string
+        evidenceLinks:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      additionalProperties: true

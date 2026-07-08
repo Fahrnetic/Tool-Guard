@@ -92,7 +92,8 @@ describe("Core, UI, and OpenAPI path drift", () => {
     const openApiSource = await readProjectFile("docs/api/openapi.yaml");
     const examples = parseComponentExamples(openApiSource);
     const exampleReferences = parseExampleReferences(openApiSource);
-    const schemaRequiredFields = parseSchemaRequiredFields(openApiSource);
+    const schemas = parseComponentSchemas(openApiSource);
+    const exampleSchemas = parseExampleSchemas(openApiSource);
 
     const requiredEndpointExampleReferences = [
       { path: "/api/integrations", example: "IntegrationsSuccess" },
@@ -123,23 +124,11 @@ describe("Core, UI, and OpenAPI path drift", () => {
       expect(examples.has(example), `${example} is defined`).toBe(true);
     }
 
-    const schemaExamples: Record<string, string> = {
-      IntegrationsSuccess: "IntegrationsPayload",
-      IntegrationVerifyRequest: "IntegrationVerificationRequest",
-      IntegrationVerifySuccess: "IntegrationVerificationReceipt",
-      UnknownRouteError: "ErrorResponse",
-      MalformedJsonError: "ErrorResponse",
-      ReplaySuccess: "ReplayPayload",
-      ReplayBlocked: "ErrorResponse",
-      ReportsSuccess: "ReportsPayload",
-      ReportExportSuccess: "ReportExportResponse",
-      BundleSuccess: "BundlePayload",
-      BundleExportSuccess: "BundleExportResponse",
-      ValidationDashboardSuccess: "ValidationDashboardPayload",
-      SidecarProtocolMismatch: "ErrorResponse"
-    };
-    for (const [exampleName, schemaName] of Object.entries(schemaExamples)) {
-      assertExampleSatisfiesRequiredFields(exampleName, examples.get(exampleName), schemaName, schemaRequiredFields);
+    for (const [exampleName, schemaReference] of exampleSchemas) {
+      const example = examples.get(exampleName);
+      expect(example, `${exampleName} example is defined`).not.toBeUndefined();
+      const errors = validateOpenApiExample(example, schemaReference, schemas);
+      expect({ exampleName, schemaReference, errors }).toEqual({ exampleName, schemaReference, errors: [] });
     }
 
     const committedProofDocs = [openApiSource, await readProjectFile("README.md")].join("\n");
@@ -347,14 +336,24 @@ function parseExampleReferences(source: string): Map<string, string[]> {
   return references;
 }
 
-function parseSchemaRequiredFields(source: string): Map<string, string[]> {
-  const requiredFields = new Map<string, string[]>();
+interface OpenApiSchema {
+  readonly ref?: string;
+  readonly type?: string;
+  readonly format?: string;
+  readonly enum?: readonly unknown[];
+  readonly required?: readonly string[];
+  readonly properties?: Readonly<Record<string, OpenApiSchema>>;
+  readonly items?: OpenApiSchema;
+  readonly additionalProperties?: boolean | OpenApiSchema;
+}
+
+function parseComponentSchemas(source: string): Map<string, OpenApiSchema> {
+  const schemas = new Map<string, OpenApiSchema>();
   const lines = source.split("\n");
   let inSchemas = false;
-  let currentSchema: string | undefined;
-  let currentRequiredSchema: string | undefined;
 
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
     if (line === "  schemas:") {
       inSchemas = true;
       continue;
@@ -365,48 +364,296 @@ function parseSchemaRequiredFields(source: string): Map<string, string[]> {
     if (!inSchemas) continue;
     const schemaMatch = /^ {4}([A-Za-z0-9]+):$/.exec(line);
     if (schemaMatch) {
-      currentSchema = schemaMatch[1];
-      currentRequiredSchema = undefined;
-      continue;
-    }
-    if (/^ {6}[a-zA-Z]/.test(line) && !/^ {6}required:/.test(line)) {
-      currentRequiredSchema = undefined;
-    }
-    const requiredMatch = /^ {6}required: \[(.*)]$/.exec(line);
-    if (currentSchema && requiredMatch) {
-      requiredFields.set(
-        currentSchema,
-        (requiredMatch[1] ?? "")
-          .split(",")
-          .map((field) => field.trim())
-          .filter(Boolean)
-      );
-      currentRequiredSchema = undefined;
-      continue;
-    }
-    if (currentSchema && /^ {6}required:$/.test(line)) {
-      requiredFields.set(currentSchema, []);
-      currentRequiredSchema = currentSchema;
-      continue;
-    }
-    const requiredItemMatch = /^ {8}- ([A-Za-z0-9]+)$/.exec(line);
-    if (currentRequiredSchema && requiredItemMatch) {
-      requiredFields.get(currentRequiredSchema)?.push(requiredItemMatch[1] ?? "");
+      const schemaName = schemaMatch[1] ?? "";
+      const parsed = parseOpenApiSchema(lines, index + 1, 6);
+      schemas.set(schemaName, parsed.schema);
+      index = parsed.nextIndex - 1;
     }
   }
 
-  return requiredFields;
+  return schemas;
 }
 
-function assertExampleSatisfiesRequiredFields(
-  exampleName: string,
-  example: unknown,
-  schemaName: string,
-  schemaRequiredFields: Map<string, string[]>
-): void {
-  expect(example, `${exampleName} example object`).toEqual(expect.any(Object));
-  expect(Array.isArray(example), `${exampleName} is not an array`).toBe(false);
-  const objectExample = example as Record<string, unknown>;
-  const missingRequiredFields = (schemaRequiredFields.get(schemaName) ?? []).filter((field) => !(field in objectExample));
-  expect({ exampleName, schemaName, missingRequiredFields }).toMatchObject({ missingRequiredFields: [] });
+function parseExampleSchemas(source: string): Map<string, string> {
+  const schemas = new Map<string, string>();
+  const lines = source.split("\n");
+  let inPaths = false;
+  let currentSchema: string | undefined;
+
+  for (const line of lines) {
+    if (line === "paths:") {
+      inPaths = true;
+      continue;
+    }
+    if (inPaths && line === "components:") {
+      break;
+    }
+    if (!inPaths) continue;
+    if (/^ {2}\/[^:]+:$/.test(line) || /^ {4}(get|post|put):$/.test(line) || /^ {8}"?[0-9]{3}"?:$/.test(line)) {
+      currentSchema = undefined;
+    }
+    const schemaRefMatch = /^ {14}\$ref: "#\/components\/schemas\/([A-Za-z0-9]+)"$/.exec(line);
+    if (schemaRefMatch) {
+      currentSchema = schemaRefMatch[1] ?? "";
+      continue;
+    }
+    const inlineSchemaMatch = /^ {14}type: object$/.exec(line);
+    if (inlineSchemaMatch) {
+      currentSchema = undefined;
+      continue;
+    }
+    const exampleRefMatch = /^ {16,18}\$ref: "#\/components\/examples\/([A-Za-z0-9]+)"$/.exec(line);
+    if (exampleRefMatch && currentSchema) {
+      schemas.set(exampleRefMatch[1] ?? "", currentSchema);
+    }
+  }
+
+  return schemas;
+}
+
+function parseOpenApiSchema(
+  lines: readonly string[],
+  startIndex: number,
+  indent: number
+): { readonly schema: OpenApiSchema; readonly nextIndex: number } {
+  const mutable: {
+    ref?: string;
+    type?: string;
+    format?: string;
+    enum?: unknown[];
+    required?: string[];
+    properties?: Record<string, OpenApiSchema>;
+    items?: OpenApiSchema;
+    additionalProperties?: boolean | OpenApiSchema;
+  } = {};
+  let index = startIndex;
+
+  while (index < lines.length) {
+    const line = lines[index] ?? "";
+    if (line.trim().length === 0) {
+      index += 1;
+      continue;
+    }
+    const currentIndent = leadingSpaces(line);
+    if (currentIndent < indent) break;
+    if (currentIndent > indent) {
+      index += 1;
+      continue;
+    }
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith("$ref:")) {
+      mutable.ref = unquote(trimmed.slice("$ref:".length).trim());
+      index += 1;
+      continue;
+    }
+    if (trimmed.startsWith("type:")) {
+      mutable.type = trimmed.slice("type:".length).trim();
+      index += 1;
+      continue;
+    }
+    if (trimmed.startsWith("format:")) {
+      mutable.format = trimmed.slice("format:".length).trim();
+      index += 1;
+      continue;
+    }
+    if (trimmed.startsWith("enum:")) {
+      const value = trimmed.slice("enum:".length).trim();
+      if (value.startsWith("[")) {
+        mutable.enum = parseInlineArray(value);
+        index += 1;
+      } else {
+        const parsed = parseYamlList(lines, index + 1, indent + 2);
+        mutable.enum = parsed.values;
+        index = parsed.nextIndex;
+      }
+      continue;
+    }
+    if (trimmed.startsWith("required:")) {
+      const value = trimmed.slice("required:".length).trim();
+      if (value.startsWith("[")) {
+        mutable.required = parseInlineArray(value).filter((item): item is string => typeof item === "string");
+        index += 1;
+      } else {
+        const parsed = parseYamlList(lines, index + 1, indent + 2);
+        mutable.required = parsed.values.filter((item): item is string => typeof item === "string");
+        index = parsed.nextIndex;
+      }
+      continue;
+    }
+    if (trimmed === "properties:") {
+      const parsed = parseSchemaProperties(lines, index + 1, indent + 2);
+      mutable.properties = parsed.properties;
+      index = parsed.nextIndex;
+      continue;
+    }
+    if (trimmed === "items:") {
+      const parsed = parseOpenApiSchema(lines, index + 1, indent + 2);
+      mutable.items = parsed.schema;
+      index = parsed.nextIndex;
+      continue;
+    }
+    if (trimmed.startsWith("additionalProperties:")) {
+      const value = trimmed.slice("additionalProperties:".length).trim();
+      if (value === "true" || value === "false") {
+        mutable.additionalProperties = value === "true";
+        index += 1;
+      } else {
+        const parsed = parseOpenApiSchema(lines, index + 1, indent + 2);
+        mutable.additionalProperties = Object.keys(parsed.schema).length > 0 ? parsed.schema : true;
+        index = parsed.nextIndex;
+      }
+      continue;
+    }
+    index += 1;
+  }
+
+  return { schema: mutable, nextIndex: index };
+}
+
+function parseSchemaProperties(
+  lines: readonly string[],
+  startIndex: number,
+  indent: number
+): { readonly properties: Record<string, OpenApiSchema>; readonly nextIndex: number } {
+  const properties: Record<string, OpenApiSchema> = {};
+  let index = startIndex;
+  while (index < lines.length) {
+    const line = lines[index] ?? "";
+    if (line.trim().length === 0) {
+      index += 1;
+      continue;
+    }
+    const currentIndent = leadingSpaces(line);
+    if (currentIndent < indent) break;
+    const propertyMatch = new RegExp(`^ {${indent}}([A-Za-z0-9_-]+):$`).exec(line);
+    if (!propertyMatch) {
+      index += 1;
+      continue;
+    }
+    const parsed = parseOpenApiSchema(lines, index + 1, indent + 2);
+    properties[propertyMatch[1] ?? ""] = parsed.schema;
+    index = parsed.nextIndex;
+  }
+  return { properties, nextIndex: index };
+}
+
+function parseYamlList(
+  lines: readonly string[],
+  startIndex: number,
+  indent: number
+): { readonly values: unknown[]; readonly nextIndex: number } {
+  const values: unknown[] = [];
+  let index = startIndex;
+  while (index < lines.length) {
+    const line = lines[index] ?? "";
+    if (line.trim().length === 0) {
+      index += 1;
+      continue;
+    }
+    const listMatch = new RegExp(`^ {${indent}}- (.+)$`).exec(line);
+    if (!listMatch) break;
+    values.push(parseScalar(listMatch[1] ?? ""));
+    index += 1;
+  }
+  return { values, nextIndex: index };
+}
+
+function parseInlineArray(value: string): unknown[] {
+  return value
+    .slice(1, -1)
+    .split(",")
+    .map((item) => parseScalar(item.trim()))
+    .filter((item) => item !== "");
+}
+
+function parseScalar(value: string): unknown {
+  const unquoted = unquote(value);
+  if (unquoted === "true") return true;
+  if (unquoted === "false") return false;
+  if (/^-?\d+(\.\d+)?$/.test(unquoted)) return Number(unquoted);
+  return unquoted;
+}
+
+function unquote(value: string): string {
+  return value.replace(/^["']|["']$/g, "");
+}
+
+function leadingSpaces(value: string): number {
+  return value.length - value.trimStart().length;
+}
+
+function validateOpenApiExample(example: unknown, schemaReference: string, schemas: ReadonlyMap<string, OpenApiSchema>): string[] {
+  return validateSchema(example, resolveSchema({ ref: `#/components/schemas/${schemaReference}` }, schemas), schemas, schemaReference);
+}
+
+function resolveSchema(schema: OpenApiSchema, schemas: ReadonlyMap<string, OpenApiSchema>): OpenApiSchema {
+  if (!schema.ref) return schema;
+  const schemaName = schema.ref.replace("#/components/schemas/", "");
+  return schemas.get(schemaName) ?? {};
+}
+
+function validateSchema(value: unknown, schema: OpenApiSchema, schemas: ReadonlyMap<string, OpenApiSchema>, pathLabel: string): string[] {
+  const resolved = resolveSchema(schema, schemas);
+  const errors: string[] = [];
+
+  if (resolved.enum && !resolved.enum.includes(value)) {
+    errors.push(`${pathLabel} must be one of ${resolved.enum.join(", ")}`);
+  }
+  if (resolved.type) {
+    const typeError = validateType(value, resolved.type, pathLabel);
+    if (typeError) errors.push(typeError);
+  }
+  if (resolved.format === "date-time" && typeof value === "string" && Number.isNaN(Date.parse(value))) {
+    errors.push(`${pathLabel} must be a date-time string`);
+  }
+  if (resolved.format === "uri" && typeof value === "string" && !URL.canParse(value)) {
+    errors.push(`${pathLabel} must be a URI string`);
+  }
+  if (resolved.type === "array" && Array.isArray(value) && resolved.items) {
+    value.forEach((item, index) => {
+      errors.push(...validateSchema(item, resolved.items!, schemas, `${pathLabel}[${index}]`));
+    });
+  }
+  if (resolved.type === "object" && isObjectRecord(value)) {
+    for (const field of resolved.required ?? []) {
+      if (!(field in value)) {
+        errors.push(`${pathLabel}.${field} is required`);
+      }
+    }
+    for (const [field, propertySchema] of Object.entries(resolved.properties ?? {})) {
+      if (field in value) {
+        errors.push(...validateSchema(value[field], propertySchema, schemas, `${pathLabel}.${field}`));
+      }
+    }
+    if (resolved.additionalProperties === false) {
+      const allowed = new Set(Object.keys(resolved.properties ?? {}));
+      for (const field of Object.keys(value)) {
+        if (!allowed.has(field)) {
+          errors.push(`${pathLabel}.${field} is not allowed`);
+        }
+      }
+    } else if (typeof resolved.additionalProperties === "object") {
+      for (const [field, propertyValue] of Object.entries(value)) {
+        if (!(field in (resolved.properties ?? {}))) {
+          errors.push(...validateSchema(propertyValue, resolved.additionalProperties, schemas, `${pathLabel}.${field}`));
+        }
+      }
+    }
+  }
+  return errors;
+}
+
+function validateType(value: unknown, type: string, pathLabel: string): string | undefined {
+  if (type === "object") return isObjectRecord(value) ? undefined : `${pathLabel} must be an object`;
+  if (type === "array") return Array.isArray(value) ? undefined : `${pathLabel} must be an array`;
+  if (type === "string") return typeof value === "string" ? undefined : `${pathLabel} must be a string`;
+  if (type === "number") return typeof value === "number" ? undefined : `${pathLabel} must be a number`;
+  if (type === "integer") return Number.isInteger(value) ? undefined : `${pathLabel} must be an integer`;
+  if (type === "boolean") return typeof value === "boolean" ? undefined : `${pathLabel} must be a boolean`;
+  return undefined;
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

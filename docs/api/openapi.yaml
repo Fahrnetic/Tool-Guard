@@ -517,8 +517,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: true
+              $ref: "#/components/schemas/SidecarToolCallRequest"
             examples:
               pythonToolCall:
                 $ref: "#/components/examples/SidecarToolCallRequest"
@@ -528,8 +527,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
+                $ref: "#/components/schemas/SidecarToolCallResponse"
               examples:
                 accepted:
                   $ref: "#/components/examples/SidecarToolCallSuccess"
@@ -544,7 +542,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/SidecarToolCallResponse"
               examples:
                 protocolMismatch:
                   $ref: "#/components/examples/SidecarProtocolMismatch"
@@ -1079,6 +1077,206 @@ components:
             type: object
             additionalProperties: true
       additionalProperties: true
+    SidecarToolCallRequest:
+      type: object
+      required: [protocolVersion, toolName, arguments]
+      properties:
+        protocolVersion:
+          type: string
+          enum: [toolguard.sidecar.v1]
+        toolName:
+          type: string
+        originalToolName:
+          type: string
+        arguments:
+          type: object
+          additionalProperties: true
+        deadlineMs:
+          type: number
+        idempotency:
+          type: string
+          enum: [idempotent, non-idempotent, unknown]
+        harnessId:
+          type: string
+        adapterId:
+          type: string
+        adapterName:
+          type: string
+        harnessName:
+          type: string
+        runName:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        downstreamServerId:
+          type: string
+        routeMetadata:
+          type: object
+          additionalProperties: true
+        correlation:
+          type: object
+          properties:
+            runId:
+              type: string
+            traceId:
+              type: string
+            parentId:
+              type: string
+            harnessId:
+              type: string
+            adapterId:
+              type: string
+            downstreamServerId:
+              type: string
+            toolCallId:
+              type: string
+            attemptId:
+              type: string
+            policyDecisionId:
+              type: string
+          additionalProperties: false
+      additionalProperties: false
+    SidecarToolCallResponse:
+      type: object
+      required: [protocolVersion, status, evidenceDir, eventsPath]
+      properties:
+        protocolVersion:
+          type: string
+          enum: [toolguard.sidecar.v1]
+        status:
+          type: string
+          enum: [success, failure]
+        correlation:
+          type: object
+          required: [runId, traceId, harnessId, adapterId, downstreamServerId, toolCallId, attemptId, policyDecisionId]
+          properties:
+            runId:
+              type: string
+            traceId:
+              type: string
+            parentId:
+              type: string
+            harnessId:
+              type: string
+            adapterId:
+              type: string
+            downstreamServerId:
+              type: string
+            toolCallId:
+              type: string
+            attemptId:
+              type: string
+            policyDecisionId:
+              type: string
+          additionalProperties: false
+        result:
+          type: object
+          additionalProperties: true
+        failureCard:
+          $ref: "#/components/schemas/FailureCard"
+        evidenceDir:
+          type: string
+        eventsPath:
+          type: string
+      additionalProperties: false
+    FailureCard:
+      type: object
+      required:
+        [
+          toolName,
+          failureType,
+          likelyRootCause,
+          failureCause,
+          failureBoundary,
+          failureMechanism,
+          rootCauseConfidence,
+          contributingFactors,
+          evidenceAnchors,
+          diagnosticHypotheses,
+          retryable,
+          doNotRetrySameCall,
+          safeRecoveryOptions,
+          evidenceLinks,
+          safeSummary,
+          contextImpact,
+          rawDetailsSeparated
+        ]
+      properties:
+        toolName:
+          type: string
+        failureType:
+          type: string
+          enum:
+            - missing_binary
+            - wrong_cwd
+            - permission_denied_temp
+            - schema_mismatch
+            - caller_deadline_timeout
+            - downstream_hang_timeout
+            - policy_blocked
+            - output_limit_exceeded
+            - prompt_injection_output
+            - secret_leak_risk
+            - destructive_action_blocked
+            - circuit_open
+            - sidecar_unavailable
+            - sidecar_protocol_error
+            - unknown
+        likelyRootCause:
+          type: string
+        failureCause:
+          type: string
+        failureBoundary:
+          type: string
+        failureMechanism:
+          type: string
+        rootCauseConfidence:
+          type: string
+          enum: [high, medium, low]
+        contributingFactors:
+          type: array
+          items:
+            type: string
+        evidenceAnchors:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        diagnosticHypotheses:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        retryable:
+          type: boolean
+        doNotRetrySameCall:
+          type: boolean
+        safeRecoveryOptions:
+          type: array
+          items:
+            type: string
+        humanFix:
+          type: string
+        evidenceLinks:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        safeSummary:
+          type: string
+        contextImpact:
+          type: object
+          additionalProperties: true
+        rawDetailsSeparated:
+          type: boolean
+          enum: [true]
+      additionalProperties: true
   examples:
     IntegrationsSuccess:
       summary: Route proof inventory with honest limitations.
@@ -1295,24 +1493,68 @@ components:
       value:
         {
           "protocolVersion": "toolguard.sidecar.v1",
-          "toolCall":
-            {
-              "runId": "run_example",
-              "toolName": "fixture.echo",
-              "arguments": { "message": "hello from wrapper" },
-              "routeMetadata": { "routeType": "sdk-wrapped-python", "transport": { "kind": "loopback-sidecar" } }
-            }
+          "adapterName": "toolguard-langgraph",
+          "harnessId": "harness_example",
+          "adapterId": "adapter_example",
+          "toolName": "fixture.echo",
+          "arguments": { "message": "hello from wrapper" },
+          "correlation": { "runId": "run_example", "traceId": "trace_example", "toolCallId": "toolcall_example" },
+          "routeMetadata": { "routeType": "sdk-wrapped-python", "transport": { "kind": "http-loopback-sidecar" } }
         }
     SidecarToolCallSuccess:
       summary: Accepted sidecar tool-call result.
       value:
         {
-          "runId": "run_example",
-          "toolCallId": "toolcall_example",
-          "status": "ok",
-          "result": { "ok": true },
-          "visibility": { "routeType": "sdk-wrapped-python", "visibilityLevel": "observed" }
+          "protocolVersion": "toolguard.sidecar.v1",
+          "status": "success",
+          "correlation":
+            {
+              "runId": "run_example",
+              "traceId": "trace_example",
+              "harnessId": "harness_example",
+              "adapterId": "adapter_example",
+              "downstreamServerId": "server_example",
+              "toolCallId": "toolcall_example",
+              "attemptId": "attempt_example",
+              "policyDecisionId": "policy_example"
+            },
+          "result":
+            {
+              "toolName": "fixture.echo",
+              "output": { "message": "hello from wrapper" },
+              "safeSummary": "Tool call fixture.echo completed successfully.",
+              "artifactIds": [],
+              "contextImpact": { "tokens": 0, "rawBytes": 0, "safeBytes": 0 }
+            },
+          "evidenceDir": "runs/run_example",
+          "eventsPath": "runs/run_example/events.jsonl"
         }
     SidecarProtocolMismatch:
       summary: Sidecar protocol version mismatch error.
-      value: { "error": "sidecar_protocol_mismatch", "expected": "toolguard.sidecar.v1", "received": "toolguard.sidecar.v0" }
+      value:
+        {
+          "protocolVersion": "toolguard.sidecar.v1",
+          "status": "failure",
+          "failureCard":
+            {
+              "toolName": "fixture.echo",
+              "failureType": "sidecar_protocol_error",
+              "likelyRootCause": "The sidecar request used an incompatible protocol version.",
+              "failureCause": "sidecar-protocol",
+              "failureBoundary": "protocol",
+              "failureMechanism": "protocol-version-mismatch",
+              "rootCauseConfidence": "high",
+              "contributingFactors": ["Expected toolguard.sidecar.v1, received toolguard.sidecar.v0"],
+              "evidenceAnchors": [],
+              "diagnosticHypotheses": [],
+              "retryable": false,
+              "doNotRetrySameCall": true,
+              "safeRecoveryOptions": ["Upgrade the sidecar adapter protocol version."],
+              "evidenceLinks": [{ "href": "runs/run_example/evidence/sidecar-protocol.json", "evidenceScope": "route" }],
+              "safeSummary": "Sidecar protocol mismatch blocked tool execution.",
+              "contextImpact": { "tokens": 0, "rawBytes": 0, "safeBytes": 0 },
+              "rawDetailsSeparated": true
+            },
+          "evidenceDir": "runs/run_example",
+          "eventsPath": "runs/run_example/events.jsonl"
+        }

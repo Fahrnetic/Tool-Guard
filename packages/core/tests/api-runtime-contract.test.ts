@@ -239,9 +239,7 @@ describe("Core API runtime contract", () => {
         network: [
           {
             method: "GET",
-            url: `http://127.0.0.1:3660/api/integrations?authorization=${encodeURIComponent(
-              ["Bearer", browserMarker].join(" ")
-            )}`,
+            url: `http://127.0.0.1:3660/api/integrations?authorization=${encodeURIComponent(["Bearer", browserMarker].join(" "))}`,
             status: 200
           }
         ]
@@ -313,7 +311,11 @@ describe("Core API runtime contract", () => {
   it("exposes report and bundle proof payloads with constrained file serving and route correlation", async () => {
     const { handle, baseUrl } = await startCoreApi("toolguard-api-proof-payloads-", true);
     const runId = handle.session.runId;
-    const receipt = await verifyIntegrationRoute({ session: handle.session, routeType: "js-ts-wrapper", workspaceRoot: path.resolve("../..") });
+    const receipt = await verifyIntegrationRoute({
+      session: handle.session,
+      routeType: "js-ts-wrapper",
+      workspaceRoot: path.resolve("../..")
+    });
 
     const reportExport = await fetchJson<{
       manifestValid: boolean;
@@ -551,7 +553,10 @@ async function startCoreApi(prefix: string, seedDirectRun = false): Promise<{ ha
   const session = new CoreSession({ evidenceRoot: root, runId: createId("run") });
   const registry = new ToolRegistry();
   registerChaosFixtures(registry, { sandboxRoot: root });
-  await session.executeToolCall(registry, makeToolCall(session.runId, registry.get("fixture.echo")?.downstreamServerId ?? createId("server")));
+  await session.executeToolCall(
+    registry,
+    makeToolCall(session.runId, registry.get("fixture.echo")?.downstreamServerId ?? createId("server"))
+  );
   const handle = createCoreApiServer({
     host: "127.0.0.1",
     port: 0,

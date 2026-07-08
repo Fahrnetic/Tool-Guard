@@ -61,7 +61,14 @@ paths:
       summary: Local validation dashboard payload for proof readiness.
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Validation dashboard checks and artifact coverage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationDashboardPayload"
+              examples:
+                proofReadiness:
+                  $ref: "#/components/examples/ValidationDashboardSuccess"
   /api/topology/{runId}:
     get:
       summary: Run topology for a run ID or latest.
@@ -167,6 +174,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IntegrationsPayload"
+              examples:
+                proofInventory:
+                  $ref: "#/components/examples/IntegrationsSuccess"
         "405":
           $ref: "#/components/responses/JsonError"
   /api/integrations/verify:
@@ -178,6 +188,9 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/IntegrationVerificationRequest"
+            examples:
+              jsTsWrapper:
+                $ref: "#/components/examples/IntegrationVerifyRequest"
       responses:
         "200":
           description: Route verification receipt.
@@ -185,20 +198,53 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IntegrationVerificationReceipt"
+              examples:
+                jsTsWrapperReceipt:
+                  $ref: "#/components/examples/IntegrationVerifySuccess"
         "400":
-          $ref: "#/components/responses/JsonError"
+          description: Unknown or invalid route verification request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                unknownRoute:
+                  $ref: "#/components/examples/UnknownRouteError"
         "405":
           $ref: "#/components/responses/JsonError"
   /api/visibility/import/http:
     post:
       summary: Import bounded HTTP or webhook evidence without claiming mediation.
       requestBody:
-        $ref: "#/components/requestBodies/JsonObject"
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            examples:
+              webhookImport:
+                $ref: "#/components/examples/HttpImportRequest"
       responses:
         "202":
-          $ref: "#/components/responses/JsonObject"
+          description: Imported and redacted HTTP or webhook evidence.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              examples:
+                accepted:
+                  $ref: "#/components/examples/HttpImportAccepted"
         "400":
-          $ref: "#/components/responses/JsonError"
+          description: Malformed JSON or invalid HTTP import payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                malformedJson:
+                  $ref: "#/components/examples/MalformedJsonError"
         "405":
           $ref: "#/components/responses/JsonError"
         "413":
@@ -207,10 +253,26 @@ paths:
     post:
       summary: Import synthetic browser evidence summaries without launching a browser.
       requestBody:
-        $ref: "#/components/requestBodies/JsonObject"
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            examples:
+              syntheticBrowserEvidence:
+                $ref: "#/components/examples/BrowserImportRequest"
       responses:
         "202":
-          $ref: "#/components/responses/JsonObject"
+          description: Imported synthetic browser evidence summary.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              examples:
+                accepted:
+                  $ref: "#/components/examples/BrowserImportAccepted"
         "400":
           $ref: "#/components/responses/JsonError"
         "405":
@@ -238,18 +300,40 @@ paths:
       summary: Replay lab fixtures and safe replay categories.
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Replay lab state and safe replay options.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReplayPayload"
+              examples:
+                replayState:
+                  $ref: "#/components/examples/ReplaySuccess"
     post:
       summary: Request a safe replay, dry-run preview, or blocked replay decision.
       requestBody:
-        $ref: "#/components/requestBodies/JsonObject"
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            examples:
+              blockedDestructive:
+                $ref: "#/components/examples/ReplayBlockedRequest"
       responses:
         "200":
           $ref: "#/components/responses/JsonObject"
         "201":
           $ref: "#/components/responses/JsonObject"
         "409":
-          $ref: "#/components/responses/JsonError"
+          description: Replay request blocked by safety policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                blockedDestructive:
+                  $ref: "#/components/examples/ReplayBlocked"
   /api/evidence:
     get:
       summary: Evidence metadata for the active run.
@@ -269,15 +353,37 @@ paths:
       summary: Export a static report and validate its manifest.
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Report export locations and manifest validation status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportExportResponse"
+              examples:
+                exportedReport:
+                  $ref: "#/components/examples/ReportExportSuccess"
   /api/bundle/export:
     post:
       summary: Export an evidence bundle with manifest validation and replay instructions.
       requestBody:
-        $ref: "#/components/requestBodies/JsonObject"
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            examples:
+              fixtureOnly:
+                $ref: "#/components/examples/BundleExportRequest"
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Bundle export locations and manifest validation status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BundleExportResponse"
+              examples:
+                exportedBundle:
+                  $ref: "#/components/examples/BundleExportSuccess"
         "405":
           $ref: "#/components/responses/JsonError"
   /api/bundle:
@@ -285,7 +391,14 @@ paths:
       summary: Current evidence bundle summary for UI consumers.
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Current bundle summary for the active run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BundlePayload"
+              examples:
+                currentBundle:
+                  $ref: "#/components/examples/BundleSuccess"
   /api/bundles/{runId}/files/{relativePath}:
     get:
       summary: Serve a constrained evidence bundle file.
@@ -315,7 +428,14 @@ paths:
       summary: Report summaries for the active run.
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Report summaries for the active run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportsPayload"
+              examples:
+                reports:
+                  $ref: "#/components/examples/ReportsSuccess"
   /api/reports/{runId}/files/{fileName}:
     get:
       summary: Serve a constrained generated report file.
@@ -399,9 +519,20 @@ paths:
             schema:
               type: object
               additionalProperties: true
+            examples:
+              pythonToolCall:
+                $ref: "#/components/examples/SidecarToolCallRequest"
       responses:
         "200":
-          $ref: "#/components/responses/JsonObject"
+          description: Accepted sidecar tool-call payload.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              examples:
+                accepted:
+                  $ref: "#/components/examples/SidecarToolCallSuccess"
         "400":
           $ref: "#/components/responses/JsonError"
         "405":
@@ -409,7 +540,14 @@ paths:
         "413":
           $ref: "#/components/responses/JsonError"
         "426":
-          $ref: "#/components/responses/JsonError"
+          description: Sidecar protocol version mismatch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                protocolMismatch:
+                  $ref: "#/components/examples/SidecarProtocolMismatch"
 components:
   parameters:
     RunId:
@@ -702,7 +840,20 @@ components:
       additionalProperties: true
     ReportExportResponse:
       type: object
-      required: [runId, reportHtml, reportUrl, manifestJson, manifestUrl, artifactHashList, artifactHashUrl, redactionSummary, redactionSummaryUrl, manifestValid, validationErrors]
+      required:
+        [
+          runId,
+          reportHtml,
+          reportUrl,
+          manifestJson,
+          manifestUrl,
+          artifactHashList,
+          artifactHashUrl,
+          redactionSummary,
+          redactionSummaryUrl,
+          manifestValid,
+          validationErrors
+        ]
       properties:
         runId:
           type: string
@@ -762,7 +913,8 @@ components:
       additionalProperties: true
     BundleExportResponse:
       type: object
-      required: [runId, bundleDir, manifestJson, manifestUrl, manifestValidation, manifestValidationUrl, manifestValid, validationErrors, files]
+      required:
+        [runId, bundleDir, manifestJson, manifestUrl, manifestValidation, manifestValidationUrl, manifestValid, validationErrors, files]
       properties:
         runId:
           type: string
@@ -927,3 +1079,240 @@ components:
             type: object
             additionalProperties: true
       additionalProperties: true
+  examples:
+    IntegrationsSuccess:
+      summary: Route proof inventory with honest limitations.
+      value:
+        {
+          "runId": "run_example",
+          "generatedAt": "2026-01-01T00:00:00.000Z",
+          "integrations":
+            [
+              {
+                "id": "direct-core-api",
+                "status": "available",
+                "claimLevel": "mediated",
+                "limitation": "Covers direct Core calls and loopback Core API only."
+              }
+            ],
+          "routeCoverage":
+            [
+              {
+                "routeType": "js-ts-wrapper",
+                "claim": "mediated",
+                "configured": true,
+                "available": true,
+                "producingEvidence": true,
+                "smokeTestStatus": "passed",
+                "evidenceLinks": [{ "href": "runs/run_example/evidence/wrapper.json", "evidenceScope": "route" }]
+              }
+            ],
+          "coverageHistory": []
+        }
+    IntegrationVerifyRequest:
+      summary: Verify the explicit JS/TS wrapper route.
+      value: { "routeType": "js-ts-wrapper" }
+    IntegrationVerifySuccess:
+      summary: Successful route verification receipt.
+      value:
+        {
+          "receiptId": "receipt_example",
+          "runId": "run_example",
+          "timestamp": "2026-01-01T00:00:00.000Z",
+          "routeType": "js-ts-wrapper",
+          "visibilityLevel": "mediated",
+          "smokeTestStatus": "passed",
+          "checkedCapabilities": [{ "id": "wrapper-call", "status": "passed" }],
+          "routeCoverage": [{ "routeType": "js-ts-wrapper", "producingEvidence": true }],
+          "limitations": ["Covers explicit wrapper calls only, not provider-native tool interception."],
+          "evidenceLinks": [{ "href": "runs/run_example/evidence/wrapper.json", "routeType": "js-ts-wrapper", "evidenceScope": "route" }]
+        }
+    UnknownRouteError:
+      summary: Unknown route verification request.
+      value: { "error": "unknown_integration_route_type", "routeType": "unknown-route" }
+    HttpImportRequest:
+      summary: Bounded HTTP/webhook import request.
+      value:
+        {
+          "source": "local-webhook-fixture",
+          "method": "POST",
+          "path": "/webhook/toolguard",
+          "headers": { "x-toolguard-fixture": "safe" },
+          "body": { "event": "completed", "status": "ok" },
+          "traceparent": "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"
+        }
+    HttpImportAccepted:
+      summary: Imported HTTP evidence with redacted safe evidence.
+      value:
+        {
+          "artifactId": "artifact_example",
+          "event": { "visibility": { "routeType": "http-webhook-import", "visibilityLevel": "imported", "evidenceScope": "route" } },
+          "safeEvidence": { "source": "local-webhook-fixture", "redacted": false }
+        }
+    BrowserImportRequest:
+      summary: Synthetic browser evidence import without launching a browser.
+      value:
+        {
+          "pageUrl": "http://127.0.0.1:3661/demo",
+          "screenshot":
+            {
+              "label": "validation dashboard",
+              "mimeType": "image/png",
+              "byteLength": 512,
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+          "console": [{ "level": "info", "message": "ToolGuard route proof loaded", "count": 1 }],
+          "network": [{ "method": "GET", "url": "http://127.0.0.1:3660/api/integrations", "status": 200 }]
+        }
+    BrowserImportAccepted:
+      summary: Synthetic browser evidence accepted as observed/imported evidence.
+      value:
+        {
+          "artifactId": "artifact_browser_example",
+          "event": { "visibility": { "routeType": "browser-evidence-import", "visibilityLevel": "observed", "evidenceScope": "route" } },
+          "safeEvidence": { "pageUrl": "http://127.0.0.1:3661/demo", "redacted": false }
+        }
+    MalformedJsonError:
+      summary: Malformed JSON request body.
+      value: { "error": "malformed JSON request body" }
+    ReplaySuccess:
+      summary: Replay lab payload with safe fixtures.
+      value:
+        {
+          "runId": "run_example",
+          "generatedAt": "2026-01-01T00:00:00.000Z",
+          "replayCategories": [{ "id": "fixture-only", "safe": true }],
+          "replayableRuns": [],
+          "fixtures": [{ "id": "fixture.echo", "destructive": false }],
+          "latestReplayEvents": [],
+          "freshCorrelation": { "traceId": "trace_example" }
+        }
+    ReplayBlockedRequest:
+      summary: Destructive real-world replay request that will be blocked.
+      value:
+        { "toolName": "real-world.rm-rf", "sourceRunId": "run_example", "fixtureOnly": false, "mode": "real-world", "destructive": true }
+    ReplayBlocked:
+      summary: Replay blocked by safety policy.
+      value: { "error": "replay_blocked", "status": "blocked", "safe": false, "reason": "Only fixture-safe replay is allowed." }
+    ReportsSuccess:
+      summary: Report list with local loopback URLs.
+      value:
+        {
+          "runId": "run_example",
+          "generatedAt": "2026-01-01T00:00:00.000Z",
+          "reports":
+            [
+              {
+                "runId": "run_example",
+                "reportUrl": "http://127.0.0.1:3660/api/reports/run_example/files/report.html",
+                "manifestUrl": "http://127.0.0.1:3660/api/reports/run_example/files/manifest.json",
+                "artifactHashUrl": "http://127.0.0.1:3660/api/reports/run_example/files/artifact-hashes.json",
+                "redactionSummaryUrl": "http://127.0.0.1:3660/api/reports/run_example/files/redaction-summary.json",
+                "manifestValid": true,
+                "validationErrors": []
+              }
+            ]
+        }
+    ReportExportSuccess:
+      summary: Exported report manifest and redaction summary.
+      value:
+        {
+          "runId": "run_example",
+          "reportHtml": "runs/run_example/report.html",
+          "reportUrl": "http://127.0.0.1:3660/api/reports/run_example/files/report.html",
+          "manifestJson": "runs/run_example/manifest.json",
+          "manifestUrl": "http://127.0.0.1:3660/api/reports/run_example/files/manifest.json",
+          "artifactHashList": "runs/run_example/artifact-hashes.json",
+          "artifactHashUrl": "http://127.0.0.1:3660/api/reports/run_example/files/artifact-hashes.json",
+          "redactionSummary": "runs/run_example/redaction-summary.json",
+          "redactionSummaryUrl": "http://127.0.0.1:3660/api/reports/run_example/files/redaction-summary.json",
+          "manifestValid": true,
+          "validationErrors": []
+        }
+    BundleSuccess:
+      summary: Current bundle summary.
+      value:
+        {
+          "runId": "run_example",
+          "generatedAt": "2026-01-01T00:00:00.000Z",
+          "bundle":
+            {
+              "exists": true,
+              "manifestValid": true,
+              "validationErrors": [],
+              "manifestValidationUrl": "http://127.0.0.1:3660/api/bundles/run_example/files/manifest-validation.json",
+              "files":
+                [
+                  {
+                    "relativePath": "manifest.json",
+                    "url": "http://127.0.0.1:3660/api/bundles/run_example/files/manifest.json",
+                    "present": true,
+                    "hashed": true
+                  }
+                ],
+              "redactionSummary": { "redacted": 0 }
+            }
+        }
+    BundleExportRequest:
+      summary: Export a fixture-only evidence bundle.
+      value: { "replaySafety": { "fixtureOnly": true } }
+    BundleExportSuccess:
+      summary: Exported evidence bundle with manifest validation.
+      value:
+        {
+          "runId": "run_example",
+          "bundleDir": "runs/run_example/bundle",
+          "manifestJson": "runs/run_example/bundle/manifest.json",
+          "manifestUrl": "http://127.0.0.1:3660/api/bundles/run_example/files/manifest.json",
+          "manifestValidation": "runs/run_example/bundle/manifest-validation.json",
+          "manifestValidationUrl": "http://127.0.0.1:3660/api/bundles/run_example/files/manifest-validation.json",
+          "manifestValid": true,
+          "validationErrors": [],
+          "files":
+            [
+              {
+                "relativePath": "manifest.json",
+                "url": "http://127.0.0.1:3660/api/bundles/run_example/files/manifest.json",
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "present": true,
+                "hashed": true
+              }
+            ]
+        }
+    ValidationDashboardSuccess:
+      summary: Validation dashboard proof readiness checks.
+      value:
+        {
+          "runId": "run_example",
+          "generatedAt": "2026-01-01T00:00:00.000Z",
+          "deterministicSeed": "toolguard-demo-seed",
+          "approvedPorts": [3660, 3661, 3662, 3663, 3664],
+          "artifactCoverage": { "reports": true, "bundles": true, "routeProofs": true },
+          "checks": [{ "id": "route-proof", "status": "passed", "description": "Doctor and API route proof artifacts are present." }]
+        }
+    SidecarToolCallRequest:
+      summary: Python sidecar tool-call ingestion request.
+      value:
+        {
+          "protocolVersion": "toolguard.sidecar.v1",
+          "toolCall":
+            {
+              "runId": "run_example",
+              "toolName": "fixture.echo",
+              "arguments": { "message": "hello from wrapper" },
+              "routeMetadata": { "routeType": "sdk-wrapped-python", "transport": { "kind": "loopback-sidecar" } }
+            }
+        }
+    SidecarToolCallSuccess:
+      summary: Accepted sidecar tool-call result.
+      value:
+        {
+          "runId": "run_example",
+          "toolCallId": "toolcall_example",
+          "status": "ok",
+          "result": { "ok": true },
+          "visibility": { "routeType": "sdk-wrapped-python", "visibilityLevel": "observed" }
+        }
+    SidecarProtocolMismatch:
+      summary: Sidecar protocol version mismatch error.
+      value: { "error": "sidecar_protocol_mismatch", "expected": "toolguard.sidecar.v1", "received": "toolguard.sidecar.v0" }

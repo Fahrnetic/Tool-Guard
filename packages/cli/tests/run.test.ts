@@ -99,9 +99,10 @@ describe("toolplane run process wrapper", () => {
 
   it("records safe git reads with before and after status but no mutation", async () => {
     const root = await makeTempRoot("toolguard-cli-git-impact-");
-    await runToolplaneCli(["run", "--evidence-root", root, "--cwd", root, "--", "git", "init"]);
+    const evidenceRoot = await makeTempRoot("toolguard-cli-git-impact-evidence-");
+    await runToolplaneCli(["run", "--evidence-root", evidenceRoot, "--cwd", root, "--", "git", "init"]);
 
-    const result = await runToolplaneCli(["run", "--evidence-root", root, "--cwd", root, "--", "git", "status", "--short"]);
+    const result = await runToolplaneCli(["run", "--evidence-root", evidenceRoot, "--cwd", root, "--", "git", "status", "--short"]);
     const ledger = (await readFile(path.join(result.evidenceDir, "ledger.jsonl"), "utf8"))
       .trim()
       .split("\n")

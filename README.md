@@ -226,3 +226,88 @@ ToolGuard does not currently claim:
 ## License
 
 No `LICENSE` file is present in this repository, and the package manifests do not declare a `license` field. Licensing is not specified.
+
+<!-- dependency-credits:start -->
+## Dependencies and acknowledgments
+
+This project is built with open-source software maintained by people and communities around the world. Thank you to those maintainers and contributors. The list below covers direct package dependencies declared in this repository; lockfiles remain the source of truth for exact and transitive versions. Each dependency is governed by its own license and terms.
+
+<details>
+<summary>JavaScript / TypeScript (40)</summary>
+
+- [`@changesets/cli`](https://www.npmjs.com/package/@changesets/cli)
+- [`@eslint/js`](https://www.npmjs.com/package/@eslint/js)
+- [`@modelcontextprotocol/sdk`](https://www.npmjs.com/package/@modelcontextprotocol/sdk)
+- [`@sentry/node`](https://www.npmjs.com/package/@sentry/node)
+- [`@sentry/react`](https://www.npmjs.com/package/@sentry/react)
+- [`@size-limit/preset-app`](https://www.npmjs.com/package/@size-limit/preset-app)
+- [`@tailwindcss/vite`](https://www.npmjs.com/package/@tailwindcss/vite)
+- [`@tanstack/react-table`](https://www.npmjs.com/package/@tanstack/react-table)
+- [`@types/jsdom`](https://www.npmjs.com/package/@types/jsdom)
+- [`@types/node`](https://www.npmjs.com/package/@types/node)
+- [`@types/react`](https://www.npmjs.com/package/@types/react)
+- [`@types/react-dom`](https://www.npmjs.com/package/@types/react-dom)
+- [`@vitejs/plugin-react`](https://www.npmjs.com/package/@vitejs/plugin-react)
+- [`@vitest/coverage-v8`](https://www.npmjs.com/package/@vitest/coverage-v8)
+- [`clinic`](https://www.npmjs.com/package/clinic)
+- [`depcheck`](https://www.npmjs.com/package/depcheck)
+- [`dependency-cruiser`](https://www.npmjs.com/package/dependency-cruiser)
+- [`eslint`](https://www.npmjs.com/package/eslint)
+- [`eslint-plugin-import`](https://www.npmjs.com/package/eslint-plugin-import)
+- [`eslint-plugin-react-hooks`](https://www.npmjs.com/package/eslint-plugin-react-hooks)
+- [`eslint-plugin-react-refresh`](https://www.npmjs.com/package/eslint-plugin-react-refresh)
+- [`husky`](https://www.npmjs.com/package/husky)
+- [`jscpd`](https://www.npmjs.com/package/jscpd)
+- [`jsdom`](https://www.npmjs.com/package/jsdom)
+- [`knip`](https://www.npmjs.com/package/knip)
+- [`lint-staged`](https://www.npmjs.com/package/lint-staged)
+- [`posthog-js`](https://www.npmjs.com/package/posthog-js)
+- [`prettier`](https://www.npmjs.com/package/prettier)
+- [`prom-client`](https://www.npmjs.com/package/prom-client)
+- [`react`](https://www.npmjs.com/package/react)
+- [`react-dom`](https://www.npmjs.com/package/react-dom)
+- [`size-limit`](https://www.npmjs.com/package/size-limit)
+- [`syncpack`](https://www.npmjs.com/package/syncpack)
+- [`tailwindcss`](https://www.npmjs.com/package/tailwindcss)
+- [`typedoc`](https://www.npmjs.com/package/typedoc)
+- [`typescript`](https://www.npmjs.com/package/typescript)
+- [`typescript-eslint`](https://www.npmjs.com/package/typescript-eslint)
+- [`vite`](https://www.npmjs.com/package/vite)
+- [`vitest`](https://www.npmjs.com/package/vitest)
+- [`zod`](https://www.npmjs.com/package/zod)
+
+</details>
+
+<details>
+<summary>Python (12)</summary>
+
+- [`black`](https://pypi.org/project/black)
+- [`coverage`](https://pypi.org/project/coverage)
+- [`crewai`](https://pypi.org/project/crewai)
+- [`deptry`](https://pypi.org/project/deptry)
+- [`langgraph`](https://pypi.org/project/langgraph)
+- [`mypy`](https://pypi.org/project/mypy)
+- [`prometheus-client`](https://pypi.org/project/prometheus-client)
+- [`pytest-xdist`](https://pypi.org/project/pytest-xdist)
+- [`radon`](https://pypi.org/project/radon)
+- [`ruff`](https://pypi.org/project/ruff)
+- [`sentry-sdk`](https://pypi.org/project/sentry-sdk)
+- [`vulture`](https://pypi.org/project/vulture)
+
+</details>
+
+<details>
+<summary>Dependency declaration files (7)</summary>
+
+- [`package.json`](package.json)
+- [`packages/cli/package.json`](packages/cli/package.json)
+- [`packages/core/package.json`](packages/core/package.json)
+- [`packages/mcp-adapter/package.json`](packages/mcp-adapter/package.json)
+- [`packages/python-adapters/package.json`](packages/python-adapters/package.json)
+- [`packages/python-adapters/pyproject.toml`](packages/python-adapters/pyproject.toml)
+- [`packages/ui/package.json`](packages/ui/package.json)
+
+</details>
+
+If you redistribute this project, review the linked manifests, lockfiles, and dependency licenses for any attribution or notice requirements.
+<!-- dependency-credits:end -->
